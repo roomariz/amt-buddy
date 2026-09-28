@@ -34,7 +34,8 @@ export function defaultAuditLog(entry) {
 // Wraps a Tool with a timeout, one retry for upstream failures, a PII-free audit log entry
 // per call (argument names, never values), one evidence entry per call, and
 // structured errors returned to the Sub-agent instead of thrown.
-// `pinnedArgs` override whatever the model passed, so Tools always see Tenancy values.
+// `pinnedArgs` (an object, or a function returning one at call time) override whatever
+// the model passed, so Tools always see Tenancy values.
 export function wrapTool(
   baseTool,
   {
@@ -49,7 +50,8 @@ export function wrapTool(
 ) {
   return tool(
     async (modelArgs) => {
-      const args = { ...modelArgs, ...pinnedArgs };
+      const pinned = typeof pinnedArgs === "function" ? pinnedArgs() : pinnedArgs;
+      const args = { ...modelArgs, ...pinned };
       const startedAt = Date.now();
       let attempts = 0;
       let outcome;

@@ -121,3 +121,20 @@ test("pinned arguments override what the model passed", async () => {
   assert.deepEqual(seen, [{ longitude: 13.3295, latitude: 52.4 }]);
   assert.deepEqual(evidence[0].args, { longitude: 13.3295, latitude: 52.4 });
 });
+
+test("pinned arguments can be resolved at call time", async () => {
+  const seen = [];
+  const { base } = fakeTool((args) => {
+    seen.push(args);
+    return { predominantConstructionPeriod: null };
+  });
+  let pinned = {};
+  const { wrapped } = wrap(base, { pinnedArgs: () => pinned });
+  await wrapped.invoke({ longitude: 1, latitude: 2 });
+  pinned = { longitude: 13.3295, latitude: 52.4872 };
+  await wrapped.invoke({ longitude: 1, latitude: 2 });
+  assert.deepEqual(seen, [
+    { longitude: 1, latitude: 2 },
+    { longitude: 13.3295, latitude: 52.4872 },
+  ]);
+});
