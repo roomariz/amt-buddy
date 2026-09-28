@@ -1,4 +1,11 @@
 import { parseNumber } from "./numbers.js";
+import { FEATURE_GROUPS, FEATURE_RATINGS } from "./tool-contracts.js";
+
+// Feature group ratings: the tenant's rating of each Mietspiegel Orientierungshilfe
+// feature group (feature group → Tenancy fact, e.g. bathroom → bathroomRating).
+// They describe the flat and building.
+export const FEATURE_GROUP_RATINGS = Object.fromEntries(FEATURE_GROUPS.map((group) => [group, `${group}Rating`]));
+export const RATING_FACTS = Object.values(FEATURE_GROUP_RATINGS);
 
 // Facts the user (or a lease) can state about their Tenancy.
 export const STATED_FACTS = [
@@ -9,6 +16,7 @@ export const STATED_FACTS = [
   "rooms",
   "occupants",
   "childrenUpToSix",
+  ...RATING_FACTS,
 ];
 
 // Facts only official data supplies; they belong to the current address.
@@ -35,6 +43,10 @@ function coerce(name, value) {
     return parseNumber(String(value).trim()) ?? undefined;
   }
   if (name === "buildingYear") return coerceBuildingYear(value);
+  if (RATING_FACTS.includes(name)) {
+    const rating = String(value).trim().toLowerCase();
+    return FEATURE_RATINGS.includes(rating) ? rating : undefined;
+  }
   return value;
 }
 
@@ -47,9 +59,14 @@ function coerceBuildingYear(value) {
   return /\d{4}/.test(text) ? text : undefined;
 }
 
-function clearAddressDerivedFacts(tenancy) {
+// Official facts belong to the address; Feature group ratings to the flat, so
+// they go only when the flat changes (`flatChanged`): a known address is replaced,
+// not when the first address is stated or a stated one is canonicalised.
+// Before verification a respelled address cannot be told apart from a new flat.
+function clearAddressDerivedFacts(tenancy, { flatChanged }) {
   for (const name of OFFICIAL_ONLY_FACTS) delete tenancy[name];
   if (tenancy.buildingYear?.source === "official") delete tenancy.buildingYear;
+  if (flatChanged) for (const name of RATING_FACTS) delete tenancy[name];
 }
 
 function rank(fact) {
@@ -75,7 +92,10 @@ export function mergeTenancy(current, updates) {
 
     if (name === "address" && source === "official") {
       const statedBy = existing?.statedBy ?? (existing && existing.source !== "official" ? existing.source : undefined);
-      if (existing?.value !== incoming.value) clearAddressDerivedFacts(next);
+      // The Canonical address of a stated one is the same flat; a different Canonical address is not.
+      if (existing?.value !== incoming.value) {
+        clearAddressDerivedFacts(next, { flatChanged: existing?.source === "official" });
+      }
       next.address = statedBy ? { ...incoming, statedBy } : incoming;
       continue;
     }
@@ -83,7 +103,9 @@ export function mergeTenancy(current, updates) {
     if (existing && SOURCE_RANK[source] < rank(existing)) continue;
     // Only the user changes a verified address; a lease read again never undoes the verification.
     if (name === "address" && source === "lease" && existing?.source === "official") continue;
-    if (name === "address" && existing?.value !== incoming.value) clearAddressDerivedFacts(next);
+    if (name === "address" && existing?.value !== incoming.value) {
+      clearAddressDerivedFacts(next, { flatChanged: existing !== undefined });
+    }
     next[name] = incoming;
   }
   return next;

@@ -170,3 +170,49 @@ test("a building year is a year or an official period; anything else is ignored"
   const official = mergeTenancy({}, [{ fact: "buildingYear", value: "1921 - 1930", source: "official" }]);
   assert.equal(official.buildingYear.value, "1921 - 1930");
 });
+
+const RATINGS = {
+  bathroomRating: { value: "positive", source: "user" },
+  kitchenRating: { value: "neutral", source: "user" },
+  apartmentRating: { value: "positive", source: "user" },
+  buildingRating: { value: "negative", source: "user" },
+  surroundingsRating: { value: "positive", source: "user" },
+};
+
+test("feature group ratings are stated facts that take only positive, neutral or negative", () => {
+  const tenancy = mergeTenancy({}, [
+    { fact: "bathroomRating", value: "positive", source: "user" },
+    { fact: "kitchenRating", value: " Negative ", source: "user" },
+    { fact: "apartmentRating", value: "better", source: "user" },
+    { fact: "buildingRating", value: 1, source: "user" },
+  ]);
+  assert.deepEqual(tenancy, {
+    bathroomRating: { value: "positive", source: "user" },
+    kitchenRating: { value: "negative", source: "user" },
+  });
+  assert.deepEqual(factsFromConfirm({ surroundingsRating: "neutral" }), [
+    { fact: "surroundingsRating", value: "neutral", source: "user" },
+  ]);
+});
+
+test("a newly stated or verified different address clears the feature group ratings", () => {
+  const before = {
+    address: { value: "Berliner Straße 155, 10715 Berlin", source: "official", statedBy: "user" },
+    ...RATINGS,
+  };
+  const stated = mergeTenancy(before, [{ fact: "address", value: "Karl-Marx-Allee 1", source: "user" }]);
+  assert.deepEqual(Object.keys(stated), ["address"]);
+  const verified = mergeTenancy(before, [{ fact: "address", value: "Karl-Marx-Allee 1, 10178 Berlin", source: "official" }]);
+  assert.deepEqual(Object.keys(verified), ["address"]);
+});
+
+test("feature group ratings survive the first address and its verification", () => {
+  const stated = mergeTenancy(RATINGS, [{ fact: "address", value: "Berliner Str. 155", source: "user" }]);
+  const verified = mergeTenancy(stated, [
+    { fact: "address", value: "Berliner Straße 155, 10715 Berlin", source: "official" },
+  ]);
+  assert.deepEqual(verified, {
+    ...RATINGS,
+    address: { value: "Berliner Straße 155, 10715 Berlin", source: "official", statedBy: "user" },
+  });
+});

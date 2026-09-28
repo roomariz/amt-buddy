@@ -1,7 +1,7 @@
 import { SystemMessage } from "@langchain/core/messages";
 import { z } from "zod";
 
-import { isUnconfirmed, STATED_FACTS } from "./tenancy.js";
+import { isUnconfirmed, RATING_FACTS, STATED_FACTS } from "./tenancy.js";
 
 const request = z.string().describe("What the Sub-agent should do, in one or two sentences");
 
@@ -27,7 +27,7 @@ export const SUPERVISOR_TOOLS = [
   {
     name: "record_tenancy_facts",
     description:
-      "Record Tenancy facts the user stated or corrected in this conversation, e.g. 'the rent is 720' or 'we are 4 people'.",
+      `Record Tenancy facts the user stated or corrected in this conversation, e.g. 'the rent is 720' or 'we are 4 people'. Feature group ratings (${RATING_FACTS.join(", ")}) take 'positive' (better than usual), 'neutral' (average) or 'negative' (worse than usual).`,
     schema: z.object({
       facts: z.array(z.object({ fact: z.enum(STATED_FACTS), value: z.union([z.string(), z.number()]) })).min(1),
     }),
@@ -70,6 +70,7 @@ Rules:
 - If the user uploaded a new lease this turn, ask the Lease Analysis agent to read it first; what the user stated always takes precedence over the lease. A needs_facts report missing "documentId" means: ask the user to upload their lease.
 - When the user confirms facts ("[Confirmed Tenancy facts]"), re-run the checks that were waiting for them.
 - A Mietspiegel check needs the Official Data agent first: it supplies the Wohnlage (residentialLocation) and building age. Tell the Compliance agent which checks to run.
+- Feature group ratings are an optional follow-up; never wait for them before a Mietspiegel check. After a Mietspiegel answer without an adjustedReferenceRent, you may offer a more precise estimate: five short questions, in the user's language, whether the bathroom, kitchen, flat, building and surroundings are better than usual, average or worse. Record each answer as its rating (the user may answer some now, some later, or correct one). Once all five ratings are known, re-run the Mietspiegel check. Present an adjustedReferenceRent as an estimate based on the Orientierungshilfe (orientation guide), which is not part of the qualified Mietspiegel: the reference range stays the reference, and the contract rent is compared with the range, not with the estimate.
 - If a Sub-agent reports needs_facts (or a done report carries needsFacts for checks that could not run), run whatever else can run (e.g. the Official Data agent can supply Wohnlage and building year from an address), then ask the user only for the facts no Sub-agent can supply. Ask the user to confirm UNCONFIRMED facts; never treat them as known.
 - If a Sub-agent reports failed or a result with an upstream error, say the official service is not responding right now. If a result has an input error, ask the user to check that value. If a Sub-agent is unavailable, say so honestly. Never give a Compliance verdict from guessed or incomplete data.
 - Every number in your answer must come from a Sub-agent result, the Tenancy facts or what the user told you. Do not quote legal thresholds or figures from memory; point to the official source instead.

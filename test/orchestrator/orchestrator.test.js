@@ -984,3 +984,195 @@ test("createOrchestrator refuses a tool set that misses a contract, naming the T
     /missing required tools: extract_lease_data/,
   );
 });
+
+// Feature group ratings as record_tenancy_facts entries, e.g. { bathroom: "positive" }.
+const ratingFacts = (ratings) =>
+  Object.entries(ratings).map(([group, value]) => ({ fact: `${group}Rating`, value }));
+const recordFacts = (facts) => ({ name: "record_tenancy_facts", args: { facts } });
+const FLAT_FACTS = [
+  { fact: "address", value: "Berliner Str. 155" },
+  { fact: "livingAreaSqm", value: 50 },
+  { fact: "contractRent", value: 780 },
+];
+const mietspiegelArgs = (contractRent) => mietspiegelCall(contractRent).toolCalls[0].args;
+const lastMietspiegelReport = (models) => JSON.parse(models.supervisor.calls.at(-1).at(-1).content).results[0].result;
+
+test("feature group ratings given over two turns complete the adjusted reference rent", async () => {
+  const { orchestrator, models, calls } = setup({
+    router: [
+      { intents: ["address", "mietspiegel"], language: "en" },
+      { intents: ["mietspiegel"], language: "en" },
+      { intents: ["mietspiegel"], language: "en" },
+    ],
+    supervisor: [
+      { toolCalls: [recordFacts(FLAT_FACTS), ...askOfficialData.toolCalls, ...askMietspiegel.toolCalls] },
+      "The Mietspiegel reference range for your flat is 410–555 €, so your 780 € is 225 € above it. For a more precise estimate, I can ask you five short questions about the bathroom, kitchen, flat, building and surroundings.",
+      { toolCalls: [recordFacts(ratingFacts({ bathroom: "positive", kitchen: "positive", apartment: "neutral" }))] },
+      "Thanks. And how do the building and its surroundings compare with usual?",
+      {
+        toolCalls: [
+          recordFacts(ratingFacts({ building: "negative", surroundings: "positive" })),
+          ...askMietspiegel.toolCalls,
+        ],
+      },
+      "Estimated from the Orientierungshilfe, your adjusted reference rent is 505,50 € (10,11 €/m²). This estimate is not part of the qualified Mietspiegel: the reference range of 410–555 € still applies, and your 780 € is 225 € above it.",
+    ],
+    subAgent: [...OFFICIAL_DATA_SCRIPT, mietspiegelCall(780), "Calculated.", mietspiegelCall(780), "Calculated."],
+  });
+
+  const first = await collect(orchestrator.send({ threadId: "t60", message: "Berliner Str. 155, 50 m², 780 € cold. Too much?" }));
+  const second = await collect(
+    orchestrator.send({ threadId: "t60", message: "Bathroom and kitchen are better than usual, the flat itself average." }),
+  );
+  const partial = await orchestrator.getTenancy("t60");
+  const third = await collect(orchestrator.send({ threadId: "t60", message: "The building is worse, the area better." }));
+
+  // Without ratings the Mietspiegel check runs as before.
+  assert.deepEqual(stepsOf(first), [
+    "OfficialDataAgent:started",
+    "OfficialDataAgent:finished",
+    "ComplianceAgent:started",
+    "ComplianceAgent:finished",
+  ]);
+  assert.deepEqual(calls[2].args, mietspiegelArgs(780));
+  assert.match(answerOf(first), /five short questions/);
+  // Partial ratings are stored as the user's facts and run nothing.
+  assert.deepEqual(stepsOf(second), []);
+  assert.deepEqual(
+    calls.map((c) => c.name),
+    ["validate_berlin_address", "lookup_building_age", "calculate_mietspiegel", "calculate_mietspiegel"],
+    "only the third turn re-runs the check",
+  );
+  assert.deepEqual(
+    [partial.bathroomRating, partial.kitchenRating, partial.apartmentRating, partial.buildingRating],
+    [{ value: "positive", source: "user" }, { value: "positive", source: "user" }, { value: "neutral", source: "user" }, undefined],
+  );
+  // Complete ratings reach calculate_mietspiegel, and its adjusted rent reaches the answer.
+  assert.deepEqual(calls.at(-1).args, {
+    ...mietspiegelArgs(780),
+    featureGroups: {
+      bathroom: "positive",
+      kitchen: "positive",
+      apartment: "neutral",
+      building: "negative",
+      surroundings: "positive",
+    },
+  });
+  const result = lastMietspiegelReport(models);
+  assert.equal(result.adjustedReferenceRent.monthlyRent, 505.5);
+  assert.equal(result.contractRentComparison.differenceFromThreshold, 225, "the rent is still compared with the range");
+  assert.match(answerOf(third), /adjusted reference rent is 505,50 €/);
+  assert.match(answerOf(third), /not legal advice/);
+  assert.equal(models.supervisor.remaining, 0, "no grounding rewrite was needed");
+  assert.equal(third.at(-1).type, "done");
+});
+
+test("with four of five ratings no feature groups are passed, whatever the model supplies", async () => {
+  const { orchestrator, calls } = setup({
+    router: [{ intents: ["mietspiegel"], language: "en" }],
+    supervisor: [
+      {
+        toolCalls: [
+          recordFacts([
+            ...FLAT_FACTS,
+            ...ratingFacts({ bathroom: "positive", kitchen: "positive", apartment: "positive", building: "positive" }),
+          ]),
+          ...askOfficialData.toolCalls,
+          ...askMietspiegel.toolCalls,
+        ],
+      },
+      "The reference range is 410–555 €. How do the surroundings compare with usual?",
+    ],
+    subAgent: [
+      ...OFFICIAL_DATA_SCRIPT,
+      // The model makes up the missing rating.
+      {
+        toolCalls: [
+          {
+            name: "calculate_mietspiegel",
+            args: {
+              ...mietspiegelArgs(780),
+              featureGroups: {
+                bathroom: "positive",
+                kitchen: "positive",
+                apartment: "positive",
+                building: "positive",
+                surroundings: "positive",
+              },
+            },
+          },
+        ],
+      },
+      "Calculated.",
+    ],
+  });
+
+  await collect(orchestrator.send({ threadId: "t61", message: "Berliner Str. 155, 50 m², 780 €; bath, kitchen, flat, building all better" }));
+
+  assert.deepEqual(calls.at(-1), { name: "calculate_mietspiegel", args: mietspiegelArgs(780) });
+});
+
+test("correcting one rating changes only that fact and the adjusted rent on re-run", async () => {
+  const ratings = { bathroom: "positive", kitchen: "positive", apartment: "neutral", building: "negative", surroundings: "positive" };
+  const { orchestrator, models, calls } = setup({
+    router: [
+      { intents: ["mietspiegel"], language: "en" },
+      { intents: ["mietspiegel"], language: "en" },
+    ],
+    supervisor: [
+      {
+        toolCalls: [
+          recordFacts([...FLAT_FACTS, ...ratingFacts(ratings)]),
+          ...askOfficialData.toolCalls,
+          ...askMietspiegel.toolCalls,
+        ],
+      },
+      "Estimated from the Orientierungshilfe, your adjusted reference rent is 505,50 €; the range of 410–555 € remains the reference.",
+      { toolCalls: [recordFacts(ratingFacts({ surroundings: "neutral" })), ...askMietspiegel.toolCalls] },
+      "With average surroundings the estimate is 489 €; the range of 410–555 € remains the reference.",
+    ],
+    subAgent: [...OFFICIAL_DATA_SCRIPT, mietspiegelCall(780), "Calculated.", mietspiegelCall(780), "Calculated."],
+  });
+
+  await collect(orchestrator.send({ threadId: "t62", message: "Berliner Str. 155, 50 m², 780 €, and my ratings" }));
+  const before = await orchestrator.getTenancy("t62");
+  const events = await collect(orchestrator.send({ threadId: "t62", message: "Actually the surroundings are just average" }));
+  const after = await orchestrator.getTenancy("t62");
+
+  assert.deepEqual(after, { ...before, surroundingsRating: { value: "neutral", source: "user" } });
+  const featureGroups = calls.filter((c) => c.name === "calculate_mietspiegel").map((c) => c.args.featureGroups);
+  assert.deepEqual(featureGroups, [ratings, { ...ratings, surroundings: "neutral" }]);
+  assert.equal(lastMietspiegelReport(models).adjustedReferenceRent.monthlyRent, 489);
+  assert.match(answerOf(events), /estimate is 489 €/);
+});
+
+test("a new address clears the feature group ratings", async () => {
+  const { orchestrator } = setup({
+    router: [
+      { intents: ["mietspiegel"], language: "en" },
+      { intents: ["address"], language: "en" },
+    ],
+    supervisor: [
+      {
+        toolCalls: [
+          recordFacts([
+            ...FLAT_FACTS,
+            ...ratingFacts({ bathroom: "positive", kitchen: "positive", apartment: "neutral", building: "negative", surroundings: "positive" }),
+          ]),
+          ...askOfficialData.toolCalls,
+        ],
+      },
+      "Noted your flat at Berliner Straße 155 and your ratings.",
+      { toolCalls: [recordFacts([{ fact: "address", value: "Karl-Marx-Allee 1" }])] },
+      "Noted your new address, Karl-Marx-Allee 1.",
+    ],
+    subAgent: OFFICIAL_DATA_SCRIPT,
+  });
+
+  await collect(orchestrator.send({ threadId: "t63", message: "Berliner Str. 155, 50 m², 780 €, and my ratings" }));
+  const events = await collect(orchestrator.send({ threadId: "t63", message: "I moved to Karl-Marx-Allee 1" }));
+
+  const tenancy = await orchestrator.getTenancy("t63");
+  assert.deepEqual(Object.keys(tenancy).toSorted(), ["address", "contractRent", "livingAreaSqm"]);
+  assert.deepEqual(events.find((e) => e.type === "tenancy").tenancy, tenancy);
+});
