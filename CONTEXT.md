@@ -47,5 +47,5 @@ A conclusion about whether the Tenancy meets a Berlin rule: its contract rent re
 _Avoid_: Result, finding, judgement
 
 **Grounded claim**:
-A number or Compliance verdict in an answer that can be traced to a Tool result or a Tenancy fact. Only Grounded claims may reach the user.
+A number or Compliance verdict in an answer that can be traced to a Tool result of the current turn, a Tenancy fact, or the tenant's own message in that turn. Only Grounded claims may reach the user.
 _Avoid_: Verified claim, fact-checked

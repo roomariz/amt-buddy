@@ -30,9 +30,9 @@ export const OrchestratorState = Annotation.Root({
   draft: lastValue(() => ""),
   // The text the user sent this turn: its numbers count as grounded.
   userText: lastValue(() => ""),
-  groundingAttempts: lastValue(() => 0),
-  groundingFeedback: lastValue(() => ""),
-  groundingStatus: lastValue(() => ""),
+  // Grounding rewrites made this turn, and the figures the last draft could not ground.
+  groundingRewrites: lastValue(() => 0),
+  ungroundedFigures: lastValue(() => []),
 });
 
 // The Supervisor rewrites an ungrounded draft at most this many times.
@@ -57,9 +57,8 @@ export function buildGraph({ models, tools, log, toolTimeoutMs }) {
       intents: [],
       draft: "",
       confirm: null,
-      groundingAttempts: 0,
-      groundingFeedback: "",
-      groundingStatus: "",
+      groundingRewrites: 0,
+      ungroundedFigures: [],
     };
     if (state.confirm && state.skipRouter) {
       const message = new HumanMessage(`[Confirmed Tenancy facts] ${JSON.stringify(state.confirm)}`);
@@ -186,25 +185,21 @@ export function buildGraph({ models, tools, log, toolTimeoutMs }) {
   // still fails, its sentences with ungrounded figures are removed, and if nothing
   // is left the fallback question replaces it.
   async function verifyGrounding(state) {
-    const check = checkGrounding(state.draft, {
+    const { grounded, ungrounded } = checkGrounding(state.draft, {
       evidence: state.evidence,
       tenancy: state.tenancy,
       userText: state.userText,
     });
-    if (check.grounded) return { groundingStatus: "grounded" };
-    if (state.groundingAttempts < MAX_GROUNDING_REWRITES) {
-      return {
-        groundingStatus: "rewrite",
-        groundingAttempts: state.groundingAttempts + 1,
-        groundingFeedback: `Your previous draft contained figures not backed by any Sub-agent result, Tenancy fact or the user's message: ${check.ungrounded.join(", ")}. Rewrite the answer without them, or delegate to obtain them.`,
-        draft: "",
-      };
+    if (grounded) return {};
+    // An empty draft sends the turn back to the Supervisor.
+    if (state.groundingRewrites < MAX_GROUNDING_REWRITES) {
+      return { draft: "", groundingRewrites: state.groundingRewrites + 1, ungroundedFigures: ungrounded };
     }
-    const stripped = stripUngrounded(state.draft, check.ungrounded);
+    const stripped = stripUngrounded(state.draft, ungrounded);
     const draft = stripped
       ? `${stripped}\n\n${reply("removedFigures", state.language)}`
       : reply("fallback", state.language);
-    return { groundingStatus: "stripped", draft };
+    return { draft };
   }
 
   // The disclaimer is appended by code: to every answer with a Compliance verdict,
@@ -242,7 +237,7 @@ export function buildGraph({ models, tools, log, toolTimeoutMs }) {
     .addEdge("delegate", "supervisor")
     .addConditionalEdges(
       "verifyGrounding",
-      (state) => (state.groundingStatus === "rewrite" ? "supervisor" : "finalize"),
+      (state) => (state.draft ? "finalize" : "supervisor"),
       ["supervisor", "finalize"],
     )
     .addEdge("finalize", END);

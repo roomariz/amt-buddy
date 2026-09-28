@@ -684,8 +684,8 @@ test("a general answer quoting an invented figure is rewritten once, and only th
   const { orchestrator, models } = setup({
     router: [{ intents: ["general"], language: "en" }],
     supervisor: [
-      "The Kappungsgrenze in Berlin is 15% over 3 years.",
-      "The Kappungsgrenze (cap on rent increases) is set by law; see the Senatsverwaltung website.",
+      "The Kappungsgrenze in Berlin is 15% over 3 years since 01.05.2013 (§ 558 Abs. 3 BGB and 20% elsewhere, Art. 14 GG).",
+      "The Kappungsgrenze (cap on rent increases) is set by law, e.g. in § 558 BGB; see the Senatsverwaltung website.",
     ],
   });
 
@@ -702,7 +702,7 @@ test("a general answer quoting an invented figure is rewritten once, and only th
   assert.equal(models.supervisor.calls.length, 2, "exactly one rewrite");
   assert.doesNotMatch(models.supervisor.calls[0][0].content, /Correction/);
   const retrySystemPrompt = models.supervisor.calls[1][0].content;
-  assert.match(retrySystemPrompt, /not backed by any Sub-agent result, Tenancy fact or the user's message: 15, 3\./);
+  assert.match(retrySystemPrompt, /not backed by any Tool result, Tenancy fact or the user's message: 15, 3, 01\.05\.2013, 20\./);
 });
 
 test("a still-ungrounded rewrite has only the offending sentences removed, with a note in the user's language", async () => {
@@ -710,7 +710,7 @@ test("a still-ungrounded rewrite has only the offending sentences removed, with 
     router: [{ intents: ["general"], language: "de" }],
     supervisor: [
       "Die Kappungsgrenze beträgt 15 %. Details beim Mieterverein.",
-      "Die Kappungsgrenze begrenzt Mieterhöhungen. Sie liegt bei 15 % in 3 Jahren. Mehr beim Mieterverein.\n\n- Quelle: Senatsverwaltung\n1. Sie gilt nach § 558 Abs. 3 BGB.\n2. Sie beträgt 20 %.",
+      "Die Kappungsgrenze begrenzt Mieterhöhungen. Sie liegt z. B. bei 15 % in 3 Jahren. Mehr beim Mieterverein.\n\n- Quelle: Senatsverwaltung\n1. Sie gilt nach § 558 Abs. 3 BGB.\n2. Sie beträgt 20 %.",
     ],
   });
 
