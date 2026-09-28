@@ -26,7 +26,7 @@ export const calculateMietspiegelTool = tool(async (args) => evaluateMietspiegel
 | `lookup_building_age` | Official Data | `{ longitude, latitude }` | `{ predominantConstructionPeriod }` (e.g. `"1921 - 1930"`, or `null`) |
 | `calculate_mietspiegel` | Compliance | `{ residentialLocation, buildingAgeOrYear, livingAreaSqm, contractRent?, featureGroups? }`; `featureGroups` is `{ bathroom, kitchen, apartment, building, surroundings }`, each `"positive"` / `"neutral"` / `"negative"`, all five or none | result of `evaluateMietspiegel`, at least `{ status }` (`"calculated"` counts as a Compliance verdict); with `featureGroups` it adds `adjustedReferenceRent: { weightPercent, rentPerSqm, monthlyRent }` |
 | `assess_occupancy_compliance` | Compliance | `{ livingAreaSqm, rooms, occupants, childrenUpToSix }` | result of `assessOccupancy`, at least `{ status }` (`"meets_minimum"` / `"below_minimum"` count as a Compliance verdict) |
-| `extract_lease_data` | Lease Analysis | `{ documentId }` | `{ fields: { address?, contractRent?, livingAreaSqm?, rooms?, buildingYear? } }`, each `{ value, confidence }` |
+| `extract_lease_data` | Lease Analysis | `{ documentId }` | `{ fields: { address?, contractRent?, livingAreaSqm?, rooms?, buildingYear?, occupants?, childrenUpToSix? } }`, each `{ value, confidence }` |
 
 - **Return** a plain JSON-serialisable object. The Orchestrator does not validate your result against the contract's `output` schema, so check it yourself in your tests: `TOOL_CONTRACTS.<name>.output.parse(result)`. `test/orchestrator/tool-contracts.test.js` shows how.
 - **Errors: throw.** The Orchestrator sorts them into two kinds:
@@ -90,12 +90,14 @@ An out-of-scope message yields `intent`, `token`, `done` and never reaches the S
 **Real Tools** (official Berlin data):
 
 ```js
+import { createDocumentStore } from "./document-store.js";
 import { createBerlinTools, createOrchestrator } from "./orchestrator/index.js";
 
-const orchestrator = createOrchestrator({ models: createOpenAIModels(), tools: createBerlinTools().tools });
+const documents = createDocumentStore(); // shared with the upload endpoint
+const orchestrator = createOrchestrator({ models: createOpenAIModels(), tools: createBerlinTools({ documents }).tools });
 ```
 
-`createBerlinTools({ fetchImpl?, timeoutMs? })` (`src/orchestrator/berlin-tools.js`) returns the four real Tools plus the stub `extract_lease_data` (lease OCR is not wired in here yet), so the set is complete:
+`createBerlinTools({ fetchImpl?, timeoutMs?, documents? })` (`src/orchestrator/berlin-tools.js`) returns the complete set of five real Tools (the server does exactly this, see "HTTP and SSE interface"):
 
 | Tool | Backed by | Requests |
 |---|---|---|
@@ -103,9 +105,11 @@ const orchestrator = createOrchestrator({ models: createOpenAIModels(), tools: c
 | `lookup_building_age` | `getBerlinBuildingAgeArea` | Umweltatlas building-age WFS |
 | `calculate_mietspiegel` | `evaluateMietspiegel` | none |
 | `assess_occupancy_compliance` | `assessOccupancy` | none |
+| `extract_lease_data` | the OCR result the upload endpoint stored in `documents` (`parseTenancyDocument`, `src/ocr-extraction.js`), mapped by `leaseFieldsFromOcr` (`src/orchestrator/lease-fields.js`) | none |
 
 - `validate_berlin_address` only verifies the address and looks up its Wohnlage; unlike the form endpoint's `verifyBerlinAddress`, it does no building-age, Mietspiegel or occupancy work (those are their own Tools). A well-formed address the register does not know returns `{ verified: false, address: null }`.
 - `lookup_building_age` with no data for the coordinates returns `{ predominantConstructionPeriod: null, note }`. The value is the block's predominant period, not the building's own year (`buildingSpecific: false`).
+- `extract_lease_data` looks the `documentId` up in `documents` (`{ extraction, text }` entries; default: a new, empty store) and returns the fields the lease states (`address` as one line, `contractRent`, `livingAreaSqm`, `rooms`, `buildingYear`, `occupants`, `childrenUpToSix`) with the OCR's confidence values unchanged: the OCR gives 0.95 for plausible values, 0.5 for implausible ones (e.g. a rent above 25 000 €), 0.6 for an address without postal code, so those become Unconfirmed facts. An unknown or expired `documentId` is an input error (`LeaseDocumentInputError`) telling the Supervisor to ask for the upload again.
 - `fetchImpl` replaces the global `fetch` for every Berlin request (tests pass a fake). `timeoutMs` (default `DEFAULT_TOOL_TIMEOUT_MS`, 10 s) is one Tool call's budget for all its requests: keep it equal to `createOrchestrator`'s `toolTimeoutMs`, so the requests are aborted when the Tool wrapper gives up on an attempt. The adapters never retry; the wrapper does. (The legacy `POST /api/v1/address-verifications` keeps its own 8 s per request.)
 - Errors: an address without house number or postal code, or outside Berlin's postal codes, and invalid Mietspiegel or occupancy arguments are input errors (the Supervisor asks the user); HTTP errors, network failures and timeouts of the Berlin services are upstream errors.
 
@@ -120,6 +124,75 @@ const orchestrator = createOrchestrator({ models: createOpenAIModels(), tools: c
 ```
 
 The stubs satisfy every contract: address verification always returns Berliner Straße 155, 10715 Berlin (Wohnlage `gut`), the building-age lookup always returns `"1921 - 1930"`, the Mietspiegel and occupancy stubs run the real calculations in `src/berlin-mietspiegel.js` and `src/occupancy-assessment.js`, and the lease stub returns a lease with an Unconfirmed contract rent (780 €, confidence 0.6). `createStubTools(overrides)` replaces a handler by Tool name, e.g. to simulate a failing service.
+
+## HTTP and SSE interface
+
+The server (`src/app.js`, started by `src/server.js`) exposes the Orchestrator to the browser. All request bodies are JSON; errors outside the stream use the API's usual shape `{ error: { code, message, details? } }`.
+
+**Mode.** The server runs one Orchestrator per process (in-memory checkpointer, so threads are lost on restart), created on the first chat turn. It needs both `OPENAI_MODEL` and `OPENAI_API_KEY`; without them the server still starts, and the chat endpoint answers with the rule-based chatbot (`processChat`, the same one as `POST /api/v1/chat`) in the same event stream, so the UI has one code path.
+
+### `GET /api/v1/orchestrator/status`
+
+`200 { "data": { "mode": "orchestrator" } }` or `{ "data": { "mode": "rule_based" } }`. It only reads the configuration: it does not create the Orchestrator or check the API key. Show a small "AI chat not configured" note in `rule_based` mode.
+
+### `POST /api/v1/orchestrator/documents` (lease upload)
+
+Body: the same as `POST /api/v1/documents/ocr`: `{ "file": "<base64>", "mimeType": "application/pdf", "fileName": "lease.pdf" }` or `{ "text": "…" }` (at most 20 MB of JSON, 15 MB of file).
+
+`201`:
+
+```json
+{
+  "data": {
+    "documentId": "3f1c2d4e-…",
+    "expiresAt": "2026-09-28T18:30:00.000Z",
+    "extraction": { "fields": { "contractRent": 780, "…": "…" }, "confidence": { "contractRent": 0.6, "overall": 0.8 }, "warnings": [], "…": "…" }
+  }
+}
+```
+
+- `extraction` is the OCR result (`parseTenancyDocument`, the same as `data` of `POST /api/v1/documents/ocr`); you do not need it for the chat, the Orchestrator reads the document itself. The review card is driven by the `tenancy` event, not by `extraction`.
+- `422 { error: { code: "ocr_extraction_error", details } }` when there is nothing to read (empty text, image without OCR provider, PDF without text layer, too large); nothing is stored then.
+- The extraction and the document's text are kept **in memory only** (never on disk) for 30 minutes, at most 100 documents (the oldest is dropped first). After that the `documentId` is unknown.
+- `POST /api/v1/documents/ocr` is unchanged and stores nothing.
+
+### `POST /api/v1/orchestrator/chat` (one turn, streamed)
+
+Body: `{ "threadId": "…", "message"?: "…", "documentId"?: "…", "confirm"?: { "contractRent": 780 } }`, as for `send()` (see "For the UI" above):
+
+- `threadId`: required, a non-empty string of at most 200 characters. The UI creates it (e.g. `crypto.randomUUID()`) per conversation; a new chat means a new `threadId`.
+- At least one of `message` (string, at most 4000 characters), `documentId` (from the upload) or `confirm` (an object of Tenancy fact values from the review card).
+- A body that breaks these rules gets `422 { error: { code: "validation_error", message, details: [{ field, code, message }] } }` as JSON, before any streaming.
+
+Otherwise the response is `200` with `content-type: text/event-stream; charset=utf-8`. Each Orchestrator event is one SSE message whose `event` is the event's `type` and whose `data` is the whole event as JSON:
+
+```
+event: intent
+data: {"type":"intent","intents":["address","mietspiegel"]}
+
+event: agent_step
+data: {"type":"agent_step","agent":"OfficialDataAgent","status":"started"}
+
+event: tenancy
+data: {"type":"tenancy","tenancy":{"address":{"value":"Wühlischstraße 30, 10245 Berlin","source":"official","statedBy":"user"},"…":"…"}}
+
+event: token
+data: {"type":"token","text":"Wühlischstraße 30, 10245 Berlin liegt in guter Wohnlage …"}
+
+event: done
+data: {"type":"done"}
+
+```
+
+- The events and their order are those of `send()` (table under "For the UI"): `intent`, `agent_step`, `tenancy`, `token`, and exactly one terminal `done` or `error` (`{ "type": "error", "message": "…" }`) as the last event, after which the server closes the stream. Show `error` as a friendly message; its text is technical.
+- Lines starting with `:` are keep-alive comments (every 15 s while a turn waits on slow Tools); ignore them.
+- In `rule_based` mode a turn is always `token` (the rule-based reply, Markdown) then `done`, or a single `error`. There are no `intent`, `agent_step` or `tenancy` events, `confirm` is ignored, and an uploaded `documentId` gets the rule-based document analysis.
+- Because the request is a `POST`, use `fetch()` and read `response.body` (split on blank lines), not `EventSource`.
+- Closing the connection (e.g. `AbortController.abort()` on the fetch) cancels the turn: the server aborts the Orchestrator run. Model calls already sent may still complete, and whatever the graph stored before the abort stays in the thread.
+
+**Lease flow**: upload → `documentId` → `POST /chat` with `{ threadId, documentId, message? }` → the `tenancy` event holds the lease facts; facts with `source: "lease"` and `confidence` below 0.8 are Unconfirmed → the review card → `POST /chat` with `{ threadId, confirm: { … } }`. An unknown or expired `documentId` is an input error of `extract_lease_data`: the turn ends normally (`done`) with an answer asking the user to upload the lease again.
+
+**Privacy**: nothing here logs lease contents or messages. The Orchestrator's audit log (one JSON line per Tool call, stdout) holds argument names only; see the LangSmith warning under Configuration.
 
 ## Configuration
 
@@ -161,6 +234,9 @@ They check that a German Mietspiegel question ends with `done`, a finished `Comp
 The Mietspiegel check always runs on the reference range. As an optional follow-up, the Supervisor may offer a more precise estimate: five short questions (bathroom, kitchen, apartment, building, surroundings: better than usual, average or worse). The answers become Feature group ratings (user facts, answerable across turns and correctable one by one). Once all five are known, a re-run passes `featureGroups` to `calculate_mietspiegel`, and the answer states `adjustedReferenceRent` as an estimate based on the Orientierungshilfe, which is not part of the qualified Mietspiegel: the range stays the reference, and the contract rent is still compared with the range.
 
 ## Known gaps
+
+- **Threads and uploads live in memory.** A server restart loses every conversation and uploaded lease; a `documentId` from before the restart (or older than 30 minutes) makes Lease Analysis ask for the upload again. A second server process would not share them either.
+- **`rule_based` mode has no memory**: each turn is answered on its own; `threadId` and `confirm` are not used.
 
 - **Re-running a check after a confirmation is a prompt rule, not code.** When the user confirms an Unconfirmed fact, the Supervisor prompt tells the model to re-run the checks that were waiting for it; nothing in the graph tracks the pending check. The second live smoke test covers this and passed on 2026-09-28 with `openai/gpt-4.1`; run it again (or try it by hand) whenever the prompt or model changes.
 - **Re-running the Mietspiegel check once the fifth rating arrives is a prompt rule**, like the re-run after a confirmation above. Offering the follow-up at all is the model's choice.

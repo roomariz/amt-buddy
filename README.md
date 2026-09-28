@@ -46,6 +46,13 @@ contract, configuration and the LangSmith/PII warning). The vocabulary is in
 It needs `OPENAI_API_KEY` and `OPENAI_MODEL` (optionally `OPENAI_ROUTER_MODEL`).
 `npm test` stays offline; the live smoke tests run only when both are set.
 
+The server serves it over Server-Sent Events: `POST /api/v1/orchestrator/chat`,
+with `GET /api/v1/orchestrator/status` and the lease upload
+`POST /api/v1/orchestrator/documents` (see
+[docs/orchestrator.md](docs/orchestrator.md#http-and-sse-interface)). Without the
+two variables the server still starts, and the same endpoint answers with the
+rule-based chatbot of `POST /api/v1/chat`.
+
 ## API
 
 `POST /api/v1/address-verifications`
