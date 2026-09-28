@@ -164,8 +164,13 @@ function defaultChatOrchestrator({ env, documents }) {
 }
 
 const SSE_HEARTBEAT_MS = 15_000;
+const CHAT_FAILED = "Amt-Buddy could not answer this message.";
 const MAX_ID_LENGTH = 200;
 const MAX_MESSAGE_LENGTH = 4_000;
+
+function sendError(response, status, code, message, details) {
+  sendJson(response, status, { error: details ? { code, message, details } : { code, message } });
+}
 
 class ChatInputError extends Error {
   constructor(details) {
@@ -231,7 +236,7 @@ async function streamEvents(response, events, abort) {
   } catch (error) {
     // The event sources end every turn with done or error themselves; this is the safety net.
     console.error("Chat turn failed:", error?.name ?? "Error");
-    if (!closed) write({ type: "error", message: "The chat assistant could not answer." });
+    if (!closed) write({ type: "error", message: CHAT_FAILED });
   } finally {
     clearInterval(heartbeat);
     if (!closed) response.end();
@@ -260,7 +265,7 @@ async function* ruleBasedTurn({ message, documentId }, documents) {
     yield { type: "done" };
   } catch (error) {
     console.error("Rule-based chat failed:", error?.name ?? "Error");
-    yield { type: "error", message: "The chat assistant could not answer." };
+    yield { type: "error", message: CHAT_FAILED };
   }
 }
 
@@ -288,14 +293,12 @@ export function createApp({
         response.destroy();
         return;
       }
-      sendJson(response, 422, { error: { code: "validation_error", message: error.message, details: error.details } });
+      sendError(response, 422, "validation_error", error.message, error.details);
       return;
     }
     const problems = chatTurnProblems(input);
     if (problems.length > 0) {
-      sendJson(response, 422, {
-        error: { code: "validation_error", message: problems[0].message, details: problems },
-      });
+      sendError(response, 422, "validation_error", problems[0].message, problems);
       return;
     }
 
@@ -317,7 +320,7 @@ export function createApp({
       chat = getOrchestrator();
     } catch (error) {
       console.error("The Orchestrator could not be created:", error.message);
-      yield { type: "error", message: "The AI assistant is not available right now." };
+      yield { type: "error", message: "Amt-Buddy's AI chat is not available right now." };
       return;
     }
     yield* chat.send({ ...turn, signal });
@@ -332,20 +335,16 @@ export function createApp({
       sendJson(response, 201, { data: { documentId, expiresAt: new Date(expiresAt).toISOString(), extraction } });
     } catch (error) {
       if (error instanceof DocumentOcrError) {
-        sendJson(response, 422, {
-          error: { code: "ocr_extraction_error", message: error.message, details: error.details },
-        });
+        sendError(response, 422, "ocr_extraction_error", error.message, error.details);
         return;
       }
       // Log the failure only: the error never includes the lease's contents.
       console.error("Lease upload failed:", error?.name ?? "Error");
-      sendJson(response, 500, {
-        error: { code: "internal_error", message: "Failed to process the uploaded document." },
-      });
+      sendError(response, 500, "internal_error", "Failed to process the uploaded document.");
     }
   }
 
-  return createServer(async (request, response) => {
+  async function route(request, response) {
     const url = new URL(request.url, `http://${request.headers.host ?? "localhost"}`);
 
     if (request.method === "POST" && url.pathname === "/api/v1/address-verifications") {
@@ -384,5 +383,16 @@ export function createApp({
     }
 
     response.writeHead(405, { allow: "GET, POST" }).end();
+  }
+
+  return createServer(async (request, response) => {
+    try {
+      await route(request, response);
+    } catch (error) {
+      // A handler that throws must not take the server down (unhandled rejection).
+      console.error("Request failed:", error?.name ?? "Error");
+      if (!response.headersSent) sendError(response, 500, "internal_error", "The request could not be handled.");
+      else response.destroy();
+    }
   });
 }

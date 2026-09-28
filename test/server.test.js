@@ -341,3 +341,15 @@ test("an upload the OCR cannot read is a 422 with the OCR's details, and nothing
   assert.equal(body.error.code, "ocr_extraction_error");
   assert.equal(body.error.details[0].code, "empty_text");
 });
+
+test("in rule_based mode a confirm-only turn still gets a single reply and done", async (t) => {
+  const server = await start({ env: {} });
+  t.after(server.close);
+
+  const { events } = await server.chat({ threadId: "rb-3", confirm: { contractRent: 780 } });
+
+  assert.deepEqual(
+    events.map((e) => e.type),
+    ["token", "done"],
+  );
+});

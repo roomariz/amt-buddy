@@ -133,7 +133,7 @@ The server (`src/app.js`, started by `src/server.js`) exposes the Orchestrator t
 
 ### `GET /api/v1/orchestrator/status`
 
-`200 { "data": { "mode": "orchestrator" } }` or `{ "data": { "mode": "rule_based" } }`. It only reads the configuration: it does not create the Orchestrator or check the API key. Show a small "AI assistant not configured" note in `rule_based` mode.
+`200 { "data": { "mode": "orchestrator" } }` or `{ "data": { "mode": "rule_based" } }`. It only reads the configuration: it does not create the Orchestrator or check the API key. Show a small "AI chat not configured" note in `rule_based` mode.
 
 ### `POST /api/v1/orchestrator/documents` (lease upload)
 
