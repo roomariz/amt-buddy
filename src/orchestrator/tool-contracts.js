@@ -11,9 +11,11 @@ const address = z.looseObject({
   residentialLocation: residentialLocation.nullable(),
 });
 
-// A Mietspiegel Orientierungshilfe feature group rating: its positive features
-// outweigh the negative ones, they balance, or the negative ones outweigh.
-const featureRating = z.enum(["positive", "neutral", "negative"]);
+// The five Mietspiegel Orientierungshilfe feature groups, and a Feature group rating:
+// its positive features outweigh the negative ones, they balance, or the negative ones outweigh.
+export const FEATURE_GROUPS = ["bathroom", "kitchen", "apartment", "building", "surroundings"];
+export const FEATURE_RATINGS = ["positive", "neutral", "negative"];
+const featureRating = z.enum(FEATURE_RATINGS);
 
 const extractedField = (value) => z.object({ value, confidence: z.number().min(0).max(1) });
 
@@ -44,13 +46,7 @@ export const TOOL_CONTRACTS = {
       livingAreaSqm: z.number().positive(),
       contractRent: z.number().positive().optional(),
       featureGroups: z
-        .object({
-          bathroom: featureRating,
-          kitchen: featureRating,
-          apartment: featureRating,
-          building: featureRating,
-          surroundings: featureRating,
-        })
+        .object(Object.fromEntries(FEATURE_GROUPS.map((group) => [group, featureRating])))
         .optional()
         .describe("Orientierungshilfe ratings of all five feature groups; adds an adjustedReferenceRent estimate"),
     }),

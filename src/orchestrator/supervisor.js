@@ -1,7 +1,7 @@
 import { SystemMessage } from "@langchain/core/messages";
 import { z } from "zod";
 
-import { isUnconfirmed, STATED_FACTS } from "./tenancy.js";
+import { isUnconfirmed, RATING_FACTS, STATED_FACTS } from "./tenancy.js";
 
 const request = z.string().describe("What the Sub-agent should do, in one or two sentences");
 
@@ -27,7 +27,7 @@ export const SUPERVISOR_TOOLS = [
   {
     name: "record_tenancy_facts",
     description:
-      "Record Tenancy facts the user stated or corrected in this conversation, e.g. 'the rent is 720' or 'we are 4 people'. Feature group ratings (bathroomRating, kitchenRating, apartmentRating, buildingRating, surroundingsRating) take 'positive' (better than usual), 'neutral' (average) or 'negative' (worse than usual).",
+      `Record Tenancy facts the user stated or corrected in this conversation, e.g. 'the rent is 720' or 'we are 4 people'. Feature group ratings (${RATING_FACTS.join(", ")}) take 'positive' (better than usual), 'neutral' (average) or 'negative' (worse than usual).`,
     schema: z.object({
       facts: z.array(z.object({ fact: z.enum(STATED_FACTS), value: z.union([z.string(), z.number()]) })).min(1),
     }),

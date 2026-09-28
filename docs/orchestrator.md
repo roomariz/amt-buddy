@@ -128,13 +128,13 @@ They check that a German Mietspiegel question ends with `done`, a finished `Comp
 
 ## Mietspiegel span weighting
 
-The Mietspiegel check always runs on the reference range. As an optional follow-up, the Supervisor may offer a more precise estimate: five short questions (bathroom, kitchen, flat, building, surroundings: better than usual, average or worse). The answers become Feature group ratings (user facts, answerable across turns and correctable one by one). Once all five are known, a re-run passes `featureGroups` to `calculate_mietspiegel`, and the answer states `adjustedReferenceRent` as an estimate based on the Orientierungshilfe, which is not part of the qualified Mietspiegel: the range stays the reference, and the contract rent is still compared with the range.
+The Mietspiegel check always runs on the reference range. As an optional follow-up, the Supervisor may offer a more precise estimate: five short questions (bathroom, kitchen, apartment, building, surroundings: better than usual, average or worse). The answers become Feature group ratings (user facts, answerable across turns and correctable one by one). Once all five are known, a re-run passes `featureGroups` to `calculate_mietspiegel`, and the answer states `adjustedReferenceRent` as an estimate based on the Orientierungshilfe, which is not part of the qualified Mietspiegel: the range stays the reference, and the contract rent is still compared with the range.
 
 ## Known gaps
 
-- **Re-running the Mietspiegel check once the fifth rating arrives is a prompt rule**, like the re-run after a confirmation. Offering the follow-up at all is the model's choice.
-- **Restating the same address in another spelling clears the Feature group ratings**, because the flat cannot be told apart before verification; the Supervisor has to ask for them again.
 - **Re-running a check after a confirmation is a prompt rule, not code.** When the user confirms an Unconfirmed fact, the Supervisor prompt tells the model to re-run the checks that were waiting for it; nothing in the graph tracks the pending check. The second live smoke test covers this and passed on 2026-09-28 with `openai/gpt-4.1`; run it again (or try it by hand) whenever the prompt or model changes.
+- **Re-running the Mietspiegel check once the fifth rating arrives is a prompt rule**, like the re-run after a confirmation above. Offering the follow-up at all is the model's choice.
+- **Restating the same address in another spelling clears the Feature group ratings**, because the flat cannot be told apart before verification; the Supervisor has to ask for them again.
 - **A low-confidence lease building year blocks the Mietspiegel check.** A lease value outranks official data, so an Unconfirmed lease `buildingYear` replaces the official construction period and blocks the Mietspiegel check until the user confirms it.
 - **`confirm` together with a message** merges the facts as the user's, but the Supervisor only sees them as `(user)` facts in the Tenancy, with no "[Confirmed Tenancy facts]" marker.
 - **Tool results are not validated** against the contracts' `output` schemas at runtime (see "For Tool authors").

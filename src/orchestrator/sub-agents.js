@@ -71,7 +71,8 @@ export function toolRefusal(toolName, facts, checks = []) {
   return undefined;
 }
 
-// `featureGroups` from the five feature group ratings, or undefined unless all five are confirmed.
+// `featureGroups` from the five Feature group ratings in `facts` (confirmed values only),
+// or undefined unless all five are there.
 function featureGroupsFrom(facts) {
   const entries = Object.entries(FEATURE_GROUP_RATINGS).map(([group, fact]) => [group, facts[fact]]);
   return entries.every(([, rating]) => rating !== undefined) ? Object.fromEntries(entries) : undefined;

@@ -1,16 +1,11 @@
 import { parseNumber } from "./numbers.js";
+import { FEATURE_GROUPS, FEATURE_RATINGS } from "./tool-contracts.js";
 
 // Feature group ratings: the tenant's rating of each Mietspiegel Orientierungshilfe
-// feature group (feature group → Tenancy fact). They describe the flat and building.
-export const FEATURE_GROUP_RATINGS = {
-  bathroom: "bathroomRating",
-  kitchen: "kitchenRating",
-  apartment: "apartmentRating",
-  building: "buildingRating",
-  surroundings: "surroundingsRating",
-};
-const RATING_FACTS = Object.values(FEATURE_GROUP_RATINGS);
-const RATING_VALUES = ["positive", "neutral", "negative"];
+// feature group (feature group → Tenancy fact, e.g. bathroom → bathroomRating).
+// They describe the flat and building.
+export const FEATURE_GROUP_RATINGS = Object.fromEntries(FEATURE_GROUPS.map((group) => [group, `${group}Rating`]));
+export const RATING_FACTS = Object.values(FEATURE_GROUP_RATINGS);
 
 // Facts the user (or a lease) can state about their Tenancy.
 export const STATED_FACTS = [
@@ -50,7 +45,7 @@ function coerce(name, value) {
   if (name === "buildingYear") return coerceBuildingYear(value);
   if (RATING_FACTS.includes(name)) {
     const rating = String(value).trim().toLowerCase();
-    return RATING_VALUES.includes(rating) ? rating : undefined;
+    return FEATURE_RATINGS.includes(rating) ? rating : undefined;
   }
   return value;
 }
@@ -64,8 +59,10 @@ function coerceBuildingYear(value) {
   return /\d{4}/.test(text) ? text : undefined;
 }
 
-// Official facts belong to the address; feature group ratings to the flat, so
-// they go only when a known address changes (`flatChanged`), not with the first one.
+// Official facts belong to the address; Feature group ratings to the flat, so
+// they go only when the flat changes (`flatChanged`): a known address is replaced,
+// not when the first address is stated or a stated one is canonicalised.
+// Before verification a respelled address cannot be told apart from a new flat.
 function clearAddressDerivedFacts(tenancy, { flatChanged }) {
   for (const name of OFFICIAL_ONLY_FACTS) delete tenancy[name];
   if (tenancy.buildingYear?.source === "official") delete tenancy.buildingYear;
