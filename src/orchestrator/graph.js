@@ -1,10 +1,10 @@
 import { AIMessage, HumanMessage, ToolMessage } from "@langchain/core/messages";
 import { Annotation, END, getWriter, MessagesAnnotation, START, StateGraph } from "@langchain/langgraph";
 
-import { factsFromEvidence } from "./evidence.js";
+import { factsFromEvidence, hasComplianceVerdict } from "./evidence.js";
 import { intentSchema, normalizeIntents, routerMessages } from "./intents.js";
 import { reply } from "./replies.js";
-import { blockingFacts } from "./requirements.js";
+import { gateSubAgent } from "./requirements.js";
 import { pinnedArgs, runSubAgent, SUB_AGENTS, subAgentTask, toolRefusal } from "./sub-agents.js";
 import { AGENT_FOR_TOOL, SUPERVISOR_TOOLS, supervisorSystemMessage } from "./supervisor.js";
 import { confirmedValues, mergeTenancy, tenancyReducer } from "./tenancy.js";
@@ -17,6 +17,8 @@ export const OrchestratorState = Annotation.Root({
   ...MessagesAnnotation.spec,
   // The Tenancy of the conversation; updates are Tenancy fact updates, `null` resets it.
   tenancy: Annotation({ reducer: tenancyReducer, default: () => ({}) }),
+  // Evidence of the current turn: one entry per Tool call; `null` resets it.
+  evidence: Annotation({ reducer: (current, update) => (update === null ? [] : current.concat(update)), default: () => [] }),
   intents: lastValue(() => []),
   language: lastValue(() => "en"),
   documentId: lastValue(() => null),
@@ -41,7 +43,7 @@ function textOf(message) {
 
 export function buildGraph({ models, tools, log, toolTimeoutMs }) {
   async function ingest(state) {
-    const update = { intents: [], draft: "", confirm: null };
+    const update = { evidence: null, intents: [], draft: "", confirm: null };
     if (state.confirm && state.skipRouter) {
       update.messages = [new HumanMessage(`[Confirmed Tenancy facts] ${JSON.stringify(state.confirm)}`)];
     }
@@ -69,7 +71,7 @@ export function buildGraph({ models, tools, log, toolTimeoutMs }) {
   }
 
   // Runs one (already gated) Sub-agent over its wrapped Tools. Returns its report for
-  // the Supervisor and the Tenancy fact updates its Tool results imply.
+  // the Supervisor, the Tenancy fact updates its Tool results imply, and its evidence.
   async function delegateToSubAgent(agent, args, tenancy, threadId) {
     const label = SUB_AGENTS[agent].label;
     emit({ type: "agent_step", agent: label, status: "started" });
@@ -88,7 +90,7 @@ export function buildGraph({ models, tools, log, toolTimeoutMs }) {
         },
         // Resolved per call, so a Tool sees facts an earlier Tool of this run produced.
         pinnedArgs: () => pinnedArgs(baseTool.name, confirmedValues(current)),
-        guard: () => toolRefusal(baseTool.name, confirmedValues(current)),
+        guard: () => toolRefusal(baseTool.name, confirmedValues(current), args.checks),
       }),
     );
     let summary;
@@ -114,17 +116,17 @@ export function buildGraph({ models, tools, log, toolTimeoutMs }) {
       summary,
       results: evidence.map(({ tool, result, error }) => (error ? { tool, error } : { tool, result })),
     };
-    return { report, updates: factsFromEvidence(evidence) };
+    return { report, updates: factsFromEvidence(evidence), evidence };
   }
 
   // Executes the Supervisor's tool calls in order, so a later Sub-agent sees the
-  // facts an earlier one produced. Compliance and Lease Analysis are not wired in
-  // yet and answer "unavailable".
+  // facts an earlier one produced. Lease Analysis is not wired in yet and answers "unavailable".
   async function delegate(state, config) {
     const threadId = config?.configurable?.thread_id;
     const call = state.messages.at(-1);
     let tenancy = state.tenancy;
     const tenancyUpdates = [];
+    const turnEvidence = [];
     const messages = [];
 
     for (const toolCall of call.tool_calls) {
@@ -135,13 +137,16 @@ export function buildGraph({ models, tools, log, toolTimeoutMs }) {
         updates = (toolCall.args.facts ?? []).map(({ fact, value }) => ({ fact, value, source: "user" }));
         report = { status: "recorded" };
       } else if (SUB_AGENTS[agent]) {
-        // Gating in code: a Sub-agent without its required facts does not run.
-        const { blocked, missing, unconfirmed } = blockingFacts(agent, tenancy);
-        if (blocked) {
-          emit({ type: "agent_step", agent: SUB_AGENTS[agent].label, status: "needs_facts" });
-          report = { status: "needs_facts", missing, unconfirmed };
+        // Gating in code: whatever lacks its required facts does not run; the rest does.
+        const { run, needsFacts } = gateSubAgent(agent, toolCall.args ?? {}, tenancy);
+        if (needsFacts) emit({ type: "agent_step", agent: SUB_AGENTS[agent].label, status: "needs_facts" });
+        if (run) {
+          let evidence;
+          ({ report, updates, evidence } = await delegateToSubAgent(agent, run, tenancy, threadId));
+          turnEvidence.push(...evidence);
+          if (needsFacts) report.needsFacts = needsFacts;
         } else {
-          ({ report, updates } = await delegateToSubAgent(agent, toolCall.args, tenancy, threadId));
+          report = { status: "needs_facts", ...needsFacts };
         }
       } else {
         report = { status: "unavailable", agent: agent ?? null, message: "This Sub-agent is not available yet; answer without it." };
@@ -152,12 +157,13 @@ export function buildGraph({ models, tools, log, toolTimeoutMs }) {
     }
 
     if (JSON.stringify(tenancy) !== JSON.stringify(state.tenancy)) emit({ type: "tenancy", tenancy });
-    return { messages, tenancy: tenancyUpdates };
+    return { messages, tenancy: tenancyUpdates, evidence: turnEvidence };
   }
 
-  // The disclaimer is appended by code, at most once per conversation.
+  // The disclaimer is appended by code: to every answer with a Compliance verdict,
+  // and otherwise at most once per conversation.
   async function finalize(state) {
-    const needsDisclaimer = !state.disclaimerShown;
+    const needsDisclaimer = hasComplianceVerdict(state.evidence) || !state.disclaimerShown;
     const text = needsDisclaimer ? `${state.draft}\n\n${reply("disclaimer", state.language)}` : state.draft;
     emit({ type: "token", text });
     return { messages: [new AIMessage(text)], disclaimerShown: state.disclaimerShown || needsDisclaimer, draft: "" };

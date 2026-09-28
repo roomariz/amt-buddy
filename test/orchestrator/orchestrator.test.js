@@ -332,6 +332,350 @@ test("a Sub-agent that crashes reports failed before the turn ends with an error
   assert.deepEqual(events.at(-1), { type: "error", message: "ScriptedChatModel ran out of scripted responses" });
 });
 
+const mietspiegelCall = (contractRent) => ({
+  toolCalls: [
+    {
+      name: "calculate_mietspiegel",
+      args: { residentialLocation: "gut", buildingAgeOrYear: "1921 - 1930", livingAreaSqm: 50, contractRent },
+    },
+  ],
+});
+
+test("one turn chains Official Data and Compliance into a Mietspiegel verdict on the Tenancy's values", async () => {
+  const { orchestrator, models, calls, logs } = setup({
+    router: [{ intents: ["address", "mietspiegel"], language: "de" }],
+    supervisor: [
+      {
+        toolCalls: [
+          {
+            name: "record_tenancy_facts",
+            args: {
+              facts: [
+                { fact: "address", value: "Berliner Str. 155" },
+                { fact: "livingAreaSqm", value: 50 },
+                { fact: "contractRent", value: 780 },
+              ],
+            },
+          },
+          { name: "ask_official_data_agent", args: { request: "Verify the address" } },
+        ],
+      },
+      { toolCalls: [{ name: "ask_compliance_agent", args: { request: "Check the rent", checks: ["mietspiegel"] } }] },
+      "Ihre Nettokaltmiete von 780 € liegt 225,00 € über der Obergrenze des Mietspiegels 2026 (8,20–11,10 €/m², §§ 558c, 558d BGB).",
+    ],
+    subAgent: [
+      ...OFFICIAL_DATA_SCRIPT,
+      // The Sub-agent model drifts from the Tenancy (800 instead of 780); pinning corrects it.
+      mietspiegelCall(800),
+      "Mietspiegel calculated; contract rent above the upper threshold.",
+    ],
+  });
+
+  const events = await collect(
+    orchestrator.send({ threadId: "t20", message: "Berliner Str. 155, 50 m², 780 € kalt. Zahle ich zu viel?" }),
+  );
+
+  assert.deepEqual(stepsOf(events), [
+    "OfficialDataAgent:started",
+    "OfficialDataAgent:finished",
+    "ComplianceAgent:started",
+    "ComplianceAgent:finished",
+  ]);
+  assert.deepEqual(
+    calls.map((c) => c.name),
+    ["validate_berlin_address", "lookup_building_age", "calculate_mietspiegel"],
+  );
+  assert.deepEqual(calls[2].args, {
+    residentialLocation: "gut",
+    buildingAgeOrYear: "1921 - 1930",
+    livingAreaSqm: 50,
+    contractRent: 780,
+  });
+  const complianceTask = models.subAgent.calls[3].map((m) => m.content).join("\n");
+  assert.match(complianceTask, /Checks: mietspiegel/, "the Compliance Sub-agent is told which checks to run");
+  assert.match(complianceTask, /"residentialLocation":"gut"/, "it sees the Wohnlage Official Data just produced");
+  const report = JSON.parse(models.supervisor.calls[2].at(-1).content);
+  assert.equal(report.results[0].result.contractRentComparison.differenceFromThreshold, 225);
+  const answer = answerOf(events);
+  assert.match(answer, /225,00 € über der Obergrenze/);
+  assert.match(answer, /keine Rechtsberatung/);
+  assert.equal(logs.length, 3);
+  assert.equal(events.at(-1).type, "done");
+});
+
+test("an occupancy check without occupants ends the turn with a question, and the next turn completes it", async () => {
+  const { orchestrator, models, calls } = setup({
+    router: [
+      { intents: ["occupancy"], language: "en" },
+      { intents: ["occupancy"], language: "en" },
+    ],
+    supervisor: [
+      {
+        toolCalls: [
+          {
+            name: "record_tenancy_facts",
+            args: { facts: [{ fact: "livingAreaSqm", value: 50 }, { fact: "rooms", value: 2 }] },
+          },
+          { name: "ask_compliance_agent", args: { request: "Check occupancy", checks: ["occupancy"] } },
+        ],
+      },
+      "How many people live in the flat, and how many of them are children up to six?",
+      {
+        toolCalls: [
+          {
+            name: "record_tenancy_facts",
+            args: { facts: [{ fact: "occupants", value: 4 }, { fact: "childrenUpToSix", value: 1 }] },
+          },
+          { name: "ask_compliance_agent", args: { request: "Check occupancy", checks: ["occupancy"] } },
+        ],
+      },
+      "For 4 people (1 child up to six) the flat needs 33 m²; your 50 m² meets § 7 WoAufG Bln.",
+    ],
+    subAgent: [
+      {
+        toolCalls: [
+          { name: "assess_occupancy_compliance", args: { livingAreaSqm: 50, rooms: 2, occupants: 4, childrenUpToSix: 1 } },
+        ],
+      },
+      "Meets minimum; required 33 m².",
+    ],
+  });
+
+  const first = await collect(orchestrator.send({ threadId: "t21", message: "Is my 50 m² 2-room flat overcrowded?" }));
+
+  assert.deepEqual(stepsOf(first), ["ComplianceAgent:needs_facts"]);
+  assert.equal(calls.length, 0);
+  assert.equal(models.subAgent.calls.length, 0, "the Sub-agent does not run");
+  assert.deepEqual(JSON.parse(models.supervisor.calls[1].at(-1).content), {
+    status: "needs_facts",
+    checks: ["occupancy"],
+    missing: ["occupants", "childrenUpToSix"],
+    unconfirmed: [],
+  });
+  assert.match(answerOf(first), /How many people/);
+
+  const second = await collect(orchestrator.send({ threadId: "t21", message: "4 people, one is 3 years old" }));
+
+  const routerInput = models.router.calls[1].map((m) => m.content).join("\n");
+  assert.match(routerInput, /How many people live in the flat/, "the router sees the question being answered");
+  assert.ok(
+    models.router.calls[1].every((m) => m.getType() !== "tool" && !m.tool_calls?.length),
+    "the router sees the conversation, not the Supervisor's tool traffic",
+  );
+  assert.deepEqual(second[0], { type: "intent", intents: ["occupancy"] });
+  assert.deepEqual(stepsOf(second), ["ComplianceAgent:started", "ComplianceAgent:finished"]);
+  assert.deepEqual(calls, [
+    { name: "assess_occupancy_compliance", args: { livingAreaSqm: 50, rooms: 2, occupants: 4, childrenUpToSix: 1 } },
+  ]);
+  assert.match(answerOf(second), /needs 33 m²/);
+  assert.match(answerOf(second), /not legal advice/, "the verdict carries the disclaimer although the first answer had it");
+});
+
+test("a Mietspiegel check without Wohnlage and building year reports needs_facts and calls no Tool", async () => {
+  const { orchestrator, models, calls } = setup({
+    router: [{ intents: ["mietspiegel"], language: "en" }],
+    supervisor: [
+      {
+        toolCalls: [
+          { name: "record_tenancy_facts", args: { facts: [{ fact: "livingAreaSqm", value: 50 }] } },
+          { name: "ask_compliance_agent", args: { request: "Rent check", checks: ["mietspiegel"] } },
+        ],
+      },
+      "What is the address of the flat?",
+    ],
+  });
+
+  const events = await collect(orchestrator.send({ threadId: "t22", message: "50 m², am I paying too much?" }));
+
+  assert.deepEqual(stepsOf(events), ["ComplianceAgent:needs_facts"]);
+  assert.equal(calls.length, 0);
+  assert.deepEqual(JSON.parse(models.supervisor.calls[1].at(-1).content).missing, [
+    "residentialLocation",
+    "buildingYear",
+  ]);
+});
+
+test("a Compliance request with one check short of facts still runs the other check", async () => {
+  const { orchestrator, models, calls } = setup({
+    router: [{ intents: ["mietspiegel", "occupancy"], language: "en" }],
+    supervisor: [
+      {
+        toolCalls: [
+          {
+            name: "record_tenancy_facts",
+            args: {
+              facts: [
+                { fact: "address", value: "Berliner Str. 155" },
+                { fact: "livingAreaSqm", value: 50 },
+                { fact: "contractRent", value: 780 },
+                { fact: "rooms", value: 2 },
+              ],
+            },
+          },
+          { name: "ask_official_data_agent", args: { request: "Verify" } },
+          { name: "ask_compliance_agent", args: { request: "Both checks", checks: ["mietspiegel", "occupancy"] } },
+        ],
+      },
+      "Your rent of 780 € is above the range. How many people live in the flat, and how many are children up to six?",
+    ],
+    subAgent: [...OFFICIAL_DATA_SCRIPT, mietspiegelCall(780), "Calculated."],
+  });
+
+  const events = await collect(
+    orchestrator.send({ threadId: "t26", message: "Berliner Str. 155, 50 m², 2 rooms, 780 € cold. Too expensive? Overcrowded?" }),
+  );
+
+  assert.deepEqual(stepsOf(events), [
+    "OfficialDataAgent:started",
+    "OfficialDataAgent:finished",
+    "ComplianceAgent:needs_facts",
+    "ComplianceAgent:started",
+    "ComplianceAgent:finished",
+  ]);
+  assert.deepEqual(
+    calls.map((c) => c.name),
+    ["validate_berlin_address", "lookup_building_age", "calculate_mietspiegel"],
+  );
+  assert.match(models.subAgent.calls[3].map((m) => m.content).join("\n"), /Checks: mietspiegel\n/);
+  const report = JSON.parse(models.supervisor.calls[1].at(-1).content);
+  assert.equal(report.status, "done");
+  assert.deepEqual(report.needsFacts, { checks: ["occupancy"], missing: ["occupants", "childrenUpToSix"], unconfirmed: [] });
+  assert.equal(report.results[0].tool, "calculate_mietspiegel");
+});
+
+test("a correction replaces the fact and the check re-runs with the new value", async () => {
+  const { orchestrator, calls } = setup({
+    router: [
+      { intents: ["mietspiegel"], language: "en" },
+      { intents: ["mietspiegel"], language: "en" },
+    ],
+    supervisor: [
+      {
+        toolCalls: [
+          {
+            name: "record_tenancy_facts",
+            args: {
+              facts: [
+                { fact: "address", value: "Berliner Str. 155" },
+                { fact: "livingAreaSqm", value: 50 },
+                { fact: "contractRent", value: 780 },
+              ],
+            },
+          },
+          { name: "ask_official_data_agent", args: { request: "Verify" } },
+          { name: "ask_compliance_agent", args: { request: "Rent check", checks: ["mietspiegel"] } },
+        ],
+      },
+      "Your rent of 780 € is above the range.",
+      {
+        toolCalls: [
+          { name: "record_tenancy_facts", args: { facts: [{ fact: "contractRent", value: "720" }] } },
+          { name: "ask_compliance_agent", args: { request: "Rent check", checks: ["mietspiegel"] } },
+        ],
+      },
+      "With 720 € your rent is still above the range.",
+    ],
+    subAgent: [
+      ...OFFICIAL_DATA_SCRIPT,
+      mietspiegelCall(780),
+      "Calculated.",
+      // The model repeats the old value; the re-run must still use the correction.
+      mietspiegelCall(780),
+      "Calculated.",
+    ],
+  });
+
+  await collect(orchestrator.send({ threadId: "t23", message: "Berliner Str. 155, 50 m², 780 € cold" }));
+  const second = await collect(orchestrator.send({ threadId: "t23", message: "Actually the cold rent is 720, not 780" }));
+
+  assert.deepEqual((await orchestrator.getTenancy("t23")).contractRent, { value: 720, source: "user" });
+  const tenancyEvents = second.filter((e) => e.type === "tenancy");
+  assert.deepEqual(tenancyEvents.at(-1).tenancy.contractRent, { value: 720, source: "user" });
+  assert.deepEqual(stepsOf(second), ["ComplianceAgent:started", "ComplianceAgent:finished"]);
+  assert.deepEqual(
+    calls.filter((c) => c.name === "calculate_mietspiegel").map((c) => c.args.contractRent),
+    [780, 720],
+  );
+  assert.match(answerOf(second), /With 720 €/);
+  assert.match(answerOf(second), /not legal advice/, "every Compliance verdict carries the disclaimer");
+});
+
+test("a Compliance Tool for a check that was not requested does not run, even with its facts known", async () => {
+  const { orchestrator, calls, logs } = setup({
+    router: [{ intents: ["occupancy"], language: "en" }],
+    supervisor: [
+      {
+        toolCalls: [
+          {
+            name: "record_tenancy_facts",
+            args: {
+              facts: [
+                { fact: "address", value: "Berliner Str. 155" },
+                { fact: "livingAreaSqm", value: 50 },
+                { fact: "contractRent", value: 780 },
+                { fact: "rooms", value: 2 },
+                { fact: "occupants", value: 2 },
+                { fact: "childrenUpToSix", value: 0 },
+              ],
+            },
+          },
+          { name: "ask_official_data_agent", args: { request: "Verify" } },
+          { name: "ask_compliance_agent", args: { request: "Check occupancy", checks: ["occupancy"] } },
+        ],
+      },
+      "Your flat meets § 7 WoAufG Bln.",
+    ],
+    subAgent: [
+      ...OFFICIAL_DATA_SCRIPT,
+      mietspiegelCall(780),
+      { toolCalls: [{ name: "assess_occupancy_compliance", args: {} }] },
+      "Meets minimum.",
+    ],
+  });
+
+  await collect(orchestrator.send({ threadId: "t24", message: "Berliner Str. 155: 2 adults, 50 m², 2 rooms. Overcrowded?" }));
+
+  assert.deepEqual(
+    calls.map((c) => c.name),
+    ["validate_berlin_address", "lookup_building_age", "assess_occupancy_compliance"],
+  );
+  assert.deepEqual(calls[2].args, { livingAreaSqm: 50, rooms: 2, occupants: 2, childrenUpToSix: 0 });
+  assert.deepEqual(
+    logs.slice(2).map((l) => [l.tool, l.outcome, l.errorKind]),
+    [
+      ["calculate_mietspiegel", "error", "input"],
+      ["assess_occupancy_compliance", "ok", undefined],
+    ],
+  );
+});
+
+test("a Tool argument with no Tenancy fact behind it is dropped, not taken from the model", async () => {
+  const { orchestrator, calls } = setup({
+    router: [{ intents: ["mietspiegel"], language: "en" }],
+    supervisor: [
+      {
+        toolCalls: [
+          {
+            name: "record_tenancy_facts",
+            args: { facts: [{ fact: "address", value: "Berliner Str. 155" }, { fact: "livingAreaSqm", value: 50 }] },
+          },
+          { name: "ask_official_data_agent", args: { request: "Verify" } },
+          { name: "ask_compliance_agent", args: { request: "Reference rent", checks: ["mietspiegel"] } },
+        ],
+      },
+      "The reference rent for your flat is 410–555 €.",
+    ],
+    subAgent: [...OFFICIAL_DATA_SCRIPT, mietspiegelCall(999), "Calculated."],
+  });
+
+  await collect(orchestrator.send({ threadId: "t25", message: "Berliner Str. 155, 50 m². What is the reference rent?" }));
+
+  assert.deepEqual(calls.at(-1), {
+    name: "calculate_mietspiegel",
+    args: { residentialLocation: "gut", buildingAgeOrYear: "1921 - 1930", livingAreaSqm: 50 },
+  });
+});
+
 test("send() rejects a call without threadId, and one without message, document or confirmation", async () => {
   const { orchestrator } = setup();
   await assert.rejects(collect(orchestrator.send({ message: "hi" })), /requires a threadId/);

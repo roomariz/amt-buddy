@@ -6,8 +6,7 @@ const SHARED_RULES = `Call your tools with values taken exactly from the Tenancy
 If a tool returns an error, do not retry it yourself; report the error.
 Finish with a short factual summary of what the tools returned, in English, without advice.`;
 
-// Sub-agents the delegate node can run. Compliance and Lease Analysis join here
-// when their slices land.
+// Sub-agents the delegate node can run. Lease Analysis joins here when its slice lands.
 export const SUB_AGENTS = {
   official_data: {
     label: "OfficialDataAgent",
@@ -16,32 +15,58 @@ export const SUB_AGENTS = {
 After a successful address verification, always look up the building age with the returned coordinates.
 ${SHARED_RULES}`,
   },
+  compliance: {
+    label: "ComplianceAgent",
+    tools: ["calculate_mietspiegel", "assess_occupancy_compliance"],
+    prompt: `You are the Compliance Sub-agent of Amt-Buddy. You run only the checks you are asked for:
+- mietspiegel: call calculate_mietspiegel with residentialLocation, buildingYear (as buildingAgeOrYear), livingAreaSqm and, if known, contractRent.
+- occupancy: call assess_occupancy_compliance with livingAreaSqm, rooms, occupants and childrenUpToSix.
+${SHARED_RULES}`,
+  },
+};
+
+// The Compliance check each Compliance Tool performs.
+const CHECK_FOR_TOOL = {
+  calculate_mietspiegel: "mietspiegel",
+  assess_occupancy_compliance: "occupancy",
 };
 
 // Tool arguments that must equal a Tenancy fact: tool → { argument: fact }.
 const TOOL_ARG_FACTS = {
   validate_berlin_address: { address: "address" },
+  calculate_mietspiegel: {
+    residentialLocation: "residentialLocation",
+    buildingAgeOrYear: "buildingYear",
+    livingAreaSqm: "livingAreaSqm",
+    contractRent: "contractRent",
+  },
+  assess_occupancy_compliance: {
+    livingAreaSqm: "livingAreaSqm",
+    rooms: "rooms",
+    occupants: "occupants",
+    childrenUpToSix: "childrenUpToSix",
+  },
 };
 
 // Why a Tool may not run yet on these confirmed Tenancy values, or undefined.
 // The building age belongs to a verified address, so it needs official coordinates.
-export function toolRefusal(toolName, facts) {
+// A Compliance Tool runs only for a check the Supervisor asked for (`checks`).
+export function toolRefusal(toolName, facts, checks = []) {
   if (toolName === "lookup_building_age" && !facts.coordinates) {
     return "No verified coordinates: verify the address with validate_berlin_address first.";
   }
+  const check = CHECK_FOR_TOOL[toolName];
+  if (check && !checks.includes(check)) return `The ${check} check was not requested.`;
   return undefined;
 }
 
 // Arguments pinned to confirmed Tenancy values, so a Sub-agent model cannot
-// pass a Tool a value that differs from the Tenancy.
+// pass a Tool a value that differs from the Tenancy. An argument whose fact is
+// not confirmed is pinned to undefined, so the model cannot supply its own value.
 // Within an Official Data run, the coordinates come from the verification that just happened.
 export function pinnedArgs(toolName, facts) {
   if (toolName === "lookup_building_age") return facts.coordinates ?? {};
-  return Object.fromEntries(
-    Object.entries(TOOL_ARG_FACTS[toolName] ?? {})
-      .filter(([, fact]) => facts[fact] !== undefined)
-      .map(([arg, fact]) => [arg, facts[fact]]),
-  );
+  return Object.fromEntries(Object.entries(TOOL_ARG_FACTS[toolName] ?? {}).map(([arg, fact]) => [arg, facts[fact]]));
 }
 
 const MAX_SUB_AGENT_STEPS = 12;
@@ -68,5 +93,8 @@ export async function runSubAgent({ agent, model, schemas, tools, task }) {
 }
 
 export function subAgentTask({ args, facts }) {
-  return [`Task: ${args.request}`, `Tenancy facts: ${JSON.stringify(facts)}`].join("\n");
+  const lines = [`Task: ${args.request}`];
+  if (args.checks) lines.push(`Checks: ${args.checks.join(", ")}`);
+  lines.push(`Tenancy facts: ${JSON.stringify(facts)}`);
+  return lines.join("\n");
 }

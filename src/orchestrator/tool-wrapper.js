@@ -37,9 +37,9 @@ export function defaultAuditLog(entry) {
 // per call (argument names, never values), one evidence entry per call, and
 // structured errors returned to the Sub-agent instead of thrown.
 // `pinnedArgs` (an object, or a function returning one at call time) override whatever
-// the model passed, so Tools always see Tenancy values. The Tool's own schema is
-// checked after pinning, inside the wrapper, so a malformed call is an audited input
-// error too; bind the model to the unwrapped Tool to give it the schema.
+// the model passed (a pinned `undefined` removes the model's value), so Tools always see Tenancy values.
+// The Tool's own schema is checked after pinning, inside the wrapper, so a malformed
+// call is an audited input error too; bind the model to the unwrapped Tool to give it the schema.
 // `guard` may refuse a call (returning the reason) before the Tool runs.
 export function wrapTool(
   baseTool,
@@ -57,7 +57,10 @@ export function wrapTool(
   return tool(
     async (modelArgs) => {
       const pinned = typeof pinnedArgs === "function" ? pinnedArgs() : pinnedArgs;
-      const args = { ...modelArgs, ...pinned };
+      // A pinned undefined removes the model's value for that argument.
+      const args = Object.fromEntries(
+        Object.entries({ ...modelArgs, ...pinned }).filter(([, value]) => value !== undefined),
+      );
       const startedAt = Date.now();
       let attempts = 0;
       let outcome;
