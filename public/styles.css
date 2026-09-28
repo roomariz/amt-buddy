@@ -1,0 +1,318 @@
+:root {
+  color-scheme: light;
+  font-family: Arial, Helvetica, sans-serif;
+  color: #171714;
+  background: #eee9df;
+  font-synthesis: none;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    linear-gradient(90deg, transparent 49.8%, rgba(20, 20, 17, 0.06) 50%, transparent 50.2%),
+    #eee9df;
+}
+
+.shell {
+  width: min(760px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 72px 0 40px;
+}
+
+header { max-width: 650px; margin-bottom: 42px; }
+
+.eyebrow, .step {
+  margin: 0 0 12px;
+  font: 700 0.72rem/1.2 "Courier New", monospace;
+  letter-spacing: 0.16em;
+}
+
+h1 {
+  margin: 0;
+  max-width: 620px;
+  font-size: clamp(3rem, 10vw, 6.4rem);
+  line-height: 0.88;
+  letter-spacing: -0.075em;
+}
+
+.intro {
+  max-width: 510px;
+  margin: 24px 0 0;
+  font-size: 1.15rem;
+  line-height: 1.5;
+}
+
+.card {
+  background: #fffdf8;
+  border: 1px solid #171714;
+  box-shadow: 8px 8px 0 #171714;
+  padding: clamp(24px, 5vw, 44px);
+}
+
+.card-heading, .row, footer, dl div {
+  display: flex;
+  align-items: flex-start;
+}
+
+.card-heading { justify-content: space-between; gap: 24px; }
+
+h2 { margin: 0; font-size: 1.7rem; }
+
+.berlin-only {
+  padding: 7px 10px;
+  color: white;
+  background: #e02b2b;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  transform: rotate(2deg);
+}
+
+form { margin-top: 32px; }
+
+label {
+  display: block;
+  flex: 1;
+  font-weight: 700;
+  font-size: 0.82rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+input, textarea {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  border: 1px solid #77736c;
+  border-radius: 0;
+  padding: 14px 13px;
+  background: white;
+  color: #171714;
+  font: 400 1rem/1.2 Arial, sans-serif;
+}
+
+textarea { min-height: 96px; resize: vertical; }
+
+input:focus, textarea:focus { outline: 3px solid #ffd84d; outline-offset: 1px; border-color: #171714; }
+
+.input-hint { margin: 9px 0 0; color: #67635c; font-size: 0.8rem; line-height: 1.4; }
+
+.row { gap: 16px; margin-top: 18px; }
+
+button {
+  width: 100%;
+  margin-top: 24px;
+  border: 0;
+  padding: 16px 20px;
+  background: #171714;
+  color: white;
+  font: 700 1rem/1 Arial, sans-serif;
+  cursor: pointer;
+}
+
+button:hover { background: #e02b2b; }
+button:disabled { opacity: 0.55; cursor: wait; }
+button span { float: right; }
+
+.result { margin-top: 28px; border: 1px solid currentColor; padding: 20px; }
+.result strong { font-size: 1.2rem; }
+.result p { margin: 8px 0 0; line-height: 1.45; }
+.verified { color: #0b6040; background: #e1f4e8; }
+.not-verified, .error { color: #8b1f1f; background: #fae4df; }
+
+dl { margin: 18px 0 0; }
+dl div { justify-content: space-between; border-top: 1px solid currentColor; padding: 8px 0; gap: 16px; }
+dt { font-size: 0.78rem; text-transform: uppercase; }
+dd { margin: 0; text-align: right; font-weight: 700; }
+
+.optional-fieldset {
+  border: 1px solid #c8c4bc;
+  padding: 16px 18px 20px;
+  margin: 22px 0 0;
+  background: #fbf9f4;
+}
+
+.optional-fieldset legend {
+  font: 700 0.78rem/1.2 "Courier New", monospace;
+  letter-spacing: 0.08em;
+  padding: 0 6px;
+  text-transform: uppercase;
+  color: #59564f;
+}
+
+.fieldset-hint {
+  margin: 4px 0 12px;
+  font-size: 0.8rem;
+  color: #67635c;
+  line-height: 1.4;
+}
+
+.result-section {
+  margin-top: 20px;
+  padding-top: 14px;
+  border-top: 1px solid currentColor;
+}
+
+.result-section-title {
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 700;
+  margin: 0 0 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.disclaimer-box {
+  margin-top: 14px;
+  padding: 10px 12px;
+  font-size: 0.76rem;
+  line-height: 1.45;
+  border-left: 3px solid currentColor;
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.badge {
+  display: inline-block;
+  padding: 3px 8px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.badge-success {
+  background: #0b6040;
+  color: #ffffff;
+}
+
+.badge-info {
+  background: #0277bd;
+  color: #ffffff;
+}
+
+.reference-range-box {
+  margin-top: 14px;
+  background: #ffffff;
+  border: 1px solid #171714;
+  padding: 14px;
+}
+
+.range-header {
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #59564f;
+  margin-bottom: 10px;
+}
+
+.range-values {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  text-align: center;
+}
+
+.range-col {
+  flex: 1;
+  padding: 10px 6px;
+  background: #fbf9f4;
+  border: 1px solid #e2ded5;
+}
+
+.range-col.range-median {
+  background: #eef5ee;
+  border-color: #0b6040;
+}
+
+.range-label {
+  display: block;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #67635c;
+  margin-bottom: 4px;
+}
+
+.range-num {
+  display: block;
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: #171714;
+}
+
+.range-sub {
+  display: block;
+  font-size: 0.8rem;
+  color: #59564f;
+  margin-top: 2px;
+  font-weight: 600;
+}
+
+.rent-comparison-banner {
+  margin-top: 14px;
+  padding: 12px 14px;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  border-left: 4px solid;
+}
+
+.comparison-within {
+  background: #e8f5e9;
+  border-color: #0b6040;
+  color: #0b6040;
+}
+
+.comparison-below {
+  background: #e1f5fe;
+  border-color: #0277bd;
+  color: #01579b;
+}
+
+.comparison-above {
+  background: #fff3e0;
+  border-color: #e65100;
+  color: #bf360c;
+}
+
+.interactive-comparison-box {
+  margin-top: 14px;
+  background: #fbf9f4;
+  border: 1px dashed #77736c;
+  padding: 14px;
+}
+
+.interactive-comparison-box input {
+  font-size: 0.95rem;
+}
+
+.interactive-comparison-box button {
+  background: #171714;
+  color: white;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.interactive-comparison-box button:hover {
+  background: #e02b2b;
+}
+
+footer { gap: 14px; margin-top: 32px; color: #59564f; font-size: 0.78rem; line-height: 1.5; }
+footer p { margin: 0; }
+footer a { color: inherit; }
+.source-mark { border: 1px solid #59564f; padding: 7px; font-weight: 800; }
+
+@media (max-width: 540px) {
+  .shell { padding-top: 44px; }
+  .row { flex-direction: column; }
+  h1 { font-size: clamp(3rem, 17vw, 5rem); }
+  .card { box-shadow: 5px 5px 0 #171714; }
+}
+
