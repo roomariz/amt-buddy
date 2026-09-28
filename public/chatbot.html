@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="Amt Buddy Chatbot - Geführter Assistent für Berliner Adressprüfung, Mietspiegel 2026 und Belegungsprüfung (§ 7 WoAufG Bln)."
+      content="Amt-Buddy Chat: Fragen zu Berliner Adressen, Mietspiegel 2026 und Belegung (§ 7 WoAufG Bln) stellen oder den Mietvertrag prüfen lassen."
     />
     <title>Amt-Buddy · Chat</title>
     <link rel="stylesheet" href="/styles.css" />
@@ -39,7 +39,7 @@
             <div class="user-avatar">BE</div>
             <div class="user-meta">
               <span class="user-name">Amt-Buddy</span>
-              <span class="user-role">Geführter Modus</span>
+              <span class="user-role" id="chat-mode-label">Chat</span>
             </div>
           </div>
         </div>
@@ -66,24 +66,32 @@
           <div id="gpt-hero" class="gpt-hero">
             <h2 class="hero-title">Amt-Buddy Chatbot</h2>
             <p class="hero-subtitle">
-              Laden Sie ein Dokument (PDF/Text) hoch oder stellen Sie eine Frage, um Berliner Adressen, Mietdaten und Wohnungsauflagen automatisiert zu prüfen.
+              Stellen Sie Ihre Frage oder laden Sie Ihren Mietvertrag hoch. Amt-Buddy prüft Adresse, Mietspiegel und Belegung mit amtlichen Berliner Daten.
             </p>
 
             <!-- Prominent Document Upload Box -->
             <div class="hero-upload-card" id="hero-upload-card">
               <div class="upload-card-icon">📄</div>
               <div class="upload-card-body">
-                <h3 class="upload-card-title">Mietvertrag oder Dokument hochladen</h3>
-                <p class="upload-card-desc">PDF, TXT oder Markdown hier ablegen oder Datei auswählen</p>
+                <h3 class="upload-card-title">Mietvertrag hochladen</h3>
+                <p class="upload-card-desc">PDF mit Text, TXT oder Markdown hier ablegen oder Datei auswählen</p>
                 <button type="button" class="btn-select-file" id="btn-hero-select-file">
                   Datei auswählen
                 </button>
               </div>
             </div>
+
+            <!-- Optional suggestion prompts: each one sends its question as a message -->
+            <div class="bot-options-grid hero-suggestions" role="group" aria-label="Beispielfragen">
+              <button type="button" class="bot-option-btn" data-prompt="Liegt meine Miete im Mietspiegel? Wühlischstraße 30, 10245 Berlin, 60 m², 900 € Nettokaltmiete.">💶 Mietspiegel prüfen</button>
+              <button type="button" class="bot-option-btn" data-prompt="Ist meine Wohnung überbelegt? 50 m², 2 Zimmer, 4 Personen, davon 1 Kind unter 6 Jahren.">👥 Belegung prüfen</button>
+              <button type="button" class="bot-option-btn" data-prompt="Bitte prüfe die Adresse Berliner Straße 155, 10715 Berlin.">📍 Adresse prüfen</button>
+              <button type="button" class="bot-option-btn" data-prompt="Was bedeutet die Wohnlage im Berliner Mietspiegel?">❓ Was ist die Wohnlage?</button>
+            </div>
           </div>
 
           <!-- Message Stream -->
-          <div id="chat-stream" class="gpt-chat-stream">
+          <div id="chat-stream" class="gpt-chat-stream" role="region" aria-label="Unterhaltung">
             <!-- Messages injected dynamically -->
           </div>
         </div>
@@ -102,8 +110,8 @@
                 type="button"
                 id="chat-upload-btn"
                 class="gpt-btn-attach"
-                title="Mietvertrag oder Dokument anhängen (PDF/Text)"
-                aria-label="Dokument anhängen"
+                title="Mietvertrag anhängen (PDF oder Text)"
+                aria-label="Mietvertrag anhängen"
               >
                 +
               </button>
@@ -120,7 +128,9 @@
                   id="chat-user-input"
                   class="gpt-textarea"
                   rows="1"
-                  placeholder="Nachricht eingeben oder Dokument anhängen …"
+                  maxlength="4000"
+                  aria-label="Nachricht an Amt-Buddy"
+                  placeholder="Frage stellen oder Mietvertrag anhängen …"
                 ></textarea>
               </div>
 
@@ -129,6 +139,10 @@
               </button>
             </form>
 
+            <p id="mode-note" class="mode-note" hidden>
+              Der KI-Chat ist nicht eingerichtet. Amt-Buddy antwortet mit festen Regeln und merkt sich den Gesprächsverlauf nicht.
+            </p>
+
             <div class="input-disclaimer">
               Amt-Buddy nutzt offizielle Berliner Open Data (WFS-Kataster &amp; Mietspiegel 2026). Angaben dienen der rechtlichen Orientierung.
             </div>
@@ -136,6 +150,9 @@
         </div>
       </main>
     </div>
+
+    <!-- Read out by screen readers: agent steps and the end of each turn -->
+    <div id="chat-live" class="visually-hidden" aria-live="polite"></div>
 
     <script type="module" src="/chatbot.js"></script>
   </body>

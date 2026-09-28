@@ -136,25 +136,24 @@ test("orchestrator supports custom LLM provider override", async () => {
   }
 });
 
-test("dedicated chatbot static files exist and include guided workflow elements", async () => {
+test("the /chatbot page is the Orchestrator chat, with suggestion prompts and a live status region", async () => {
   const { readFile } = await import("node:fs/promises");
   const { fileURLToPath } = await import("node:url");
-  const { join } = await import("node:path");
 
   const chatbotHtml = await readFile(
     fileURLToPath(new URL("../public/chatbot.html", import.meta.url)),
     "utf8",
   );
   assert.ok(chatbotHtml.includes("Amt-Buddy Chatbot"));
-  assert.ok(chatbotHtml.includes("Geführter Modus"));
   assert.ok(chatbotHtml.includes('src="/chatbot.js"'));
+  assert.ok(chatbotHtml.includes("data-prompt="), "the wizard's buttons are now suggestion prompts");
+  assert.ok(chatbotHtml.includes('aria-live="polite"'));
 
   const chatbotJs = await readFile(
     fileURLToPath(new URL("../public/chatbot.js", import.meta.url)),
     "utf8",
   );
-  assert.ok(chatbotJs.includes("verifyAddressFlow"));
-  assert.ok(chatbotJs.includes("runMietspiegelCalculation"));
-  assert.ok(chatbotJs.includes("runOccupancyCalculation"));
+  assert.ok(chatbotJs.includes('from "./chat/api.js"'));
+  assert.ok(chatbotJs.includes("renderMarkdown"));
 });
 
