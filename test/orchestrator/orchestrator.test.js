@@ -680,6 +680,179 @@ test("a Tool argument with no Tenancy fact behind it is dropped, not taken from 
   });
 });
 
+const LEASE_SCRIPT = [
+  // The model passes a wrong documentId; the uploaded document is pinned instead.
+  { toolCalls: [{ name: "extract_lease_data", args: { documentId: "lease.pdf" } }] },
+  "Extracted address, contract rent (confidence 0.6), living area and rooms.",
+];
+
+const askLeaseAnalysis = { toolCalls: [{ name: "ask_lease_analysis_agent", args: { request: "Read the lease" } }] };
+const askOfficialData = { toolCalls: [{ name: "ask_official_data_agent", args: { request: "Verify the address" } }] };
+const askMietspiegel = {
+  toolCalls: [{ name: "ask_compliance_agent", args: { request: "Check the rent", checks: ["mietspiegel"] } }],
+};
+
+test("an uploaded lease fills the Tenancy, and its unconfirmed contract rent blocks the Mietspiegel check", async () => {
+  const { orchestrator, models, calls } = setup({
+    router: [{ intents: ["document", "mietspiegel"], language: "en" }],
+    supervisor: [
+      askLeaseAnalysis,
+      askOfficialData,
+      askMietspiegel,
+      "I read a Nettokaltmiete (net cold rent) of 780 € in your lease, but I'm not sure. Is that right?",
+    ],
+    subAgent: [...LEASE_SCRIPT, ...OFFICIAL_DATA_SCRIPT],
+  });
+
+  const events = await collect(
+    orchestrator.send({ threadId: "t50", message: "Here is my lease, am I overpaying?", documentId: "doc-1" }),
+  );
+
+  assert.deepEqual(stepsOf(events), [
+    "LeaseAnalysisAgent:started",
+    "LeaseAnalysisAgent:finished",
+    "OfficialDataAgent:started",
+    "OfficialDataAgent:finished",
+    "ComplianceAgent:needs_facts",
+  ]);
+  assert.deepEqual(calls[0], { name: "extract_lease_data", args: { documentId: "doc-1" } });
+  assert.equal(calls.some((c) => c.name === "calculate_mietspiegel"), false);
+  const tenancy = await orchestrator.getTenancy("t50");
+  assert.deepEqual(tenancy.contractRent, { value: 780, source: "lease", confidence: 0.6 });
+  assert.deepEqual(tenancy.livingAreaSqm, { value: 50, source: "lease", confidence: 0.92 });
+  const firstTenancyEvent = events.find((e) => e.type === "tenancy");
+  assert.deepEqual(firstTenancyEvent.tenancy.contractRent, { value: 780, source: "lease", confidence: 0.6 });
+  const leaseTask = models.subAgent.calls[0].map((m) => m.content).join("\n");
+  assert.match(leaseTask, /doc-1/, "the Lease Analysis Sub-agent is told which document to read");
+  const supervisorPrompt = models.supervisor.calls[3][0].content;
+  assert.match(supervisorPrompt, /contractRent: 780 \(lease, UNCONFIRMED, confidence 0\.6\)/);
+  const complianceReport = JSON.parse(models.supervisor.calls[3].at(-1).content);
+  assert.deepEqual(complianceReport, {
+    status: "needs_facts",
+    checks: ["mietspiegel"],
+    missing: [],
+    unconfirmed: ["contractRent"],
+  });
+  assert.match(answerOf(events), /780 € in your lease/);
+});
+
+test("confirming the unconfirmed contract rent skips Intent classification and completes the Mietspiegel check", async () => {
+  const { orchestrator, models, calls } = setup({
+    router: [{ intents: ["document", "mietspiegel"], language: "en" }],
+    supervisor: [
+      askLeaseAnalysis,
+      askOfficialData,
+      askMietspiegel,
+      "I read a Nettokaltmiete (net cold rent) of 780 € in your lease, but I'm not sure. Is that right?",
+      askMietspiegel,
+      "Your confirmed rent of 780 € is 225 € above the upper Mietspiegel threshold of 555 €.",
+    ],
+    subAgent: [
+      ...LEASE_SCRIPT,
+      ...OFFICIAL_DATA_SCRIPT,
+      mietspiegelCall(780),
+      "Mietspiegel calculated; contract rent above the upper threshold.",
+    ],
+  });
+  await collect(orchestrator.send({ threadId: "t51", message: "Here is my lease, am I overpaying?", documentId: "doc-1" }));
+
+  const events = await collect(orchestrator.send({ threadId: "t51", confirm: { contractRent: 780 } }));
+
+  assert.equal(events.some((e) => e.type === "intent"), false);
+  assert.equal(models.router.calls.length, 1, "the router ran for the first turn only");
+  assert.deepEqual(events[0].type, "tenancy", "the confirmation is reported to the UI first");
+  assert.deepEqual(events[0].tenancy.contractRent, { value: 780, source: "user" });
+  assert.deepEqual(stepsOf(events), ["ComplianceAgent:started", "ComplianceAgent:finished"]);
+  assert.deepEqual((await orchestrator.getTenancy("t51")).contractRent, { value: 780, source: "user" });
+  assert.equal(calls.filter((c) => c.name === "calculate_mietspiegel").at(-1).args.contractRent, 780);
+  assert.match(models.supervisor.calls[4][0].content, /contractRent: 780 \(user\)/);
+  const answer = answerOf(events);
+  assert.match(answer, /225 € above the upper Mietspiegel threshold/);
+  assert.match(answer, /not legal advice/, "the Compliance verdict carries the disclaimer");
+  assert.equal(models.supervisor.remaining, 0, "no grounding rewrite was needed");
+  assert.equal(events.at(-1).type, "done");
+});
+
+test("a lease uploaded without a message is classified and read", async () => {
+  const { orchestrator, models, calls } = setup({
+    router: [{ intents: ["document"], language: "en" }],
+    supervisor: [askLeaseAnalysis, "I read your lease: 50 m², 2 rooms. Please confirm the contract rent of 780 €."],
+    subAgent: LEASE_SCRIPT,
+  });
+
+  const events = await collect(orchestrator.send({ threadId: "t52", documentId: "doc-7" }));
+
+  assert.deepEqual(events[0], { type: "intent", intents: ["document"] });
+  assert.match(models.router.calls[0].at(-1).content, /uploaded a lease document/);
+  assert.deepEqual(stepsOf(events), ["LeaseAnalysisAgent:started", "LeaseAnalysisAgent:finished"]);
+  assert.deepEqual(calls, [{ name: "extract_lease_data", args: { documentId: "doc-7" } }]);
+  assert.match(answerOf(events), /Please confirm the contract rent of 780 €/);
+  assert.equal(events.at(-1).type, "done");
+});
+
+test("Lease Analysis without an uploaded document reports needs_facts and calls no Tool", async () => {
+  const { orchestrator, models, calls } = setup({
+    router: [{ intents: ["document"], language: "en" }],
+    supervisor: [askLeaseAnalysis, "Please upload your lease first."],
+  });
+
+  const events = await collect(orchestrator.send({ threadId: "t53", message: "Can you check my lease?" }));
+
+  assert.deepEqual(stepsOf(events), ["LeaseAnalysisAgent:needs_facts"]);
+  assert.equal(calls.length, 0);
+  assert.equal(models.subAgent.calls.length, 0, "the Sub-agent does not run");
+  const report = JSON.parse(models.supervisor.calls[1].at(-1).content);
+  assert.deepEqual(report, { status: "needs_facts", missing: ["documentId"], unconfirmed: [] });
+  assert.match(answerOf(events), /upload your lease/);
+});
+
+test("a lease uploaded later never replaces what the tenant stated", async () => {
+  const { orchestrator } = setup({
+    router: [
+      { intents: ["address"], language: "en" },
+      { intents: ["document"], language: "en" },
+    ],
+    supervisor: [
+      {
+        toolCalls: [
+          {
+            name: "record_tenancy_facts",
+            args: {
+              facts: [
+                { fact: "address", value: "Berliner Str. 155" },
+                { fact: "contractRent", value: 720 },
+              ],
+            },
+          },
+          { name: "ask_official_data_agent", args: { request: "Verify the address" } },
+        ],
+      },
+      "Verified: Berliner Straße 155, 10715 Berlin.",
+      askLeaseAnalysis,
+      "Your lease lists 2 rooms; I kept the rent of 720 € you told me.",
+    ],
+    subAgent: [...OFFICIAL_DATA_SCRIPT, ...LEASE_SCRIPT],
+    toolOverrides: {
+      extract_lease_data: () => ({
+        fields: {
+          address: { value: "Hauptstraße 1, 10827 Berlin", confidence: 0.99 },
+          contractRent: { value: 780, confidence: 0.99 },
+          rooms: { value: 2, confidence: 0.9 },
+        },
+      }),
+    },
+  });
+  await collect(orchestrator.send({ threadId: "t54", message: "Berliner Str. 155, I pay 720 € cold" }));
+
+  await collect(orchestrator.send({ threadId: "t54", message: "Here is my lease", documentId: "doc-1" }));
+
+  const tenancy = await orchestrator.getTenancy("t54");
+  assert.deepEqual(tenancy.contractRent, { value: 720, source: "user" });
+  assert.deepEqual(tenancy.address, { value: "Berliner Straße 155, 10715 Berlin", source: "official", statedBy: "user" });
+  assert.equal(tenancy.residentialLocation.value, "gut", "the verified address keeps its official facts");
+  assert.deepEqual(tenancy.rooms, { value: 2, source: "lease", confidence: 0.9 }, "new lease facts are still added");
+});
+
 test("a general answer quoting an invented figure is rewritten once, and only the rewrite reaches the user", async () => {
   const { orchestrator, models } = setup({
     router: [{ intents: ["general"], language: "en" }],

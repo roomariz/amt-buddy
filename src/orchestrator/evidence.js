@@ -1,3 +1,5 @@
+import { STATED_FACTS } from "./tenancy.js";
+
 // Evidence: one entry per Tool call made during a turn,
 // `{ tool, args, result }` on success or `{ tool, args, error: { kind, message } }`.
 
@@ -6,7 +8,8 @@ function formatAddress(address) {
 }
 
 // Tenancy fact updates implied by successful Tool results. Compliance results
-// are verdicts, not facts, and add nothing here.
+// are verdicts, not facts, and add nothing here. Lease values keep their confidence,
+// so those below the threshold become Unconfirmed facts.
 export function factsFromEvidence(evidence) {
   const updates = [];
   for (const { tool, result } of evidence) {
@@ -18,6 +21,12 @@ export function factsFromEvidence(evidence) {
     }
     if (tool === "lookup_building_age") {
       updates.push({ fact: "buildingYear", value: result.predominantConstructionPeriod, source: "official" });
+    }
+    if (tool === "extract_lease_data") {
+      for (const [fact, extracted] of Object.entries(result.fields ?? {})) {
+        if (!STATED_FACTS.includes(fact) || !extracted) continue;
+        updates.push({ fact, value: extracted.value, source: "lease", confidence: extracted.confidence });
+      }
     }
   }
   return updates;

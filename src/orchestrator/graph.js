@@ -8,7 +8,7 @@ import { reply } from "./replies.js";
 import { gateSubAgent } from "./requirements.js";
 import { pinnedArgs, runSubAgent, SUB_AGENTS, subAgentTask, toolRefusal } from "./sub-agents.js";
 import { AGENT_FOR_TOOL, SUPERVISOR_TOOLS, supervisorSystemMessage } from "./supervisor.js";
-import { confirmedValues, mergeTenancy, tenancyReducer } from "./tenancy.js";
+import { confirmedValues, factsFromConfirm, mergeTenancy, tenancyReducer } from "./tenancy.js";
 import { wrapTool } from "./tool-wrapper.js";
 
 // A channel whose latest write wins.
@@ -60,6 +60,13 @@ export function buildGraph({ models, tools, log, toolTimeoutMs }) {
       groundingRewrites: 0,
       ungroundedFigures: [],
     };
+    // Confirmed values from the review card become the user's own Tenancy facts.
+    if (state.confirm) {
+      const updates = factsFromConfirm(state.confirm);
+      const tenancy = mergeTenancy(state.tenancy, updates);
+      update.tenancy = updates;
+      if (JSON.stringify(tenancy) !== JSON.stringify(state.tenancy)) emit({ type: "tenancy", tenancy });
+    }
     if (state.confirm && state.skipRouter) {
       const message = new HumanMessage(`[Confirmed Tenancy facts] ${JSON.stringify(state.confirm)}`);
       update.messages = [message];
@@ -92,7 +99,8 @@ export function buildGraph({ models, tools, log, toolTimeoutMs }) {
 
   // Runs one (already gated) Sub-agent over its wrapped Tools. Returns its report for
   // the Supervisor, the Tenancy fact updates its Tool results imply, and its evidence.
-  async function delegateToSubAgent(agent, args, tenancy, threadId) {
+  async function delegateToSubAgent(agent, args, tenancy, { threadId, documentId }) {
+    const inputs = agent === "lease_analysis" ? { documentId } : {};
     const label = SUB_AGENTS[agent].label;
     emit({ type: "agent_step", agent: label, status: "started" });
     const evidence = [];
@@ -109,7 +117,7 @@ export function buildGraph({ models, tools, log, toolTimeoutMs }) {
           current = mergeTenancy(current, factsFromEvidence([entry]));
         },
         // Resolved per call, so a Tool sees facts an earlier Tool of this run produced.
-        pinnedArgs: () => pinnedArgs(baseTool.name, confirmedValues(current)),
+        pinnedArgs: () => pinnedArgs(baseTool.name, confirmedValues(current), inputs),
         guard: () => toolRefusal(baseTool.name, confirmedValues(current), args.checks),
       }),
     );
@@ -120,7 +128,7 @@ export function buildGraph({ models, tools, log, toolTimeoutMs }) {
         model: models.subAgent,
         schemas: baseTools,
         tools: agentTools,
-        task: subAgentTask({ args, facts: confirmedValues(tenancy) }),
+        task: subAgentTask({ args, facts: confirmedValues(tenancy), ...inputs }),
       });
     } catch (error) {
       emit({ type: "agent_step", agent: label, status: "failed" });
@@ -140,7 +148,7 @@ export function buildGraph({ models, tools, log, toolTimeoutMs }) {
   }
 
   // Executes the Supervisor's tool calls in order, so a later Sub-agent sees the
-  // facts an earlier one produced. Lease Analysis is not wired in yet and answers "unavailable".
+  // facts an earlier one produced (e.g. Official Data verifies the lease's address).
   async function delegate(state, config) {
     const threadId = config?.configurable?.thread_id;
     const call = state.messages.at(-1);
@@ -158,11 +166,14 @@ export function buildGraph({ models, tools, log, toolTimeoutMs }) {
         report = { status: "recorded" };
       } else if (SUB_AGENTS[agent]) {
         // Gating in code: whatever lacks its required facts does not run; the rest does.
-        const { run, needsFacts } = gateSubAgent(agent, toolCall.args ?? {}, tenancy);
+        const { run, needsFacts } = gateSubAgent(agent, toolCall.args ?? {}, tenancy, { documentId: state.documentId });
         if (needsFacts) emit({ type: "agent_step", agent: SUB_AGENTS[agent].label, status: "needs_facts" });
         if (run) {
           let evidence;
-          ({ report, updates, evidence } = await delegateToSubAgent(agent, run, tenancy, threadId));
+          ({ report, updates, evidence } = await delegateToSubAgent(agent, run, tenancy, {
+            threadId,
+            documentId: state.documentId,
+          }));
           turnEvidence.push(...evidence);
           if (needsFacts) report.needsFacts = needsFacts;
         } else {

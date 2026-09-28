@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { confirmedValues, isUnconfirmed, mergeTenancy, tenancyReducer } from "../../src/orchestrator/tenancy.js";
+import { confirmedValues, factsFromConfirm, isUnconfirmed, mergeTenancy, tenancyReducer } from "../../src/orchestrator/tenancy.js";
 
 test("a user statement beats an extracted lease value", () => {
   const tenancy = mergeTenancy({}, [
@@ -128,6 +128,19 @@ test("a lease fact below 0.8 confidence is unconfirmed and not among the confirm
   assert.equal(isUnconfirmed(tenancy.contractRent), true);
   assert.equal(isUnconfirmed(tenancy.livingAreaSqm), false);
   assert.deepEqual(confirmedValues(tenancy), { livingAreaSqm: 50, rooms: 2 });
+});
+
+test("confirming or correcting an Unconfirmed fact makes it the user's; unknown keys are ignored", () => {
+  let tenancy = mergeTenancy({}, [
+    { fact: "contractRent", value: 780, source: "lease", confidence: 0.6 },
+    { fact: "rooms", value: 3, source: "lease", confidence: 0.5 },
+  ]);
+  tenancy = mergeTenancy(tenancy, factsFromConfirm({ contractRent: 780, rooms: "2", residentialLocation: "gut" }));
+  assert.deepEqual(tenancy, {
+    contractRent: { value: 780, source: "user" },
+    rooms: { value: 2, source: "user" },
+  });
+  assert.deepEqual(confirmedValues(tenancy), { contractRent: 780, rooms: 2 });
 });
 
 test("a building year is a year or an official period; anything else is ignored", () => {

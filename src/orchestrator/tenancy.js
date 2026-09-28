@@ -91,6 +91,14 @@ export function tenancyReducer(current, updates) {
   return mergeTenancy(current, updates);
 }
 
+// Tenancy fact updates for values the user confirmed or corrected on the review
+// card, e.g. `{ contractRent: 780 }`: they become the user's own statements.
+export function factsFromConfirm(confirm) {
+  return Object.entries(confirm ?? {})
+    .filter(([name]) => STATED_FACTS.includes(name))
+    .map(([fact, value]) => ({ fact, value, source: "user" }));
+}
+
 // Plain values of every fact a Sub-agent may rely on (Unconfirmed facts excluded).
 export function confirmedValues(tenancy) {
   return Object.fromEntries(
