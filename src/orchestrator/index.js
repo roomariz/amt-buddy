@@ -8,6 +8,7 @@ import { DEFAULT_TOOL_TIMEOUT_MS, defaultAuditLog } from "./tool-wrapper.js";
 
 export { TOOL_CONTRACTS, TOOL_NAMES } from "./tool-contracts.js";
 export { createStubTools } from "./stub-tools.js";
+export { createBerlinTools } from "./berlin-tools.js";
 
 const RECURSION_LIMIT = 40;
 const DOCUMENT_ONLY_MESSAGE = "[The user uploaded a lease document]";
