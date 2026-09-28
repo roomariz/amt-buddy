@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+import { createDocumentStore } from "../../src/document-store.js";
+import { parseTenancyDocument } from "../../src/ocr-extraction.js";
 import { createBerlinTools } from "../../src/orchestrator/berlin-tools.js";
 import { createOrchestrator } from "../../src/orchestrator/index.js";
 import { assertToolsMatchContracts, TOOL_CONTRACTS } from "../../src/orchestrator/tool-contracts.js";
@@ -213,13 +215,60 @@ test("assess_occupancy_compliance checks the living area per person under § 7 W
   assert.equal(result.requiredAreaSqm, 15);
 });
 
-test("createBerlinTools gives the Orchestrator a complete Tool set, with the lease extraction still a stub", async () => {
-  const byName = assertToolsMatchContracts(createBerlinTools().tools);
+const LEASE_TEXT = [
+  "Mietvertrag",
+  "Mietobjekt: Wühlischstraße 30, 10245 Berlin",
+  "Wohnfläche: 50 m²",
+  "Zimmer: 2",
+  "Baujahr: 1905",
+  "Personen: 2",
+  "Nettokaltmiete: 30.000,00 EUR",
+].join("\n");
 
-  const lease = await byName.get("extract_lease_data").invoke({ documentId: "doc-1" });
+function leaseTools() {
+  const documents = createDocumentStore();
+  const byName = assertToolsMatchContracts(createBerlinTools({ documents }).tools);
+  const upload = (text) => documents.put({ extraction: parseTenancyDocument(text), text }).documentId;
+  return { byName, upload };
+}
+
+test("extract_lease_data reads an uploaded lease's OCR result, passing its confidence values through", async () => {
+  const { byName, upload } = leaseTools();
+  const documentId = upload(LEASE_TEXT);
+
+  const lease = await byName.get("extract_lease_data").invoke({ documentId });
 
   assert.doesNotThrow(() => TOOL_CONTRACTS.extract_lease_data.output.parse(lease));
-  assert.equal(lease.fields.address.value, "Berliner Straße 155, 10715 Berlin");
+  assert.deepEqual(lease.fields, {
+    address: { value: "Wühlischstraße 30, 10245 Berlin", confidence: 0.95 },
+    livingAreaSqm: { value: 50, confidence: 0.95 },
+    rooms: { value: 2, confidence: 0.9 },
+    buildingYear: { value: 1905, confidence: 0.95 },
+    occupants: { value: 2, confidence: 0.85 },
+    // An implausible rent is read with low confidence, so it becomes an Unconfirmed fact.
+    contractRent: { value: 30000, confidence: 0.5 },
+  });
+});
+
+test("extract_lease_data leaves out what the lease does not state, and keeps a street without postal code", async () => {
+  const { byName, upload } = leaseTools();
+  const documentId = upload("Mietvertrag\nMietobjekt: Wühlischstraße 30\nNettokaltmiete: 700 EUR");
+
+  const lease = await byName.get("extract_lease_data").invoke({ documentId });
+
+  assert.deepEqual(lease.fields, {
+    address: { value: "Wühlischstraße 30", confidence: 0.6 },
+    contractRent: { value: 700, confidence: 0.95 },
+  });
+});
+
+test("an unknown or expired documentId is an input error that asks for the upload again", async () => {
+  const { byName } = leaseTools();
+
+  const { kind, message } = await failure(byName.get("extract_lease_data").invoke({ documentId: "doc-unknown" }));
+
+  assert.equal(kind, "input");
+  assert.match(message, /upload/i);
 });
 
 // Answers from the recorded responses after `delayMs`, or fails when the request's signal aborts.

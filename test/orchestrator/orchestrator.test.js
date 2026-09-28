@@ -955,6 +955,26 @@ test("send() rejects a call without threadId, and one without message, document 
   await assert.rejects(collect(orchestrator.send({ threadId: "t5", message: "   " })), /requires a message/);
 });
 
+test("aborting a turn through its signal stops the run with a single error event", async () => {
+  const { orchestrator, models } = setup({
+    router: [{ intents: ["general"], language: "en" }],
+    supervisor: ["This answer is never reached."],
+  });
+  const abort = new AbortController();
+
+  const events = [];
+  for await (const event of orchestrator.send({ threadId: "t-abort", message: "Hi", signal: abort.signal })) {
+    events.push(event);
+    if (event.type === "intent") abort.abort();
+  }
+
+  assert.deepEqual(
+    events.map((e) => e.type),
+    ["intent", "error"],
+  );
+  assert.equal(models.supervisor.calls.length, 0, "the Supervisor never ran");
+});
+
 test("a model error surfaces as a single error event", async () => {
   const { orchestrator } = setup({ router: [] });
 

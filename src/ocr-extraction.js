@@ -334,19 +334,16 @@ export function parseTenancyDocument(rawText) {
 }
 
 /**
- * Handles document ingestion and OCR extraction from uploaded payload.
- * Accepts { file: base64String, mimeType, fileName } or { text: string }.
+ * Reads the text of an uploaded payload: { file: base64String, mimeType, fileName } or { text: string }.
  * @param {object} input
- * @returns {Promise<object>}
+ * @returns {Promise<string>}
  */
-export async function processDocumentOcr(input) {
+export async function extractDocumentText(input) {
   if (!input || typeof input !== "object") {
     throw new DocumentOcrError([
       { field: "body", code: "missing_payload", message: "Request body is missing." },
     ]);
   }
-
-  let rawText = "";
 
   if (typeof input.text === "string") {
     if (!input.text.trim()) {
@@ -354,20 +351,30 @@ export async function processDocumentOcr(input) {
         { field: "document", code: "empty_text", message: "Document text is empty or missing." },
       ]);
     }
-    rawText = input.text.trim();
-  } else if (input.file) {
+    return input.text.trim();
+  }
+
+  if (input.file) {
     const buffer = Buffer.from(input.file, "base64");
     if (buffer.length > 15 * 1024 * 1024) {
       throw new DocumentOcrError([
         { field: "file", code: "file_too_large", message: "File exceeds maximum size of 15MB." },
       ]);
     }
-    rawText = await extractTextFromDocument(buffer, input.mimeType, input.fileName);
-  } else {
-    throw new DocumentOcrError([
-      { field: "file", code: "no_content", message: "Provide either a base64 encoded 'file' or a 'text' string." },
-    ]);
+    return await extractTextFromDocument(buffer, input.mimeType, input.fileName);
   }
 
-  return parseTenancyDocument(rawText);
+  throw new DocumentOcrError([
+    { field: "file", code: "no_content", message: "Provide either a base64 encoded 'file' or a 'text' string." },
+  ]);
+}
+
+/**
+ * Handles document ingestion and OCR extraction from uploaded payload.
+ * Accepts { file: base64String, mimeType, fileName } or { text: string }.
+ * @param {object} input
+ * @returns {Promise<object>}
+ */
+export async function processDocumentOcr(input) {
+  return parseTenancyDocument(await extractDocumentText(input));
 }

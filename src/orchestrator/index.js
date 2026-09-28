@@ -31,7 +31,8 @@ export function createOrchestrator({
   // { type: "intent", intents } | { type: "agent_step", agent, status } | { type: "tenancy", tenancy }
   // | { type: "token", text } | { type: "done" } | { type: "error", message }
   // Exactly one terminal event (done or error) ends every turn.
-  async function* send({ threadId, message, documentId, confirm } = {}) {
+  // `signal` (an AbortSignal) cancels the run, e.g. when the client disconnects; the turn then ends with `error`.
+  async function* send({ threadId, message, documentId, confirm, signal } = {}) {
     if (!threadId) throw new TypeError("send() requires a threadId");
     const text = message?.trim() || (documentId ? DOCUMENT_ONLY_MESSAGE : "");
     if (!text && !confirm) throw new TypeError("send() requires a message, a documentId or confirm");
@@ -50,6 +51,7 @@ export function createOrchestrator({
         configurable: { thread_id: threadId },
         streamMode: ["custom"],
         recursionLimit: RECURSION_LIMIT,
+        signal,
       });
       for await (const [mode, chunk] of stream) {
         yield* translate(mode, chunk);

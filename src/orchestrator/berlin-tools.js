@@ -8,7 +8,8 @@ import {
 import { BERLIN_BUILDING_AGE_SOURCE, getBerlinBuildingAgeArea } from "../berlin-building-age.js";
 import { evaluateMietspiegel } from "../berlin-mietspiegel.js";
 import { assessOccupancy } from "../occupancy-assessment.js";
-import { STUB_HANDLERS } from "./stub-tools.js";
+import { createDocumentStore } from "../document-store.js";
+import { leaseFieldsFromOcr } from "./lease-fields.js";
 import { TOOL_CONTRACTS } from "./tool-contracts.js";
 import { DEFAULT_TOOL_TIMEOUT_MS } from "./tool-wrapper.js";
 
@@ -80,26 +81,44 @@ async function lookupBuildingAge({ longitude, latitude }, services) {
   };
 }
 
+export class LeaseDocumentInputError extends Error {
+  constructor() {
+    super("The uploaded lease document is unknown or has expired. Ask the user to upload the lease again.");
+    this.name = "LeaseDocumentInputError";
+  }
+}
+
+function extractLeaseData({ documentId }, { documents }) {
+  const document = documents.get(documentId);
+  if (!document) throw new LeaseDocumentInputError();
+  return { fields: leaseFieldsFromOcr(document.extraction) };
+}
+
 const HANDLERS = {
   validate_berlin_address: validateBerlinAddress,
   lookup_building_age: lookupBuildingAge,
   calculate_mietspiegel: evaluateMietspiegel,
   assess_occupancy_compliance: assessOccupancy,
-  // Lease OCR is not wired in yet.
-  extract_lease_data: STUB_HANDLERS.extract_lease_data,
+  extract_lease_data: extractLeaseData,
 };
 
-// The Tools backed by the official Berlin services and the real calculations, plus the
-// stub `extract_lease_data` (lease OCR is not wired in yet): a complete Tool set for
-// createOrchestrator. `fetchImpl` replaces the global fetch for every Berlin service request.
+// The Tools backed by the official Berlin services, the real calculations and the lease
+// OCR: a complete Tool set for createOrchestrator. `fetchImpl` replaces the global fetch
+// for every Berlin service request.
 // `timeoutMs` is one call's budget for all its requests (address plus Wohnlage lookup);
 // keep it equal to createOrchestrator's `toolTimeoutMs`, so a request is aborted when the
 // Tool wrapper gives up on the attempt instead of running on beside its retry.
 // No retries here: the Tool wrapper retries upstream errors once.
-export function createBerlinTools({ fetchImpl, timeoutMs = DEFAULT_TOOL_TIMEOUT_MS } = {}) {
+// `documents` is the store the upload endpoint puts `{ extraction, text }` into
+// (`extraction` is parseTenancyDocument's result); `extract_lease_data` reads it by documentId.
+export function createBerlinTools({
+  fetchImpl,
+  timeoutMs = DEFAULT_TOOL_TIMEOUT_MS,
+  documents = createDocumentStore(),
+} = {}) {
   const tools = Object.entries(HANDLERS).map(([name, handler]) => {
     const { description, schema } = TOOL_CONTRACTS[name];
-    return tool((args) => handler(args, { fetchImpl, signal: AbortSignal.timeout(timeoutMs) }), {
+    return tool((args) => handler(args, { fetchImpl, documents, signal: AbortSignal.timeout(timeoutMs) }), {
       name,
       description,
       schema,

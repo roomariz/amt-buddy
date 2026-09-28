@@ -74,6 +74,8 @@ export const TOOL_CONTRACTS = {
         livingAreaSqm: extractedField(z.number()).optional(),
         rooms: extractedField(z.number()).optional(),
         buildingYear: extractedField(z.number()).optional(),
+        occupants: extractedField(z.number()).optional(),
+        childrenUpToSix: extractedField(z.number()).optional(),
       }),
     }),
   },
