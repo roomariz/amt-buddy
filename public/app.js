@@ -28,6 +28,7 @@ form.addEventListener("submit", async (event) => {
 
   const optionalFields = [
     "livingAreaSqm",
+    "contractRent",
     "rooms",
     "occupants",
     "childrenUpToSix",
@@ -261,3 +262,334 @@ form.addEventListener("submit", async (event) => {
     button.innerHTML = 'Adresse prüfen <span aria-hidden="true">→</span>';
   }
 });
+
+// ==========================================
+// OCR Document Ingestion & Auto-Fill
+// ==========================================
+
+const ocrDropzone = document.querySelector("#ocr-dropzone");
+const ocrFileInput = document.querySelector("#ocr-file-input");
+const ocrBrowseBtn = document.querySelector("#ocr-browse-btn");
+const ocrFeedback = document.querySelector("#ocr-feedback");
+
+if (ocrDropzone && ocrFileInput) {
+  ocrBrowseBtn?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    ocrFileInput.click();
+  });
+
+  ocrDropzone.addEventListener("click", () => {
+    ocrFileInput.click();
+  });
+
+  ocrDropzone.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      ocrFileInput.click();
+    }
+  });
+
+  ocrDropzone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    ocrDropzone.classList.add("dragover");
+  });
+
+  ocrDropzone.addEventListener("dragleave", () => {
+    ocrDropzone.classList.remove("dragover");
+  });
+
+  ocrDropzone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    ocrDropzone.classList.remove("dragover");
+    const files = e.dataTransfer?.files;
+    if (files && files.length > 0) {
+      handleFileSelected(files[0]);
+    }
+  });
+
+  ocrFileInput.addEventListener("change", (e) => {
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      handleFileSelected(files[0]);
+    }
+  });
+}
+
+async function handleFileSelected(file) {
+  if (!file) return;
+
+  if (file.size > 15 * 1024 * 1024) {
+    showOcrFeedback("error", "Die Datei überschreitet die maximale Größe von 15 MB.");
+    return;
+  }
+
+  showOcrFeedback("loading", `📄 Verarbeite "${escapeHtml(file.name)}" per OCR … Bitte warten.`);
+
+  try {
+    const base64Data = await readFileAsBase64(file);
+    const response = await fetch("/api/v1/documents/ocr", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        file: base64Data,
+        mimeType: file.type || "application/pdf",
+        fileName: file.name,
+      }),
+    });
+
+    const body = await response.json();
+
+    if (!response.ok) {
+      const msg = body.error?.details?.[0]?.message ?? body.error?.message ?? "OCR Extraktion fehlgeschlagen.";
+      throw new Error(msg);
+    }
+
+    const { fields, confidence, prefilledApiPayload, warnings } = body.data;
+
+    // Prefill form
+    if (prefilledApiPayload.address) {
+      const addressField = form.querySelector('[name="address"]');
+      if (addressField) addressField.value = prefilledApiPayload.address;
+    }
+    if (prefilledApiPayload.livingAreaSqm !== undefined) {
+      const areaField = form.querySelector('[name="livingAreaSqm"]');
+      if (areaField) areaField.value = prefilledApiPayload.livingAreaSqm;
+    }
+    if (prefilledApiPayload.contractRent !== undefined) {
+      const rentField = form.querySelector('[name="contractRent"]');
+      if (rentField) rentField.value = prefilledApiPayload.contractRent;
+    }
+    if (prefilledApiPayload.buildingYear !== undefined) {
+      const yearField = form.querySelector('[name="buildingYear"]');
+      if (yearField) yearField.value = prefilledApiPayload.buildingYear;
+    }
+    if (prefilledApiPayload.rooms !== undefined) {
+      const roomsField = form.querySelector('[name="rooms"]');
+      if (roomsField) roomsField.value = prefilledApiPayload.rooms;
+    }
+    if (prefilledApiPayload.occupants !== undefined) {
+      const occupantsField = form.querySelector('[name="occupants"]');
+      if (occupantsField) occupantsField.value = prefilledApiPayload.occupants;
+    }
+    if (prefilledApiPayload.childrenUpToSix !== undefined) {
+      const childrenField = form.querySelector('[name="childrenUpToSix"]');
+      if (childrenField) childrenField.value = prefilledApiPayload.childrenUpToSix;
+    }
+
+    // Build success message with pills
+    const pills = [];
+    if (fields.street && fields.houseNumber) {
+      pills.push(`<span class="ocr-pill high-conf">📍 ${escapeHtml(fields.street)} ${escapeHtml(fields.houseNumber)} (${Math.round((confidence.address || 0) * 100)}%)</span>`);
+    }
+    if (fields.postalCode) {
+      pills.push(`<span class="ocr-pill high-conf">📮 PLZ ${escapeHtml(fields.postalCode)}</span>`);
+    }
+    if (fields.livingAreaSqm) {
+      pills.push(`<span class="ocr-pill high-conf">📐 ${fields.livingAreaSqm} m²</span>`);
+    }
+    if (fields.contractRent) {
+      pills.push(`<span class="ocr-pill high-conf">💶 Kaltmiete: ${fields.contractRent} €</span>`);
+    }
+    if (fields.buildingYear) {
+      pills.push(`<span class="ocr-pill high-conf">🏗️ Baujahr: ${fields.buildingYear}</span>`);
+    }
+    if (fields.rooms) {
+      pills.push(`<span class="ocr-pill med-conf">🚪 ${fields.rooms} Zimmer</span>`);
+    }
+    if (fields.occupants) {
+      pills.push(`<span class="ocr-pill med-conf">👥 ${fields.occupants} Personen</span>`);
+    }
+
+    let warningHtml = "";
+    if (warnings && warnings.length > 0) {
+      warningHtml = `<p style="margin: 8px 0 0; font-size: 0.85rem; color: #b45309;">⚠️ ${warnings.map(escapeHtml).join(" ")}</p>`;
+    }
+
+    showOcrFeedback(
+      "success",
+      `<strong>✓ Daten erfolgreich extrahiert und in das Formular eingetragen!</strong>
+       <div class="ocr-pill-grid">${pills.join("")}</div>
+       ${warningHtml}
+       <p style="margin: 10px 0 0; font-size: 0.85rem;">Bitte überprüfen Sie die eingetragenen Daten und klicken Sie unten auf <strong>"Adresse prüfen"</strong>.</p>`
+    );
+  } catch (err) {
+    showOcrFeedback("error", `<strong>Fehler bei der OCR-Extraktion:</strong> ${escapeHtml(err.message)}`);
+  }
+}
+
+function showOcrFeedback(type, html) {
+  if (!ocrFeedback) return;
+  ocrFeedback.className = `ocr-feedback ${type}`;
+  ocrFeedback.innerHTML = html;
+  ocrFeedback.hidden = false;
+}
+
+function readFileAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result;
+      const base64 = dataUrl.split(",")[1];
+      resolve(base64);
+    };
+    reader.onerror = (err) => reject(err);
+    reader.readAsDataURL(file);
+  });
+}
+
+// ==========================================
+// Chatbot Orchestrator & Chat UI
+// ==========================================
+
+const chatbotContainer = document.querySelector("#chatbot-container");
+const chatbotToggleBtn = document.querySelector("#chatbot-toggle-btn");
+const chatbotWindow = document.querySelector("#chatbot-window");
+const chatbotCloseBtn = document.querySelector("#chatbot-close-btn");
+const chatbotMessages = document.querySelector("#chatbot-messages");
+const chatbotSuggestions = document.querySelector("#chatbot-suggestions");
+const chatbotForm = document.querySelector("#chatbot-form");
+const chatbotInput = document.querySelector("#chatbot-input");
+const chatbotSendBtn = document.querySelector("#chatbot-send-btn");
+
+let chatHistory = [];
+let hasGreeted = false;
+
+function renderSimpleMarkdown(text) {
+  if (!text) return "";
+  let html = escapeHtml(text);
+
+  // Headers: ### Header
+  html = html.replace(/^### (.*$)/gim, "<h3>$1</h3>");
+  html = html.replace(/^#### (.*$)/gim, "<h4>$1</h4>");
+
+  // Bold: **text**
+  html = html.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
+
+  // Italic: *text*
+  html = html.replace(/\*(.*?)\*/g, "<em>$1</em>");
+
+  // Unordered list items: - item
+  html = html.replace(/^\- (.*$)/gim, "<li>$1</li>");
+  // Wrap contiguous <li> with <ul>
+  html = html.replace(/((?:<li>.*?<\/li>\s*)+)/gis, "<ul>$1</ul>");
+
+  // Newlines to <br> (outside of lists and headers)
+  html = html.replace(/(?:\r\n|\r|\n){2,}/g, "</p><p>");
+  html = `<p>${html}</p>`.replace(/<p><(h3|h4|ul)/g, "<$1").replace(/<\/(h3|h4|ul)><\/p>/g, "</$1>");
+
+  return html;
+}
+
+function appendMessage(role, content, toolCalls = []) {
+  if (!chatbotMessages) return;
+
+  const bubble = document.createElement("div");
+  bubble.className = `chat-bubble ${role}`;
+
+  let toolHtml = "";
+  if (toolCalls && toolCalls.length > 0) {
+    toolHtml = toolCalls
+      .map(
+        (t) =>
+          `<div class="tool-chip ${t.success ? "success" : "error"}">⚙️ Tool: ${escapeHtml(t.name)} (${t.executionTimeMs}ms)</div>`,
+      )
+      .join("");
+  }
+
+  bubble.innerHTML = `${toolHtml}${renderSimpleMarkdown(content)}`;
+  chatbotMessages.appendChild(bubble);
+  chatbotMessages.scrollTop = chatbotMessages.scrollHeight;
+
+  chatHistory.push({ role, content });
+}
+
+function setSuggestions(list) {
+  if (!chatbotSuggestions) return;
+  chatbotSuggestions.innerHTML = "";
+  if (!list || list.length === 0) {
+    chatbotSuggestions.hidden = true;
+    return;
+  }
+  chatbotSuggestions.hidden = false;
+
+  list.forEach((item) => {
+    const pill = document.createElement("button");
+    pill.type = "button";
+    pill.className = "suggestion-pill";
+    pill.textContent = item;
+    pill.addEventListener("click", () => {
+      sendChatMessage(item);
+    });
+    chatbotSuggestions.appendChild(pill);
+  });
+}
+
+async function sendChatMessage(msgText) {
+  const text = msgText || chatbotInput.value.trim();
+  if (!text) return;
+
+  appendMessage("user", text);
+  if (chatbotInput) chatbotInput.value = "";
+  if (chatbotSendBtn) chatbotSendBtn.disabled = true;
+
+  // Typing indicator
+  const typingBubble = document.createElement("div");
+  typingBubble.className = "chat-bubble bot";
+  typingBubble.id = "typing-indicator";
+  typingBubble.innerHTML = "<em>Amt-Buddy denkt nach und führt Tools aus …</em>";
+  chatbotMessages.appendChild(typingBubble);
+  chatbotMessages.scrollTop = chatbotMessages.scrollHeight;
+
+  try {
+    const response = await fetch("/api/v1/chat", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        message: text,
+        history: chatHistory.slice(-8),
+      }),
+    });
+
+    const body = await response.json();
+    typingBubble.remove();
+
+    if (!response.ok) {
+      throw new Error(body.error?.message || "Fehler bei der Kommunikation mit dem Assistenten.");
+    }
+
+    const { reply, toolCalls, suggestions } = body.data;
+    appendMessage("bot", reply, toolCalls);
+    setSuggestions(suggestions);
+  } catch (err) {
+    typingBubble.remove();
+    appendMessage("bot", `⚠️ Entschuldigung, es ist ein Fehler aufgetreten: ${err.message}`);
+  } finally {
+    if (chatbotSendBtn) chatbotSendBtn.disabled = false;
+    chatbotInput.focus();
+  }
+}
+
+if (chatbotToggleBtn && chatbotWindow) {
+  chatbotToggleBtn.addEventListener("click", () => {
+    const isHidden = chatbotWindow.hidden;
+    chatbotWindow.hidden = !isHidden;
+
+    if (isHidden && !hasGreeted) {
+      hasGreeted = true;
+      sendChatMessage("Hallo");
+    }
+
+    if (isHidden) {
+      chatbotInput.focus();
+    }
+  });
+
+  chatbotCloseBtn?.addEventListener("click", () => {
+    chatbotWindow.hidden = true;
+  });
+
+  chatbotForm?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    sendChatMessage();
+  });
+}

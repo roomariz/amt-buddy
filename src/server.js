@@ -7,6 +7,8 @@ import { fileURLToPath } from "node:url";
 import { AddressInputError, verifyBerlinAddress } from "./berlin-address.js";
 import { listenOnAvailablePort, PortUnavailableError } from "./listen.js";
 import { OccupancyInputError } from "./occupancy-assessment.js";
+import { DocumentOcrError, processDocumentOcr } from "./ocr-extraction.js";
+import { processChat } from "./chatbot-orchestrator.js";
 
 const publicDirectory = fileURLToPath(new URL("../public/", import.meta.url));
 const configuredPort = process.env.PORT;
@@ -22,15 +24,15 @@ function sendJson(response, status, body) {
   response.end(JSON.stringify(body));
 }
 
-async function readJson(request) {
+async function readJson(request, maxBytes = 16_384, ErrorClass = AddressInputError) {
   const chunks = [];
   let size = 0;
 
   for await (const chunk of request) {
     size += chunk.length;
-    if (size > 16_384) {
-      throw new AddressInputError([
-        { field: "body", code: "too_large", message: "Request body is too large." },
+    if (size > maxBytes) {
+      throw new ErrorClass([
+        { field: "body", code: "too_large", message: `Request body exceeds limit of ${maxBytes} bytes.` },
       ]);
     }
     chunks.push(chunk);
@@ -39,7 +41,7 @@ async function readJson(request) {
   try {
     return JSON.parse(Buffer.concat(chunks).toString("utf8"));
   } catch {
-    throw new AddressInputError([
+    throw new ErrorClass([
       { field: "body", code: "invalid_json", message: "Request body must be valid JSON." },
     ]);
   }
@@ -72,8 +74,64 @@ async function handleVerification(request, response) {
   }
 }
 
+async function handleDocumentOcr(request, response) {
+  try {
+    const input = await readJson(request, 20 * 1024 * 1024, DocumentOcrError);
+    const result = await processDocumentOcr(input);
+    sendJson(response, 200, { data: result });
+  } catch (error) {
+    if (error instanceof DocumentOcrError) {
+      sendJson(response, 422, {
+        error: {
+          code: "ocr_extraction_error",
+          message: error.message,
+          details: error.details,
+        },
+      });
+      return;
+    }
+
+    console.error(error);
+    sendJson(response, 500, {
+      error: {
+        code: "internal_error",
+        message: "Failed to process document OCR extraction.",
+      },
+    });
+  }
+}
+
+async function handleChat(request, response) {
+  try {
+    const input = await readJson(request, 1024 * 1024);
+    if (!input || !input.message) {
+      sendJson(response, 422, {
+        error: {
+          code: "validation_error",
+          message: "Field 'message' is required in chat request body.",
+        },
+      });
+      return;
+    }
+
+    const result = await processChat(input);
+    sendJson(response, 200, { data: result });
+  } catch (error) {
+    console.error(error);
+    sendJson(response, 500, {
+      error: {
+        code: "chat_orchestrator_error",
+        message: "Failed to process chat query.",
+      },
+    });
+  }
+}
+
 async function serveStatic(pathname, response) {
-  const relativePath = pathname === "/" ? "index.html" : pathname.slice(1);
+  let relativePath = pathname === "/" ? "index.html" : pathname.slice(1);
+  if (relativePath === "chatbot" || relativePath === "chat") {
+    relativePath = "chatbot.html";
+  }
   const filePath = normalize(join(publicDirectory, relativePath));
 
   if (!filePath.startsWith(publicDirectory)) {
@@ -99,6 +157,16 @@ const server = createServer(async (request, response) => {
 
   if (request.method === "POST" && url.pathname === "/api/v1/address-verifications") {
     await handleVerification(request, response);
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/v1/documents/ocr") {
+    await handleDocumentOcr(request, response);
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/v1/chat") {
+    await handleChat(request, response);
     return;
   }
 

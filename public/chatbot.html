@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Amt Buddy Chatbot - Geführter Assistent für Berliner Adressprüfung, Mietspiegel 2026 und Belegungsprüfung (§ 7 WoAufG Bln)."
+    />
+    <title>Amt-Buddy · Chat</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body class="gpt-body">
+    <div class="gpt-layout">
+      <!-- Left Sidebar -->
+      <aside class="gpt-sidebar" id="gpt-sidebar">
+        <div class="sidebar-top">
+          <div class="sidebar-header">
+            <span class="brand-logo">🏛️</span>
+            <span class="brand-name">Amt-Buddy Chatbot</span>
+          </div>
+          <button type="button" id="btn-new-chat" class="new-chat-btn">
+            <span class="icon">💬</span> Neuer Chat
+          </button>
+        </div>
+
+        <nav class="sidebar-nav">
+          <div class="sidebar-chat-item active">
+            <span class="chat-icon">💬</span>
+            <span class="chat-name">Chatbot</span>
+          </div>
+        </nav>
+
+        <div class="sidebar-footer">
+          <a href="/" class="sidebar-back-link">
+            <span>←</span> Zur Formularansicht
+          </a>
+          <div class="sidebar-user">
+            <div class="user-avatar">BE</div>
+            <div class="user-meta">
+              <span class="user-name">Amt-Buddy</span>
+              <span class="user-role">Geführter Modus</span>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Main Chat Area -->
+      <main class="gpt-main">
+        <!-- Top App Bar -->
+        <header class="gpt-topbar">
+          <button type="button" id="sidebar-toggle-btn" class="icon-btn" aria-label="Seitenleiste umschalten" title="Seitenleiste">
+            ☰
+          </button>
+          <div class="topbar-center">
+            <span class="topbar-title">Amt-Buddy Chatbot</span>
+          </div>
+          <a href="/" class="topbar-exit-btn">
+            Standard-Formular ↗
+          </a>
+        </header>
+
+        <!-- Chat Scroll Container -->
+        <div class="gpt-scroll-container" id="gpt-scroll-container">
+          <!-- Initial Center Hero: Document Upload & Welcome -->
+          <div id="gpt-hero" class="gpt-hero">
+            <h2 class="hero-title">Amt-Buddy Chatbot</h2>
+            <p class="hero-subtitle">
+              Laden Sie ein Dokument (PDF/Text) hoch oder stellen Sie eine Frage, um Berliner Adressen, Mietdaten und Wohnungsauflagen automatisiert zu prüfen.
+            </p>
+
+            <!-- Prominent Document Upload Box -->
+            <div class="hero-upload-card" id="hero-upload-card">
+              <div class="upload-card-icon">📄</div>
+              <div class="upload-card-body">
+                <h3 class="upload-card-title">Mietvertrag oder Dokument hochladen</h3>
+                <p class="upload-card-desc">PDF, TXT oder Markdown hier ablegen oder Datei auswählen</p>
+                <button type="button" class="btn-select-file" id="btn-hero-select-file">
+                  Datei auswählen
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Message Stream -->
+          <div id="chat-stream" class="gpt-chat-stream">
+            <!-- Messages injected dynamically -->
+          </div>
+        </div>
+
+        <!-- Floating / Pinned Bottom Input Bar (ChatGPT style) -->
+        <div class="gpt-input-area">
+          <div class="input-wrapper">
+            <form id="chat-input-form" class="gpt-input-box">
+              <input
+                type="file"
+                id="chat-file-input"
+                accept=".pdf,.txt,.md,.json"
+                style="display:none;"
+              />
+              <button
+                type="button"
+                id="chat-upload-btn"
+                class="gpt-btn-attach"
+                title="Mietvertrag oder Dokument anhängen (PDF/Text)"
+                aria-label="Dokument anhängen"
+              >
+                +
+              </button>
+
+              <div class="gpt-input-center">
+                <!-- File attachment preview chip inside textbox -->
+                <div id="attachment-preview" class="chat-attachment-chip" hidden>
+                  <span class="chip-file-icon">📄</span>
+                  <span id="chip-file-name" class="chip-file-name"></span>
+                  <button type="button" id="chip-file-remove" class="chip-remove-btn" title="Datei entfernen" aria-label="Datei entfernen">✕</button>
+                </div>
+
+                <textarea
+                  id="chat-user-input"
+                  class="gpt-textarea"
+                  rows="1"
+                  placeholder="Nachricht eingeben oder Dokument anhängen …"
+                ></textarea>
+              </div>
+
+              <button type="submit" id="chat-send-btn" class="gpt-btn-send" title="Senden" aria-label="Senden">
+                ↑
+              </button>
+            </form>
+
+            <div class="input-disclaimer">
+              Amt-Buddy nutzt offizielle Berliner Open Data (WFS-Kataster &amp; Mietspiegel 2026). Angaben dienen der rechtlichen Orientierung.
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <script type="module" src="/chatbot.js"></script>
+  </body>
+</html>
