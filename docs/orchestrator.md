@@ -32,7 +32,7 @@ export const calculateMietspiegelTool = tool(async (args) => evaluateMietspiegel
 - **Errors: throw.** The Orchestrator sorts them into two kinds:
   - `input` — the arguments are wrong (e.g. an address that does not exist). Set `error.kind = "input"`, or throw an error class whose `name` ends in `InputError`. Arguments your schema rejects count as input errors too. Input errors are never retried; the Supervisor asks the user to check that value.
   - `upstream` — anything else (the Berlin WFS is slow or down). Retried once; if it still fails, the error goes back to the Sub-agent as that call's result and the Supervisor tells the user the official service is not responding right now. The Sub-agent's step reports `failed` only when every Tool call of its run errored and at least one error was upstream; if another call succeeded (e.g. the address was verified but the building-age lookup timed out) it reports `finished` with the error in its results.
-- **No timeouts or retries of your own.** The Orchestrator wraps every call with a 10 s timeout per attempt (`DEFAULT_TOOL_TIMEOUT_MS`) and exactly one retry for upstream errors, so a call can take up to about 20 s before it gives up.
+- **No timeouts or retries of your own.** The Orchestrator wraps every call with a 10 s timeout per attempt (`DEFAULT_TOOL_TIMEOUT_MS`) and exactly one retry for upstream errors, so a call can take up to about 20 s before it gives up. Aborting your own requests when that attempt ends is fine (the Berlin Tools share one `AbortSignal.timeout` of the same length across a call's requests, see below); anything shorter or retrying is not.
 - **Arguments come from the Tenancy.** The Orchestrator overwrites (pins) every Tenancy-backed argument with the Tenancy's confirmed value, whatever the Sub-agent model passed, and drops it when the fact is absent or unconfirmed. `extract_lease_data.documentId` is always the uploaded document, and `lookup_building_age` always gets the verified coordinates. `calculate_mietspiegel.featureGroups` is built from the tenant's five Feature group ratings and passed only when all five are known; otherwise it is left out.
 - **Numbers are numbers**: `780.5`, not `"780,50 €"`. The one exception is `buildingAgeOrYear`, which is a year (`1935`) or an official construction period string (`"1921 - 1930"`).
 - **Confidence** (lease extraction only) is a number between 0 and 1. A lease value with confidence below **0.8** — or with no numeric confidence at all — is an Unconfirmed fact: no Compliance check runs on it until the user confirms it.
@@ -85,9 +85,33 @@ An out-of-scope message yields `intent`, `token`, `done` and never reaches the S
 
 **The legal disclaimer** is appended by code (ADR 0003), in the user's language: to every answer with a Compliance verdict from this turn's Tool results, and otherwise to the conversation's first answer that is not an out-of-scope reply.
 
-### Running with stub Tools
+### Running with real Tools or stub Tools
 
-Until the real Tools exist, pass the stub Tools:
+**Real Tools** (official Berlin data):
+
+```js
+import { createBerlinTools, createOrchestrator } from "./orchestrator/index.js";
+
+const orchestrator = createOrchestrator({ models: createOpenAIModels(), tools: createBerlinTools().tools });
+```
+
+`createBerlinTools({ fetchImpl?, timeoutMs? })` (`src/orchestrator/berlin-tools.js`) returns the four real Tools plus the stub `extract_lease_data` (lease OCR is not wired in here yet), so the set is complete:
+
+| Tool | Backed by | Requests |
+|---|---|---|
+| `validate_berlin_address` | `parseAddressInput` + `lookupBerlinAddress` (`src/berlin-address.js`), `getBerlinResidentialLocation` | address register, then Wohnlage 2026 WFS |
+| `lookup_building_age` | `getBerlinBuildingAgeArea` | Umweltatlas building-age WFS |
+| `calculate_mietspiegel` | `evaluateMietspiegel` | none |
+| `assess_occupancy_compliance` | `assessOccupancy` | none |
+
+- `validate_berlin_address` only verifies the address and looks up its Wohnlage; unlike the form endpoint's `verifyBerlinAddress`, it does no building-age, Mietspiegel or occupancy work (those are their own Tools). A well-formed address the register does not know returns `{ verified: false, address: null }`.
+- `lookup_building_age` with no data for the coordinates returns `{ predominantConstructionPeriod: null, note }`. The value is the block's predominant period, not the building's own year (`buildingSpecific: false`).
+- `fetchImpl` replaces the global `fetch` for every Berlin request (tests pass a fake). `timeoutMs` (default `DEFAULT_TOOL_TIMEOUT_MS`, 10 s) is one Tool call's budget for all its requests: keep it equal to `createOrchestrator`'s `toolTimeoutMs`, so the requests are aborted when the Tool wrapper gives up on an attempt. The adapters never retry; the wrapper does. (The legacy `POST /api/v1/address-verifications` keeps its own 8 s per request.)
+- Errors: an address without house number or postal code, or outside Berlin's postal codes, and invalid Mietspiegel or occupancy arguments are input errors (the Supervisor asks the user); HTTP errors, network failures and timeouts of the Berlin services are upstream errors.
+
+**Addresses the chat can pass** to `validate_berlin_address`: street, house number and a Berlin postal code, in this order. These forms are understood: `Berliner Straße 155, 10715 Berlin`, `Berliner Str. 155, 10715 Berlin`, `Berliner Straße 155 10715` (no comma), `Berliner Strasse 155 10715 Berlin`, `berliner str. 155, 10715`, `Berliner Straße 155a, 10715`, and the two-line form (whether the house number exists is up to the register). The adapter expands `Str.` / `str.` and `Strasse` to `Straße` (the register matches street names exactly, ignoring case) and inserts the missing comma before the postal code. Without a postal code (`Berliner Straße 155`, `Berliner Straße 155, Berlin`) or house number, the call is an input error saying that street, house number and postal code are needed, so the Supervisor asks for them. Not supported: the postal code before the street (`10715 Berlin, Berliner Straße 155`), `Str` without a dot, and other abbreviations such as `Pl.`; these are simply not found (`verified: false`) or, without a recognisable house number and postal code, input errors.
+
+**Stub Tools** (no network, fixed data):
 
 ```js
 import { createOrchestrator, createStubTools } from "./orchestrator/index.js";
@@ -115,7 +139,13 @@ Through OpenRouter, prefer OpenAI models (e.g. `openai/gpt-4.1`, router `openai/
 
 ## Tests
 
-`npm test` runs everything offline against a scripted fake model (`test/orchestrator/helpers/scripted-model.js`) and the stub Tools.
+`npm test` runs everything offline against a scripted fake model (`test/orchestrator/helpers/scripted-model.js`), the stub Tools, and the real Tools on a fake `fetch` that replays recorded Berlin WFS responses (`test/helpers/fake-berlin-wfs.js`, `test/fixtures/berlin-wfs/`).
+
+`test/orchestrator/berlin-live.test.js` calls the real Berlin services for one known address (Wühlischstraße 30, 10245) and is skipped unless `BERLIN_LIVE=1`:
+
+```sh
+BERLIN_LIVE=1 node --test test/orchestrator/berlin-live.test.js
+```
 
 The live smoke tests in `test/orchestrator/openai-live.test.js` call the real OpenAI API (with stub Tools) and are skipped unless both `OPENAI_API_KEY` and `OPENAI_MODEL` are set:
 
@@ -137,6 +167,7 @@ The Mietspiegel check always runs on the reference range. As an optional follow-
 - **Restating the same address in another spelling clears the Feature group ratings**, because the flat cannot be told apart before verification; the Supervisor has to ask for them again.
 - **A low-confidence lease building year blocks the Mietspiegel check.** A lease value outranks official data, so an Unconfirmed lease `buildingYear` replaces the official construction period and blocks the Mietspiegel check until the user confirms it.
 - **`confirm` together with a message** merges the facts as the user's, but the Supervisor only sees them as `(user)` facts in the Tenancy, with no "[Confirmed Tenancy facts]" marker.
+- **Mixed construction periods leave the building year open.** Where the block's predominant period is `gemischte Baualtersklasse` (e.g. the real Berliner Straße 155), it contains no year, so no official `buildingYear` is recorded and the Mietspiegel check reports `needs_facts` for it: the Supervisor asks the tenant for the building year.
 - **Tool results are not validated** against the contracts' `output` schemas at runtime (see "For Tool authors").
 - **Grounding is number-based and permissive** (ADR 0003): Unconfirmed lease values count as grounded, any integer equal to a rounded grounded value passes, every number inside a Tool result string (years, house numbers, postal codes) is grounded, and Compliance verdicts themselves are not checked. Dates must match a source literally.
 - **The disclaimer follows this turn's Tool results.** A later answer that restates an earlier verdict without calling a Tool again gets no disclaimer (unless it is the conversation's first answer).

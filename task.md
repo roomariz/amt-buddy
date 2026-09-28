@@ -79,7 +79,7 @@ Formalize functions as structured tools conforming to standard JSON schemas for 
   - **Acceptance Criteria**: Any new tool can be registered with type-safe schema definitions and automatic input validation.
   - **Status**: Partial: Tool contracts with zod input/output schemas and validation (`src/orchestrator/tool-contracts.js`); no general-purpose registry.
 
-- [ ] **2.2 Existing Service Tool Adapters**
+- [x] **2.2 Existing Service Tool Adapters**
   - **Task**: Wrap current Amt-Buddy backend services into callable agent tools:
     - `validate_berlin_address`: Calls `src/berlin-address.js` with street, house number, postal code.
     - `lookup_building_age`: Calls `src/berlin-building-age.js` to determine block-level construction period.
@@ -87,7 +87,7 @@ Formalize functions as structured tools conforming to standard JSON schemas for 
     - `assess_occupancy_compliance`: Calls `src/occupancy-assessment.js` for § 7 WoAufG Bln living area per person checks.
   - **Priority**: High
   - **Acceptance Criteria**: Agent reliably invokes tools with correct extracted parameters and handles API error responses gracefully.
-  - **Status**: Partial: contract-conforming stub Tools; the Mietspiegel and occupancy stubs call the real domain functions, address and building-age stubs return fixed data.
+  - **Status**: Done: `createBerlinTools()` (`src/orchestrator/berlin-tools.js`) gives all four Tools on the official Berlin services and real calculations, with input vs. upstream errors and a per-call time budget matching the Tool wrapper; offline contract tests on recorded WFS responses, opt-in live test (`BERLIN_LIVE=1`). `extract_lease_data` is still a stub there.
 
 - [x] **2.3 Dynamic Tool Execution & Error Handling**
   - **Task**: Implement execution pipeline handling tool timeouts, retries, parameter coercion, and structured error feedback returned to the model.
