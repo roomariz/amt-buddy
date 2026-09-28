@@ -1,19 +1,24 @@
 /**
- * Amt-Buddy Guided Chatbot
- * Rule-based conversational workflow for Berlin address verification, Mietspiegel 2026,
- * occupancy assessment (§ 7 WoAufG Bln), and tenancy contract OCR.
+ * Amt-Buddy Guided Chatbot (ChatGPT Style Layout)
+ * Provides an intuitive, structured rule-based conversational experience
+ * for Berlin address checking, Mietspiegel 2026, occupancy compliance, and OCR.
  */
 
 const chatStream = document.querySelector("#chat-stream");
+const gptHero = document.querySelector("#gpt-hero");
+const gptScrollContainer = document.querySelector("#gpt-scroll-container");
 const quickOptions = document.querySelector("#quick-options");
 const chatInputForm = document.querySelector("#chat-input-form");
 const chatUserInput = document.querySelector("#chat-user-input");
 const chatFileInput = document.querySelector("#chat-file-input");
 const chatUploadBtn = document.querySelector("#chat-upload-btn");
-const btnResetChat = document.querySelector("#btn-reset-chat");
+const btnNewChat = document.querySelector("#btn-new-chat");
+const sidebarToggleBtn = document.querySelector("#sidebar-toggle-btn");
+const gptSidebar = document.querySelector("#gpt-sidebar");
 
 // State machine states
 const STATES = {
+  HERO: "HERO",
   MAIN_MENU: "MAIN_MENU",
   ADDRESS_INPUT: "ADDRESS_INPUT",
   MIETSPIEGEL_AREA: "MIETSPIEGEL_AREA",
@@ -27,7 +32,7 @@ const STATES = {
   OCR_INPUT: "OCR_INPUT",
 };
 
-let currentState = STATES.MAIN_MENU;
+let currentState = STATES.HERO;
 let sessionData = {};
 
 function escapeHtml(str) {
@@ -39,20 +44,32 @@ function escapeHtml(str) {
     .replaceAll("'", "&#039;");
 }
 
+function showChatView() {
+  if (gptHero) gptHero.style.display = "none";
+}
+
+function scrollToBottom() {
+  if (gptScrollContainer) {
+    gptScrollContainer.scrollTop = gptScrollContainer.scrollHeight;
+  }
+}
+
 function appendBotMessage(html) {
+  showChatView();
   const bubble = document.createElement("div");
   bubble.className = "chat-bubble bot";
   bubble.innerHTML = html;
   chatStream.appendChild(bubble);
-  chatStream.scrollTop = chatStream.scrollHeight;
+  scrollToBottom();
 }
 
 function appendUserMessage(text) {
+  showChatView();
   const bubble = document.createElement("div");
   bubble.className = "chat-bubble user";
   bubble.textContent = text;
   chatStream.appendChild(bubble);
-  chatStream.scrollTop = chatStream.scrollHeight;
+  scrollToBottom();
 }
 
 function setActionButtons(options = []) {
@@ -73,24 +90,19 @@ function setActionButtons(options = []) {
     });
     quickOptions.appendChild(btn);
   });
+  scrollToBottom();
 }
 
-function showMainMenu() {
-  currentState = STATES.MAIN_MENU;
+function resetToNewChat() {
+  currentState = STATES.HERO;
   sessionData = {};
-
-  appendBotMessage(
-    `<strong>Willkommen beim Amt-Buddy Chatbot!</strong><br />` +
-      `Ich führe Sie Schritt für Schritt durch die offiziellen Berliner Wohnungs- und Adressdaten. Wählen Sie ein Thema oder tippen Sie Ihre Eingabe:`,
-  );
-
-  setActionButtons([
-    { label: "📍 1. Berliner Adresse prüfen", value: "start_address" },
-    { label: "💶 2. Mietspiegel 2026 berechnen", value: "start_mietspiegel" },
-    { label: "👥 3. Belegung & Mindestfläche (§ 7 WoAufG)", value: "start_occupancy" },
-    { label: "📄 4. Mietvertrag analysieren (OCR)", value: "start_ocr" },
-    { label: "❓ 5. Häufige Fragen & Gesetze", value: "faq" },
-  ]);
+  chatStream.innerHTML = "";
+  setActionButtons([]);
+  if (gptHero) gptHero.style.display = "block";
+  if (chatUserInput) {
+    chatUserInput.value = "";
+    chatUserInput.focus();
+  }
 }
 
 async function verifyAddressFlow(addressText) {
@@ -135,11 +147,11 @@ async function verifyAddressFlow(addressText) {
       "Nicht verfügbar";
 
     appendBotMessage(
-      `✓ <strong>Offizielle Berliner Adresse bestätigt!</strong><br />` +
+      `✓ <strong>Offizielle Berliner Adresse bestätigt!</strong><br /><br />` +
         `• <strong>Straße & Nr.:</strong> ${escapeHtml(address.street)} ${escapeHtml(address.houseNumber)}<br />` +
-        `• <strong>PLZ & Bezirk:</strong> ${escapeHtml(address.postalCode)} Berlin (${escapeHtml(address.district)})<br />` +
+        `• <strong>PLZ & Ort:</strong> ${escapeHtml(address.postalCode)} Berlin (${escapeHtml(address.district)})<br />` +
         `• <strong>Wohnlage (Mietspiegel 2026):</strong> <strong>${escapeHtml(locText)}</strong><br />` +
-        `• <strong>Baualtersklasse (Umweltatlas):</strong> ${escapeHtml(ageText)}<br />` +
+        `• <strong>Baualtersklasse:</strong> ${escapeHtml(ageText)}<br />` +
         `• <strong>Koordinaten:</strong> ${address.coordinates?.latitude?.toFixed(4) || "-"}, ${address.coordinates?.longitude?.toFixed(4) || "-"}`,
     );
 
@@ -147,13 +159,13 @@ async function verifyAddressFlow(addressText) {
       { label: "💶 Mietspiegel für diese Adresse berechnen", value: "address_calc_mietspiegel" },
       { label: "👥 Belegungsprüfung für diese Wohnung", value: "address_calc_occupancy" },
       { label: "📍 Andere Adresse prüfen", value: "start_address" },
-      { label: "🔙 Zum Hauptmenü", value: "menu" },
+      { label: "🔙 Zum Start", value: "menu" },
     ]);
   } catch (err) {
     appendBotMessage(`⚠️ <strong>Fehler bei der Adressprüfung:</strong> ${escapeHtml(err.message)}`);
     setActionButtons([
       { label: "🔄 Erneut versuchen", value: "start_address" },
-      { label: "🔙 Zum Hauptmenü", value: "menu" },
+      { label: "🔙 Zum Start", value: "menu" },
     ]);
   }
 }
@@ -181,11 +193,10 @@ async function runMietspiegelCalculation() {
     const ms = body.data?.mietspiegel;
 
     if (!ms || ms.status !== "calculated") {
-      // Fallback direct table evaluation
       appendBotMessage(
         `Mietspiegel-Berechnung für ${sessionData.livingAreaSqm} m² in ${sessionData.residentialLocation}er Wohnlage (${sessionData.buildingYear}): Status ${ms?.status || "unvollständig"}.`,
       );
-      setActionButtons([{ label: "🔙 Zum Hauptmenü", value: "menu" }]);
+      setActionButtons([{ label: "🔙 Zum Start", value: "menu" }]);
       return;
     }
 
@@ -194,31 +205,31 @@ async function runMietspiegelCalculation() {
       const cmp = ms.contractRentComparison;
       const statusLabel =
         cmp.status === "within"
-          ? "liegt innerhalb der amtlichen Referenzspanne (Gesetzeskonform)"
+          ? "liegt innerhalb der amtlichen Referenzspanne (Mietpreisbremse eingehalten)"
           : cmp.status === "above"
             ? "liegt über der amtlichen Referenzspanne"
             : "liegt unter der amtlichen Referenzspanne";
 
-      comparisonHtml = `<br />• <strong>Ihre Vertragsmiete (${cmp.actualMonthlyRent} €):</strong> ${statusLabel}`;
+      comparisonHtml = `<br />• <strong>Ihre Kaltmiete (${cmp.actualMonthlyRent} €):</strong> ${statusLabel}`;
     }
 
     appendBotMessage(
-      `✓ <strong>Berliner Mietspiegel 2026 Auswertung:</strong><br />` +
-        `• <strong>Tabellenfeld:</strong> Feld <strong>${ms.field}</strong> (${ms.sizeCategory}, ${ms.buildingAge}, ${ms.residentialLocation} Wohnlage)<br />` +
-        `• <strong>Referenzspanne pro m²:</strong> ${ms.rentPerSqm.lower} € – ${ms.rentPerSqm.upper} € / m²<br />` +
-        `• <strong>Mittelwert pro m²:</strong> <strong>${ms.rentPerSqm.median} € / m²</strong><br />` +
-        `• <strong>Monatliche Vergleichsmiete:</strong> <strong>${ms.monthlyReferenceRent.lower.toFixed(2)} € – ${ms.monthlyReferenceRent.upper.toFixed(2)} €</strong> (Mittel: <strong>${ms.monthlyReferenceRent.median.toFixed(2)} €</strong>)` +
+      `✓ <strong>Berliner Mietspiegel 2026 Auswertung:</strong><br /><br />` +
+        `• <strong>Tabellenfeld:</strong> Feld <strong>${ms.field}</strong> (${ms.sizeCategory}, ${ms.buildingAge}, ${ms.residentialLocation}e Wohnlage)<br />` +
+        `• <strong>Referenzspanne:</strong> ${ms.rentPerSqm.lower} € – ${ms.rentPerSqm.upper} € / m²<br />` +
+        `• <strong>Mittelwert:</strong> <strong>${ms.rentPerSqm.median} € / m²</strong><br />` +
+        `• <strong>Monatliche Vergleichsmiete:</strong> <strong>${ms.monthlyReferenceRent.lower.toFixed(2)} € – ${ms.monthlyReferenceRent.upper.toFixed(2)} €</strong> (Mittelwert: <strong>${ms.monthlyReferenceRent.median.toFixed(2)} €</strong>)` +
         comparisonHtml,
     );
 
     setActionButtons([
       { label: "👥 Jetzt Belegungsprüfung durchführen", value: "start_occupancy" },
       { label: "🔄 Neuen Mietspiegel berechnen", value: "start_mietspiegel" },
-      { label: "🔙 Zum Hauptmenü", value: "menu" },
+      { label: "🔙 Zum Start", value: "menu" },
     ]);
   } catch (err) {
     appendBotMessage(`⚠️ Fehler bei der Berechnung: ${escapeHtml(err.message)}`);
-    setActionButtons([{ label: "🔙 Zum Hauptmenü", value: "menu" }]);
+    setActionButtons([{ label: "🔙 Zum Start", value: "menu" }]);
   }
 }
 
@@ -233,7 +244,7 @@ async function runOccupancyCalculation() {
   appendBotMessage(
     `<strong>Ergebnis der Belegungsprüfung (§ 7 Abs. 1 WoAufG Bln):</strong><br /><br />` +
       `• <strong>Bewertung:</strong> <strong>${meets ? "✓ Gesetzliche Mindeststandards erfüllt" : "⚠️ Überbelegungsrisiko (§ 7 WoAufG Bln unterschritten)"}</strong><br />` +
-      `• <strong>Wohnungsgröße:</strong> ${livingAreaSqm} m² (${rooms} Zimmer)<br />` +
+      `• <strong>Wohnungsgröße:</strong> ${livingAreaSqm} m² auf ${rooms} Zimmer<br />` +
       `• <strong>Haushalt:</strong> ${occupants} Personen (${childrenUpToSix} Kinder bis 6 J.)<br />` +
       `• <strong>Gesetzliche Mindestfläche:</strong> ${requiredAreaSqm} m² (9 m²/Erwachsener, 6 m²/Kind bis 6 J.)<br />` +
       `• <strong>Tatsächliche Fläche pro Person:</strong> ${perPerson} m²<br />` +
@@ -244,7 +255,7 @@ async function runOccupancyCalculation() {
   setActionButtons([
     { label: "💶 Mietspiegel berechnen", value: "start_mietspiegel" },
     { label: "📍 Adresse prüfen", value: "start_address" },
-    { label: "🔙 Zum Hauptmenü", value: "menu" },
+    { label: "🔙 Zum Start", value: "menu" },
   ]);
 }
 
@@ -280,7 +291,7 @@ async function handleOcrUpload(file) {
     sessionData.ocrExtracted = fields;
 
     appendBotMessage(
-      `✓ <strong>Mietvertrag erfolgreich per OCR eingelesen!</strong><br />` +
+      `✓ <strong>Mietvertrag erfolgreich per OCR eingelesen!</strong><br /><br />` +
         `• <strong>Adresse:</strong> ${escapeHtml(fields.address || "Nicht erkannt")}<br />` +
         `• <strong>Kaltmiete:</strong> ${fields.contractRent ? `${fields.contractRent} €` : "Nicht erkannt"}<br />` +
         `• <strong>Wohnfläche:</strong> ${fields.livingAreaSqm ? `${fields.livingAreaSqm} m²` : "Nicht erkannt"}<br />` +
@@ -292,21 +303,20 @@ async function handleOcrUpload(file) {
     if (fields.address) {
       setActionButtons([
         { label: `📍 Adresse direkt verifizieren: "${fields.street} ${fields.houseNumber}"`, value: `verify_ocr_address` },
-        { label: "🔙 Zum Hauptmenü", value: "menu" },
+        { label: "🔙 Zum Start", value: "menu" },
       ]);
     } else {
-      setActionButtons([{ label: "🔙 Zum Hauptmenü", value: "menu" }]);
+      setActionButtons([{ label: "🔙 Zum Start", value: "menu" }]);
     }
   } catch (err) {
     appendBotMessage(`⚠️ Fehler bei der OCR-Extraktion: ${escapeHtml(err.message)}`);
-    setActionButtons([{ label: "🔙 Zum Hauptmenü", value: "menu" }]);
+    setActionButtons([{ label: "🔙 Zum Start", value: "menu" }]);
   }
 }
 
 function handleUserAction(value) {
-  // Navigation commands
   if (value === "menu" || value === "reset" || value === "start") {
-    showMainMenu();
+    resetToNewChat();
     return;
   }
 
@@ -316,7 +326,7 @@ function handleUserAction(value) {
     setActionButtons([
       { label: "Berliner Straße 155, 10715 Berlin", value: "Berliner Straße 155, 10715 Berlin" },
       { label: "Pariser Platz 1, 10117 Berlin", value: "Pariser Platz 1, 10117 Berlin" },
-      { label: "🔙 Zum Hauptmenü", value: "menu" },
+      { label: "🔙 Zum Start", value: "menu" },
     ]);
     chatUserInput.focus();
     return;
@@ -330,7 +340,7 @@ function handleUserAction(value) {
       { label: "50 m²", value: "50" },
       { label: "65 m²", value: "65" },
       { label: "80 m²", value: "80" },
-      { label: "🔙 Zum Hauptmenü", value: "menu" },
+      { label: "🔙 Zum Start", value: "menu" },
     ]);
     chatUserInput.focus();
     return;
@@ -343,7 +353,7 @@ function handleUserAction(value) {
       { label: "35 m²", value: "35" },
       { label: "50 m²", value: "50" },
       { label: "75 m²", value: "75" },
-      { label: "🔙 Zum Hauptmenü", value: "menu" },
+      { label: "🔙 Zum Start", value: "menu" },
     ]);
     chatUserInput.focus();
     return;
@@ -354,9 +364,9 @@ function handleUserAction(value) {
     appendBotMessage(
       `Bitte laden Sie Ihren Berliner Mietvertrag oder eine Wohnungsgeberbestätigung (PDF oder Text) hoch ` +
         `oder fügen Sie den Vertragstext hier in das Chatfeld ein.<br /><br />` +
-        `Klicken Sie auf die Büroklammer 📎 links neben dem Eingabefeld, um eine Datei auszuwählen.`,
+        `Klicken Sie auf das <strong>+</strong> Symbol links neben dem Eingabefeld, um eine Datei auszuwählen.`,
     );
-    setActionButtons([{ label: "🔙 Zum Hauptmenü", value: "menu" }]);
+    setActionButtons([{ label: "🔙 Zum Start", value: "menu" }]);
     return;
   }
 
@@ -379,12 +389,11 @@ function handleUserAction(value) {
     setActionButtons([
       { label: "📍 Adresse prüfen", value: "start_address" },
       { label: "💶 Mietspiegel berechnen", value: "start_mietspiegel" },
-      { label: "🔙 Zum Hauptmenü", value: "menu" },
+      { label: "🔙 Zum Start", value: "menu" },
     ]);
     return;
   }
 
-  // Handle inputs based on current state
   handleStateInput(value);
 }
 
@@ -534,7 +543,6 @@ function handleStateInput(input) {
 
     case STATES.OCR_INPUT: {
       appendUserMessage(trimmed);
-      // Run direct text OCR
       (async () => {
         try {
           const res = await fetch("/api/v1/documents/ocr", {
@@ -546,22 +554,21 @@ function handleStateInput(input) {
           if (!res.ok) throw new Error(body.error?.message || "Analyse fehlgeschlagen");
           const { fields } = body.data;
           appendBotMessage(
-            `✓ <strong>Mietvertragstext analysiert:</strong><br />` +
-              `• Adresse: ${fields.address || "Nicht erkannt"}<br />` +
-              `• Kaltmiete: ${fields.contractRent ? `${fields.contractRent} €` : "Nicht erkannt"}<br />` +
-              `• Wohnfläche: ${fields.livingAreaSqm ? `${fields.livingAreaSqm} m²` : "Nicht erkannt"}`,
+            `✓ <strong>Mietvertragstext analysiert:</strong><br /><br />` +
+              `• <strong>Adresse:</strong> ${fields.address || "Nicht erkannt"}<br />` +
+              `• <strong>Kaltmiete:</strong> ${fields.contractRent ? `${fields.contractRent} €` : "Nicht erkannt"}<br />` +
+              `• <strong>Wohnfläche:</strong> ${fields.livingAreaSqm ? `${fields.livingAreaSqm} m²` : "Nicht erkannt"}`,
           );
-          setActionButtons([{ label: "🔙 Zum Hauptmenü", value: "menu" }]);
+          setActionButtons([{ label: "🔙 Zum Start", value: "menu" }]);
         } catch (e) {
           appendBotMessage(`⚠️ Fehler: ${escapeHtml(e.message)}`);
-          setActionButtons([{ label: "🔙 Zum Hauptmenü", value: "menu" }]);
+          setActionButtons([{ label: "🔙 Zum Start", value: "menu" }]);
         }
       })();
       break;
     }
 
     default: {
-      // General NLP matcher
       appendUserMessage(trimmed);
       const lower = trimmed.toLowerCase();
       if (/(?:straße|strasse|str\.|platz|allee|weg|damm|chaussee)\s+\d+/i.test(lower)) {
@@ -573,8 +580,13 @@ function handleStateInput(input) {
       } else if (/vertrag|ocr|upload/i.test(lower)) {
         handleUserAction("start_ocr");
       } else {
-        appendBotMessage("Ich habe Ihre Eingabe erhalten. Bitte wählen Sie eines der folgenden Themen:");
-        showMainMenu();
+        appendBotMessage("Ich habe Ihre Eingabe erhalten. Wählen Sie bitte eine Option aus:");
+        setActionButtons([
+          { label: "📍 Adresse prüfen", value: "start_address" },
+          { label: "💶 Mietspiegel berechnen", value: "start_mietspiegel" },
+          { label: "👥 Belegung prüfen", value: "start_occupancy" },
+          { label: "📄 Mietvertrag OCR", value: "start_ocr" },
+        ]);
       }
       break;
     }
@@ -590,9 +602,19 @@ chatInputForm?.addEventListener("submit", (e) => {
   handleUserAction(text);
 });
 
-btnResetChat?.addEventListener("click", () => {
-  chatStream.innerHTML = "";
-  showMainMenu();
+chatUserInput?.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    chatInputForm.requestSubmit();
+  }
+});
+
+btnNewChat?.addEventListener("click", () => {
+  resetToNewChat();
+});
+
+sidebarToggleBtn?.addEventListener("click", () => {
+  gptSidebar?.classList.toggle("collapsed");
 });
 
 chatUploadBtn?.addEventListener("click", () => {
@@ -606,5 +628,20 @@ chatFileInput?.addEventListener("change", (e) => {
   }
 });
 
+// Sidebar nav items & hero cards event delegation
+document.addEventListener("click", (e) => {
+  const navBtn = e.target.closest("[data-action]");
+  if (navBtn) {
+    const action = navBtn.getAttribute("data-action");
+    handleUserAction(action);
+  }
+
+  const historyBtn = e.target.closest("[data-prompt]");
+  if (historyBtn) {
+    const prompt = historyBtn.getAttribute("data-prompt");
+    handleUserAction(prompt);
+  }
+});
+
 // Initialize on page load
-showMainMenu();
+resetToNewChat();

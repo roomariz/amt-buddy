@@ -7,76 +7,170 @@
       name="description"
       content="Amt Buddy Chatbot - Geführter Assistent für Berliner Adressprüfung, Mietspiegel 2026 und Belegungsprüfung (§ 7 WoAufG Bln)."
     />
-    <title>Amt Buddy · Geführter Chatbot (Vollbild)</title>
+    <title>Amt-Buddy · Chat</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
-  <body class="fullscreen-chat-body">
-    <div class="chat-app-layout">
-      <!-- Fullscreen Top Bar -->
-      <header class="chat-app-header">
-        <div class="chat-header-brand">
-          <span class="status-dot live" aria-hidden="true"></span>
-          <div class="chat-title-wrap">
-            <h1 class="chat-main-title">Amt-Buddy Chatbot</h1>
-            <span class="chat-subtitle">Geführter Modus · Berliner Liegenschaftskataster &amp; Mietspiegel 2026</span>
+  <body class="gpt-body">
+    <div class="gpt-layout">
+      <!-- Left Sidebar (ChatGPT style) -->
+      <aside class="gpt-sidebar" id="gpt-sidebar">
+        <div class="sidebar-top">
+          <div class="sidebar-header">
+            <span class="brand-logo">🏛️</span>
+            <span class="brand-name">Amt-Buddy Chatbot</span>
+          </div>
+          <button type="button" id="btn-new-chat" class="new-chat-btn">
+            <span class="icon">✏️</span> Neuer Chat
+          </button>
+        </div>
+
+        <nav class="sidebar-nav">
+          <div class="nav-section-title">Funktionen &amp; Module</div>
+          <button type="button" class="nav-item" data-action="start_address">
+            <span class="nav-icon">📍</span> Adresse prüfen
+          </button>
+          <button type="button" class="nav-item" data-action="start_mietspiegel">
+            <span class="nav-icon">💶</span> Mietspiegel 2026
+          </button>
+          <button type="button" class="nav-item" data-action="start_occupancy">
+            <span class="nav-icon">👥</span> Belegung (§ 7 WoAufG)
+          </button>
+          <button type="button" class="nav-item" data-action="start_ocr">
+            <span class="nav-icon">📄</span> Mietvertrag OCR
+          </button>
+          <button type="button" class="nav-item" data-action="faq">
+            <span class="nav-icon">❓</span> Häufige Fragen
+          </button>
+
+          <div class="nav-section-title">Beispiele &amp; Abfragen</div>
+          <div id="chat-history-list" class="history-list">
+            <button type="button" class="history-item" data-prompt="Berliner Straße 155, 10715 Berlin">
+              📍 Berliner Straße 155
+            </button>
+            <button type="button" class="history-item" data-prompt="Pariser Platz 1, 10117 Berlin">
+              📍 Pariser Platz 1
+            </button>
+            <button type="button" class="history-item" data-prompt="Mietspiegel für 50 m² in guter Wohnlage">
+              💶 Mietspiegel 50 m² gut
+            </button>
+          </div>
+        </nav>
+
+        <div class="sidebar-footer">
+          <a href="/" class="sidebar-back-link">
+            <span>←</span> Zur Formularansicht
+          </a>
+          <div class="sidebar-user">
+            <div class="user-avatar">BE</div>
+            <div class="user-meta">
+              <span class="user-name">Berlin Open Data</span>
+              <span class="user-role">Geführter Modus · Kataster</span>
+            </div>
           </div>
         </div>
-        <div class="chat-header-actions">
-          <button type="button" id="btn-reset-chat" class="header-action-btn" title="Chat neu starten">
-            🔄 Neu starten
-          </button>
-          <a href="/" class="header-action-btn back-link">
-            ← Zur Formularansicht
-          </a>
-        </div>
-      </header>
+      </aside>
 
-      <!-- Chat Stream Container (Takes full viewport height) -->
-      <main class="chat-stream-container">
-        <div class="chat-stream-inner">
-          <div id="chat-stream" class="chat-stream" role="log" aria-live="polite">
-            <!-- Dynamic chat bubbles inserted here -->
+      <!-- Main Chat Area -->
+      <main class="gpt-main">
+        <!-- Top App Bar -->
+        <header class="gpt-topbar">
+          <button type="button" id="sidebar-toggle-btn" class="icon-btn" aria-label="Seitenleiste umschalten" title="Seitenleiste">
+            ☰
+          </button>
+          <div class="topbar-center">
+            <span class="topbar-title">Amt-Buddy Chat · Geführter Modus</span>
+          </div>
+          <a href="/" class="topbar-exit-btn">
+            Standard-Formular ↗
+          </a>
+        </header>
+
+        <!-- Chat Scroll Container -->
+        <div class="gpt-scroll-container" id="gpt-scroll-container">
+          <!-- Initial Center Hero (hidden once conversation starts) -->
+          <div id="gpt-hero" class="gpt-hero">
+            <h2 class="hero-title">Wie kann Amt-Buddy Ihnen heute helfen?</h2>
+
+            <div class="hero-cards-grid">
+              <button type="button" class="hero-card" data-action="start_address">
+                <span class="card-icon">📍</span>
+                <div class="card-text">
+                  <strong>Berliner Adresse prüfen</strong>
+                  <span>Gleicht Anschriften mit dem offiziellen WFS-Kataster ab</span>
+                </div>
+              </button>
+              <button type="button" class="hero-card" data-action="start_mietspiegel">
+                <span class="card-icon">💶</span>
+                <div class="card-text">
+                  <strong>Mietspiegel 2026 berechnen</strong>
+                  <span>Referenzmietspanne &amp; Kaltmietenvergleich ermitteln</span>
+                </div>
+              </button>
+              <button type="button" class="hero-card" data-action="start_occupancy">
+                <span class="card-icon">👥</span>
+                <div class="card-text">
+                  <strong>Belegung (§ 7 WoAufG)</strong>
+                  <span>Mindestwohnfläche &amp; Überbelegungsrisiko prüfen</span>
+                </div>
+              </button>
+              <button type="button" class="hero-card" data-action="start_ocr">
+                <span class="card-icon">📄</span>
+                <div class="card-text">
+                  <strong>Mietvertrag per OCR</strong>
+                  <span>PDF-Mietvertrag hochladen &amp; Mietdaten extrahieren</span>
+                </div>
+              </button>
+            </div>
+          </div>
+
+          <!-- Message Stream -->
+          <div id="chat-stream" class="gpt-chat-stream">
+            <!-- Messages injected dynamically -->
+          </div>
+        </div>
+
+        <!-- Floating / Pinned Bottom Input Bar (ChatGPT style) -->
+        <div class="gpt-input-area">
+          <div class="input-wrapper">
+            <!-- Suggestion / Decision chips above input -->
+            <div id="quick-options" class="gpt-quick-options" hidden></div>
+
+            <form id="chat-input-form" class="gpt-input-box">
+              <input
+                type="file"
+                id="chat-file-input"
+                accept=".pdf,.txt,.md,.json"
+                style="display:none;"
+              />
+              <button
+                type="button"
+                id="chat-upload-btn"
+                class="gpt-btn-attach"
+                title="Mietvertrag oder Dokument anhängen (PDF/Text)"
+                aria-label="Dokument anhängen"
+              >
+                +
+              </button>
+
+              <textarea
+                id="chat-user-input"
+                class="gpt-textarea"
+                rows="1"
+                placeholder="Frage stellen, Adresse eingeben oder Dokument hochladen …"
+                required
+              ></textarea>
+
+              <button type="submit" id="chat-send-btn" class="gpt-btn-send" title="Senden" aria-label="Senden">
+                ↑
+              </button>
+            </form>
+
+            <div class="input-disclaimer">
+              Amt-Buddy nutzt offizielle Berliner Open Data (WFS-Kataster &amp; Mietspiegel 2026). Angaben dienen der rechtlichen Orientierung.
+            </div>
           </div>
         </div>
       </main>
-
-      <!-- Bottom Pinned Action Bar & Input -->
-      <footer class="chat-app-footer">
-        <div class="chat-footer-inner">
-          <div id="quick-options" class="quick-options" aria-label="Schnelloptionen">
-            <!-- Guided decision buttons -->
-          </div>
-
-          <form id="chat-input-form" class="chat-input-bar">
-            <input
-              type="file"
-              id="chat-file-input"
-              accept=".pdf,.txt,.md,.json"
-              style="display:none;"
-            />
-            <button
-              type="button"
-              id="chat-upload-btn"
-              class="chat-bar-btn upload"
-              title="Mietvertrag oder Dokument anhängen (PDF/Text für OCR)"
-              aria-label="Dokument anhängen"
-            >
-              📎
-            </button>
-            <input
-              type="text"
-              id="chat-user-input"
-              class="chat-bar-input"
-              placeholder="Antwort eingeben, Adresse tippen oder Option wählen …"
-              autocomplete="off"
-              required
-            />
-            <button type="submit" id="chat-send-btn" class="chat-bar-btn send">
-              Senden <span aria-hidden="true">→</span>
-            </button>
-          </form>
-        </div>
-      </footer>
     </div>
 
     <script type="module" src="/chatbot.js"></script>
