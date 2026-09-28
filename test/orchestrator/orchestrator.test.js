@@ -361,7 +361,8 @@ test("one turn chains Official Data and Compliance into a Mietspiegel verdict on
         ],
       },
       { toolCalls: [{ name: "ask_compliance_agent", args: { request: "Check the rent", checks: ["mietspiegel"] } }] },
-      "Ihre Nettokaltmiete von 780 € liegt 225,00 € über der Obergrenze des Mietspiegels 2026 (8,20–11,10 €/m², §§ 558c, 558d BGB).",
+      // German number formats, a rounded value (15.6 → 16) and legal citations, all grounded.
+      "Ihre Nettokaltmiete von 780 € liegt 225,00 € über der Obergrenze des Mietspiegels 2026 (8,20–11,10 €/m², also 410–555 € für 50 m², §§ 558c, 558d BGB). Das sind rund 16 €/m²; vgl. §§ 556d, 556g Abs. 1 BGB und § 5 Abs. 2 WiStG.",
     ],
     subAgent: [
       ...OFFICIAL_DATA_SCRIPT,
@@ -398,6 +399,9 @@ test("one turn chains Official Data and Compliance into a Mietspiegel verdict on
   assert.equal(report.results[0].result.contractRentComparison.differenceFromThreshold, 225);
   const answer = answerOf(events);
   assert.match(answer, /225,00 € über der Obergrenze/);
+  assert.match(answer, /Das sind rund 16 €\/m²; vgl\. §§ 556d, 556g Abs\. 1 BGB und § 5 Abs\. 2 WiStG\./);
+  assert.doesNotMatch(answer, /weggelassen/);
+  assert.equal(models.supervisor.calls.length, 3, "no grounding rewrite was needed");
   assert.match(answer, /keine Rechtsberatung/);
   assert.equal(logs.length, 3);
   assert.equal(events.at(-1).type, "done");
@@ -674,6 +678,89 @@ test("a Tool argument with no Tenancy fact behind it is dropped, not taken from 
     name: "calculate_mietspiegel",
     args: { residentialLocation: "gut", buildingAgeOrYear: "1921 - 1930", livingAreaSqm: 50 },
   });
+});
+
+test("a general answer quoting an invented figure is rewritten once, and only the rewrite reaches the user", async () => {
+  const { orchestrator, models } = setup({
+    router: [{ intents: ["general"], language: "en" }],
+    supervisor: [
+      "The Kappungsgrenze in Berlin is 15% over 3 years since 01.05.2013 (§ 558 Abs. 3 BGB and 20% elsewhere, Art. 14 GG).",
+      "The Kappungsgrenze (cap on rent increases) is set by law, e.g. in § 558 BGB; see the Senatsverwaltung website.",
+    ],
+  });
+
+  const events = await collect(orchestrator.send({ threadId: "t40", message: "What is the Kappungsgrenze?" }));
+
+  assert.deepEqual(
+    events.map((e) => e.type),
+    ["intent", "token", "done"],
+    "only the checked answer is emitted",
+  );
+  const answer = answerOf(events);
+  assert.match(answer, /^The Kappungsgrenze \(cap on rent increases\) is set by law/);
+  assert.doesNotMatch(answer, /15%/);
+  assert.equal(models.supervisor.calls.length, 2, "exactly one rewrite");
+  assert.doesNotMatch(models.supervisor.calls[0][0].content, /Correction/);
+  const retrySystemPrompt = models.supervisor.calls[1][0].content;
+  assert.match(retrySystemPrompt, /not backed by any Tool result, Tenancy fact or the user's message: 15, 3, 01\.05\.2013, 20\./);
+});
+
+test("a still-ungrounded rewrite has only the offending sentences removed, with a note in the user's language", async () => {
+  const { orchestrator, models } = setup({
+    router: [{ intents: ["general"], language: "de" }],
+    supervisor: [
+      "Die Kappungsgrenze beträgt 15 %. Details beim Mieterverein.",
+      "Die Kappungsgrenze begrenzt Mieterhöhungen. Sie liegt z. B. bei 15 % in 3 Jahren. Mehr beim Mieterverein.\n\n- Quelle: Senatsverwaltung\n1. Sie gilt nach § 558 Abs. 3 BGB.\n2. Sie beträgt 20 %.",
+    ],
+  });
+
+  const answer = answerOf(await collect(orchestrator.send({ threadId: "t41", message: "Was ist die Kappungsgrenze?" })));
+
+  assert.equal(models.supervisor.calls.length, 2, "no second rewrite");
+  assert.doesNotMatch(answer, /15|Details beim/);
+  assert.match(answer, /^Die Kappungsgrenze begrenzt Mieterhöhungen\. Mehr beim Mieterverein\.\n\n- Quelle: Senatsverwaltung/);
+  assert.match(answer, /\n1\. Sie gilt nach § 558 Abs\. 3 BGB\.\n\n/, "a legal citation is not a claim");
+  assert.doesNotMatch(answer, /20|\n2\./, "a list item with an ungrounded figure goes with its marker");
+  assert.match(answer, /Zahlen, die ich nicht mit amtlichen Daten belegen konnte, habe ich weggelassen\./);
+  assert.match(answer, /keine Rechtsberatung/);
+});
+
+test("a rewrite with no grounded content left is replaced by the fallback question", async () => {
+  const { orchestrator } = setup({
+    router: [{ intents: ["general"], language: "en" }],
+    supervisor: ["The cap is 15%.", "It is 20%.\n\n1. Over 3 years."],
+  });
+
+  const answer = answerOf(await collect(orchestrator.send({ threadId: "t42", message: "What is the cap?" })));
+
+  assert.match(answer, /^I couldn't verify my answer against official data\. Could you tell me which check/);
+  assert.doesNotMatch(answer, /%|years|I left out figures/);
+});
+
+test("figures from the Tenancy and from the tenant's own message are grounded, in either number format", async () => {
+  const { orchestrator, models } = setup({
+    router: [
+      { intents: ["general"], language: "en" },
+      { intents: ["general"], language: "en" },
+    ],
+    supervisor: [
+      { toolCalls: [{ name: "record_tenancy_facts", args: { facts: [{ fact: "livingAreaSqm", value: "62,5" }] } }] },
+      "Noted: 62.5 m² for 1,234.56 € a month.",
+      "Your flat has 62,5 m² and costs 1234.56 €.",
+      "Your flat has 62,5 m².",
+    ],
+  });
+
+  const first = answerOf(
+    await collect(orchestrator.send({ threadId: "t43", message: "My flat has 62,5 m² and I pay 1.234,56 € warm." })),
+  );
+  assert.match(first, /^Noted: 62\.5 m² for 1,234\.56 € a month\./);
+  assert.equal(models.supervisor.calls.length, 2, "no rewrite");
+
+  const second = answerOf(await collect(orchestrator.send({ threadId: "t43", message: "What do you know about my flat?" })));
+  assert.equal(models.supervisor.calls.length, 4, "a figure from an earlier message only is not grounded");
+  assert.match(models.supervisor.calls[3][0].content, /message: 1234\.56\./);
+  assert.match(second, /^Your flat has 62,5 m²\./, "the Tenancy fact still is");
 });
 
 test("send() rejects a call without threadId, and one without message, document or confirmation", async () => {
