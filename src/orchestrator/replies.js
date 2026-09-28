@@ -18,6 +18,14 @@ const REPLIES = {
     it: "_Si tratta di un'informazione generale basata su dati ufficiali di Berlino, non di una consulenza legale. Per una valutazione vincolante si rivolga a un'associazione di inquilini (Mieterverein) o a un avvocato._",
     tr: "_Bu, Berlin'in resmi verilerine dayanan genel bir bilgidir, hukuki danışmanlık değildir. Bağlayıcı bir değerlendirme için bir kiracılar derneğine (Mieterverein) veya bir avukata başvurun._",
   },
+  removedFigures: {
+    en: "I left out figures I could not verify against official data.",
+    de: "Zahlen, die ich nicht mit amtlichen Daten belegen konnte, habe ich weggelassen.",
+    fr: "J'ai omis les chiffres que je n'ai pas pu vérifier à l'aide de données officielles.",
+    es: "He omitido las cifras que no he podido verificar con datos oficiales.",
+    it: "Ho omesso le cifre che non sono riuscito a verificare con dati ufficiali.",
+    tr: "Resmi verilerle doğrulayamadığım rakamları çıkardım.",
+  },
   fallback: {
     en: "I couldn't verify my answer against official data. Could you tell me which check you'd like (address, Mietspiegel or occupancy) and the missing details?",
     de: "Ich konnte meine Antwort nicht mit amtlichen Daten belegen. Welche Prüfung möchten Sie (Adresse, Mietspiegel oder Belegung), und welche Angaben fehlen noch?",

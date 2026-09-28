@@ -53,7 +53,7 @@ function describeTenancy(tenancy = {}) {
     .join("\n");
 }
 
-export function supervisorSystemMessage({ intents, language, tenancy, documentId }) {
+export function supervisorSystemMessage({ intents, language, tenancy, documentId, groundingFeedback }) {
   const parts = [
     `You are the Orchestrator of Amt-Buddy, which helps tenants check their Berlin tenancy against official data and rules.
 You never calculate anything yourself: you delegate to Sub-agents through your tools and then answer the user.
@@ -70,5 +70,6 @@ Rules:
     `Tenancy facts:\n${describeTenancy(tenancy)}`,
   ];
   if (documentId) parts.push(`Uploaded document: ${documentId}`);
+  if (groundingFeedback) parts.push(`Correction: ${groundingFeedback}`);
   return new SystemMessage(parts.join("\n\n"));
 }

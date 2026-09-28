@@ -2,6 +2,7 @@ import { AIMessage, HumanMessage, ToolMessage } from "@langchain/core/messages";
 import { Annotation, END, getWriter, MessagesAnnotation, START, StateGraph } from "@langchain/langgraph";
 
 import { factsFromEvidence, hasComplianceVerdict } from "./evidence.js";
+import { checkGrounding, stripUngrounded } from "./grounding.js";
 import { intentSchema, normalizeIntents, routerMessages } from "./intents.js";
 import { reply } from "./replies.js";
 import { gateSubAgent } from "./requirements.js";
@@ -27,7 +28,15 @@ export const OrchestratorState = Annotation.Root({
   confirm: lastValue(() => null),
   skipRouter: lastValue(() => false),
   draft: lastValue(() => ""),
+  // The text the user sent this turn: its numbers count as grounded.
+  userText: lastValue(() => ""),
+  groundingAttempts: lastValue(() => 0),
+  groundingFeedback: lastValue(() => ""),
+  groundingStatus: lastValue(() => ""),
 });
+
+// The Supervisor rewrites an ungrounded draft at most this many times.
+const MAX_GROUNDING_REWRITES = 1;
 
 function emit(event) {
   try {
@@ -43,9 +52,21 @@ function textOf(message) {
 
 export function buildGraph({ models, tools, log, toolTimeoutMs }) {
   async function ingest(state) {
-    const update = { evidence: null, intents: [], draft: "", confirm: null };
+    const update = {
+      evidence: null,
+      intents: [],
+      draft: "",
+      confirm: null,
+      groundingAttempts: 0,
+      groundingFeedback: "",
+      groundingStatus: "",
+    };
     if (state.confirm && state.skipRouter) {
-      update.messages = [new HumanMessage(`[Confirmed Tenancy facts] ${JSON.stringify(state.confirm)}`)];
+      const message = new HumanMessage(`[Confirmed Tenancy facts] ${JSON.stringify(state.confirm)}`);
+      update.messages = [message];
+      update.userText = message.content;
+    } else {
+      update.userText = textOf(state.messages.at(-1));
     }
     return update;
   }
@@ -160,6 +181,32 @@ export function buildGraph({ models, tools, log, toolTimeoutMs }) {
     return { messages, tenancy: tenancyUpdates, evidence: turnEvidence };
   }
 
+  // Every number in the draft must be grounded. An ungrounded draft goes back to
+  // the Supervisor once with a correction note naming the figures; if the rewrite
+  // still fails, its sentences with ungrounded figures are removed, and if nothing
+  // is left the fallback question replaces it.
+  async function verifyGrounding(state) {
+    const check = checkGrounding(state.draft, {
+      evidence: state.evidence,
+      tenancy: state.tenancy,
+      userText: state.userText,
+    });
+    if (check.grounded) return { groundingStatus: "grounded" };
+    if (state.groundingAttempts < MAX_GROUNDING_REWRITES) {
+      return {
+        groundingStatus: "rewrite",
+        groundingAttempts: state.groundingAttempts + 1,
+        groundingFeedback: `Your previous draft contained figures not backed by any Sub-agent result, Tenancy fact or the user's message: ${check.ungrounded.join(", ")}. Rewrite the answer without them, or delegate to obtain them.`,
+        draft: "",
+      };
+    }
+    const stripped = stripUngrounded(state.draft, check.ungrounded);
+    const draft = stripped
+      ? `${stripped}\n\n${reply("removedFigures", state.language)}`
+      : reply("fallback", state.language);
+    return { groundingStatus: "stripped", draft };
+  }
+
   // The disclaimer is appended by code: to every answer with a Compliance verdict,
   // and otherwise at most once per conversation.
   async function finalize(state) {
@@ -175,6 +222,7 @@ export function buildGraph({ models, tools, log, toolTimeoutMs }) {
     .addNode("rejectOutOfScope", rejectOutOfScope)
     .addNode("supervisor", supervisor)
     .addNode("delegate", delegate)
+    .addNode("verifyGrounding", verifyGrounding)
     .addNode("finalize", finalize)
     .addEdge(START, "ingest")
     .addConditionalEdges("ingest", (state) => (state.skipRouter ? "supervisor" : "classifyIntent"), [
@@ -187,7 +235,15 @@ export function buildGraph({ models, tools, log, toolTimeoutMs }) {
       ["rejectOutOfScope", "supervisor"],
     )
     .addEdge("rejectOutOfScope", END)
-    .addConditionalEdges("supervisor", (state) => (state.draft ? "finalize" : "delegate"), ["finalize", "delegate"])
+    .addConditionalEdges("supervisor", (state) => (state.draft ? "verifyGrounding" : "delegate"), [
+      "verifyGrounding",
+      "delegate",
+    ])
     .addEdge("delegate", "supervisor")
+    .addConditionalEdges(
+      "verifyGrounding",
+      (state) => (state.groundingStatus === "rewrite" ? "supervisor" : "finalize"),
+      ["supervisor", "finalize"],
+    )
     .addEdge("finalize", END);
 }
