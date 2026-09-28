@@ -5,18 +5,19 @@ import { intentSchema, normalizeIntents, routerMessages } from "./intents.js";
 import { reply } from "./replies.js";
 import { AGENT_FOR_TOOL, SUPERVISOR_TOOLS, supervisorSystemMessage } from "./supervisor.js";
 
-const replace = (fallback) => Annotation({ reducer: (_, update) => update, default: fallback });
+// A channel whose latest write wins.
+const lastValue = (fallback) => Annotation({ reducer: (_, update) => update, default: fallback });
 
 export const OrchestratorState = Annotation.Root({
   ...MessagesAnnotation.spec,
-  intents: replace(() => []),
-  language: replace(() => "en"),
-  documentId: replace(() => null),
-  disclaimerShown: replace(() => false),
+  intents: lastValue(() => []),
+  language: lastValue(() => "en"),
+  documentId: lastValue(() => null),
+  disclaimerShown: lastValue(() => false),
   // Per-turn input and scratch values, reset by `ingest`.
-  confirm: replace(() => null),
-  skipRouter: replace(() => false),
-  draft: replace(() => ""),
+  confirm: lastValue(() => null),
+  skipRouter: lastValue(() => false),
+  draft: lastValue(() => ""),
 });
 
 function emit(event) {
@@ -42,7 +43,9 @@ export function buildGraph({ models }) {
 
   async function classifyIntent(state) {
     const result = await models.router.withStructuredOutput(intentSchema).invoke(routerMessages(state.messages));
-    return { intents: normalizeIntents(result.intents), language: result.language || state.language };
+    const intents = normalizeIntents(result.intents);
+    emit({ type: "intent", intents });
+    return { intents, language: result.language || state.language };
   }
 
   async function rejectOutOfScope(state) {

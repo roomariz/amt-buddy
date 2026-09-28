@@ -14,8 +14,8 @@ const DOCUMENT_ONLY_MESSAGE = "[The user uploaded a lease document]";
 // models: { router, supervisor, subAgent } chat models supporting bindTools / withStructuredOutput.
 // tools: LangChain tools implementing every contract in TOOL_CONTRACTS.
 export function createOrchestrator({ models, tools, checkpointer = new MemorySaver() }) {
-  const toolsByName = assertToolsMatchContracts(tools);
-  const graph = buildGraph({ models, tools: toolsByName }).compile({ checkpointer });
+  assertToolsMatchContracts(tools);
+  const graph = buildGraph({ models }).compile({ checkpointer });
 
   // One user turn. Yields domain events:
   // { type: "intent", intents } | { type: "token", text } | { type: "done" } | { type: "error", message }
@@ -36,7 +36,7 @@ export function createOrchestrator({ models, tools, checkpointer = new MemorySav
     try {
       const stream = await graph.stream(input, {
         configurable: { thread_id: threadId },
-        streamMode: ["custom", "values"],
+        streamMode: ["custom"],
         recursionLimit: RECURSION_LIMIT,
       });
       for await (const [mode, chunk] of stream) {

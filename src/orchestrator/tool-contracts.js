@@ -1,12 +1,14 @@
 import { z } from "zod";
 
+const residentialLocation = z.enum(["einfach", "mittel", "gut"]);
+
 const address = z.looseObject({
   street: z.string(),
   houseNumber: z.string(),
   postalCode: z.string(),
   district: z.string().nullable(),
   coordinates: z.object({ longitude: z.number(), latitude: z.number() }).nullable(),
-  residentialLocation: z.enum(["einfach", "mittel", "gut"]).nullable(),
+  residentialLocation: residentialLocation.nullable(),
 });
 
 const extractedField = (value) => z.object({ value, confidence: z.number().min(0).max(1) });
@@ -33,7 +35,7 @@ export const TOOL_CONTRACTS = {
     description:
       "Calculate the Berliner Mietspiegel 2026 reference rent range and compare an optional contract net cold rent against it.",
     schema: z.object({
-      residentialLocation: z.enum(["einfach", "mittel", "gut"]),
+      residentialLocation,
       buildingAgeOrYear: z.union([z.number(), z.string()]),
       livingAreaSqm: z.number().positive(),
       contractRent: z.number().positive().optional(),

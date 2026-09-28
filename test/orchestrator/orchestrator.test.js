@@ -38,6 +38,21 @@ test("an out-of-scope request gets a fixed reply without reaching the Supervisor
   assert.equal(models.supervisor.calls.length, 0);
 });
 
+test("the out-of-scope reply is in the user's language", async () => {
+  const { orchestrator } = setup({
+    router: [
+      { intents: ["out_of_scope"], language: "de" },
+      { intents: ["out_of_scope"], language: "fr" },
+    ],
+  });
+
+  const german = answerOf(await collect(orchestrator.send({ threadId: "t1-de", message: "Schreib mir ein Gedicht" })));
+  const french = answerOf(await collect(orchestrator.send({ threadId: "t1-fr", message: "Écris-moi un poème" })));
+
+  assert.match(german, /Ich kann nur bei Fragen rund ums Wohnen in Berlin helfen/);
+  assert.match(french, /Je ne peux vous aider que pour des questions de logement à Berlin/);
+});
+
 test("a message mixing a housing Intent with out_of_scope is handled as in scope", async () => {
   const { orchestrator, models } = setup({
     router: [{ intents: ["mietspiegel", "out_of_scope"], language: "en" }],
