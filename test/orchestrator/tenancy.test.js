@@ -129,3 +129,12 @@ test("a lease fact below 0.8 confidence is unconfirmed and not among the confirm
   assert.equal(isUnconfirmed(tenancy.livingAreaSqm), false);
   assert.deepEqual(confirmedValues(tenancy), { livingAreaSqm: 50, rooms: 2 });
 });
+
+test("a building year is a year or an official period; anything else is ignored", () => {
+  const tenancy = mergeTenancy({}, [{ fact: "buildingYear", value: "1935", source: "user" }]);
+  assert.deepEqual(tenancy.buildingYear, { value: 1935, source: "user" });
+  assert.deepEqual(mergeTenancy(tenancy, [{ fact: "buildingYear", value: "abc", source: "user" }]), tenancy);
+  assert.deepEqual(mergeTenancy(tenancy, [{ fact: "buildingYear", value: 19.5, source: "user" }]), tenancy);
+  const official = mergeTenancy({}, [{ fact: "buildingYear", value: "1921 - 1930", source: "official" }]);
+  assert.equal(official.buildingYear.value, "1921 - 1930");
+});

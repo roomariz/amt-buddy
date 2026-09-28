@@ -249,12 +249,12 @@ test("an upstream failure after one retry is reported as failed and adds no offi
   assert.equal(events.at(-1).type, "done");
 });
 
-test("Official Data Tools receive the Tenancy's address and verified coordinates, whatever the model passed", async () => {
+test("Official Data Tools receive the Tenancy's address and verified coordinates, whatever the model passed or left out", async () => {
   const { orchestrator, calls } = setup({
     router: [{ intents: ["address"], language: "en" }],
     supervisor: [recordAddressAndVerify("Berliner Str. 155"), "Verified."],
     subAgent: [
-      { toolCalls: [{ name: "validate_berlin_address", args: { address: "Hauptstraße 1" } }] },
+      { toolCalls: [{ name: "validate_berlin_address", args: {} }] },
       { toolCalls: [{ name: "lookup_building_age", args: { longitude: 1, latitude: 2 } }] },
       "Done.",
     ],
@@ -264,6 +264,72 @@ test("Official Data Tools receive the Tenancy's address and verified coordinates
 
   assert.deepEqual(calls[0].args, { address: "Berliner Str. 155" });
   assert.deepEqual(calls[1].args, { longitude: 13.3295, latitude: 52.4872 });
+});
+
+test("no building age is looked up for an address that was not verified", async () => {
+  const { orchestrator, calls, logs } = setup({
+    router: [{ intents: ["address"], language: "en" }],
+    supervisor: [recordAddressAndVerify("Fantasiestraße 1"), "I couldn't find that address."],
+    subAgent: [
+      { toolCalls: [{ name: "validate_berlin_address", args: { address: "Fantasiestraße 1" } }] },
+      { toolCalls: [{ name: "lookup_building_age", args: { longitude: 13.3, latitude: 52.4 } }] },
+      "Address not found.",
+    ],
+    toolOverrides: { validate_berlin_address: () => ({ verified: false, address: null }) },
+  });
+
+  await collect(orchestrator.send({ threadId: "t13", message: "Is Fantasiestraße 1 a real address?" }));
+
+  assert.deepEqual(
+    calls.map((c) => c.name),
+    ["validate_berlin_address"],
+  );
+  assert.deepEqual(
+    logs.map((l) => [l.tool, l.outcome, l.errorKind]),
+    [
+      ["validate_berlin_address", "ok", undefined],
+      ["lookup_building_age", "error", "input"],
+    ],
+  );
+  assert.deepEqual(await orchestrator.getTenancy("t13"), { address: { value: "Fantasiestraße 1", source: "user" } });
+});
+
+test("an address the register rejects as malformed is an input problem, not an outage", async () => {
+  const { orchestrator, models, calls } = setup({
+    router: [{ intents: ["address"], language: "en" }],
+    supervisor: [recordAddressAndVerify("Berliner Str."), "Which house number?"],
+    subAgent: [
+      { toolCalls: [{ name: "validate_berlin_address", args: { address: "Berliner Str." } }] },
+      "The address is missing a house number.",
+    ],
+    toolOverrides: {
+      validate_berlin_address: () => {
+        throw Object.assign(new Error("house number missing"), { kind: "input" });
+      },
+    },
+  });
+
+  const events = await collect(orchestrator.send({ threadId: "t14", message: "Check Berliner Str." }));
+
+  assert.deepEqual(stepsOf(events), ["OfficialDataAgent:started", "OfficialDataAgent:finished"]);
+  assert.equal(calls.length, 1, "no retry");
+  const report = JSON.parse(models.supervisor.calls[1].at(-1).content);
+  assert.deepEqual(report.results, [
+    { tool: "validate_berlin_address", error: { kind: "input", message: "house number missing" } },
+  ]);
+});
+
+test("a Sub-agent that crashes reports failed before the turn ends with an error", async () => {
+  const { orchestrator } = setup({
+    router: [{ intents: ["address"], language: "en" }],
+    supervisor: [recordAddressAndVerify("Berliner Str. 155")],
+    subAgent: [],
+  });
+
+  const events = await collect(orchestrator.send({ threadId: "t15", message: "Check Berliner Str. 155" }));
+
+  assert.deepEqual(stepsOf(events), ["OfficialDataAgent:started", "OfficialDataAgent:failed"]);
+  assert.deepEqual(events.at(-1), { type: "error", message: "ScriptedChatModel ran out of scripted responses" });
 });
 
 test("send() rejects a call without threadId, and one without message, document or confirmation", async () => {

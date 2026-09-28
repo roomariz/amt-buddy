@@ -33,8 +33,17 @@ function coerce(name, value) {
     if (typeof value === "number") return Number.isFinite(value) ? value : undefined;
     return parseNumber(String(value).trim()) ?? undefined;
   }
-  if (name === "buildingYear" && /^\d{4}$/.test(String(value).trim())) return Number(value);
+  if (name === "buildingYear") return coerceBuildingYear(value);
   return value;
+}
+
+// A building year is a year (1935, "1935") or an official construction period
+// ("1921 - 1930"); anything else is ignored.
+function coerceBuildingYear(value) {
+  if (typeof value === "number") return Number.isInteger(value) ? value : undefined;
+  const text = String(value).trim();
+  if (/^\d{4}$/.test(text)) return Number(text);
+  return /\d{4}/.test(text) ? text : undefined;
 }
 
 function clearAddressDerivedFacts(tenancy) {

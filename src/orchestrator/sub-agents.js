@@ -12,7 +12,7 @@ export const SUB_AGENTS = {
   official_data: {
     label: "OfficialDataAgent",
     tools: ["validate_berlin_address", "lookup_building_age"],
-    prompt: `You are the Official Data agent of Amt-Buddy. You verify Berlin addresses against the official register.
+    prompt: `You are the Official Data Sub-agent of Amt-Buddy. You verify Berlin addresses against the official register.
 After a successful address verification, always look up the building age with the returned coordinates.
 ${SHARED_RULES}`,
   },
@@ -23,10 +23,18 @@ const TOOL_ARG_FACTS = {
   validate_berlin_address: { address: "address" },
 };
 
+// Why a Tool may not run yet on these confirmed Tenancy values, or undefined.
+// The building age belongs to a verified address, so it needs official coordinates.
+export function toolRefusal(toolName, facts) {
+  if (toolName === "lookup_building_age" && !facts.coordinates) {
+    return "No verified coordinates: verify the address with validate_berlin_address first.";
+  }
+  return undefined;
+}
+
 // Arguments pinned to confirmed Tenancy values, so a Sub-agent model cannot
 // pass a Tool a value that differs from the Tenancy.
-// lookup_building_age is pinned only once official coordinates exist; within the
-// Official Data run they come from the verification that just happened.
+// Within an Official Data run, the coordinates come from the verification that just happened.
 export function pinnedArgs(toolName, facts) {
   if (toolName === "lookup_building_age") return facts.coordinates ?? {};
   return Object.fromEntries(
@@ -38,10 +46,11 @@ export function pinnedArgs(toolName, facts) {
 
 const MAX_SUB_AGENT_STEPS = 12;
 
-// Runs one Sub-agent as a small ReAct loop over its (already wrapped) Tools and
-// returns its final summary text.
-export async function runSubAgent({ agent, model, tools, task }) {
-  const bound = model.bindTools(tools);
+// Runs one Sub-agent as a small ReAct loop and returns its final summary text.
+// The model is bound to the unwrapped Tools (`schemas`), so it sees their contracts;
+// the calls themselves go to the wrapped Tools.
+export async function runSubAgent({ agent, model, schemas, tools, task }) {
+  const bound = model.bindTools(schemas);
   const graph = new StateGraph(MessagesAnnotation)
     .addNode("agent", async (state) => ({ messages: [await bound.invoke(state.messages)] }))
     .addNode("tools", new ToolNode(tools))

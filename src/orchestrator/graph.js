@@ -5,7 +5,7 @@ import { factsFromEvidence } from "./evidence.js";
 import { intentSchema, normalizeIntents, routerMessages } from "./intents.js";
 import { reply } from "./replies.js";
 import { blockingFacts } from "./requirements.js";
-import { pinnedArgs, runSubAgent, SUB_AGENTS, subAgentTask } from "./sub-agents.js";
+import { pinnedArgs, runSubAgent, SUB_AGENTS, subAgentTask, toolRefusal } from "./sub-agents.js";
 import { AGENT_FOR_TOOL, SUPERVISOR_TOOLS, supervisorSystemMessage } from "./supervisor.js";
 import { confirmedValues, mergeTenancy, tenancyReducer } from "./tenancy.js";
 import { wrapTool } from "./tool-wrapper.js";
@@ -68,15 +68,16 @@ export function buildGraph({ models, tools, log, toolTimeoutMs }) {
     return { draft: textOf(response).trim() || reply("fallback", state.language) };
   }
 
-  // Runs one Sub-agent over its wrapped Tools. Returns its report for the Supervisor
-  // and the Tenancy after the facts its Tool results imply.
-  async function runAgent(agent, args, tenancy, threadId) {
+  // Runs one (already gated) Sub-agent over its wrapped Tools. Returns its report for
+  // the Supervisor and the Tenancy fact updates its Tool results imply.
+  async function delegateToSubAgent(agent, args, tenancy, threadId) {
     const label = SUB_AGENTS[agent].label;
     emit({ type: "agent_step", agent: label, status: "started" });
     const evidence = [];
     let current = tenancy;
-    const agentTools = SUB_AGENTS[agent].tools.map((name) =>
-      wrapTool(tools.get(name), {
+    const baseTools = SUB_AGENTS[agent].tools.map((name) => tools.get(name));
+    const agentTools = baseTools.map((baseTool) =>
+      wrapTool(baseTool, {
         agent,
         threadId,
         timeoutMs: toolTimeoutMs,
@@ -86,16 +87,27 @@ export function buildGraph({ models, tools, log, toolTimeoutMs }) {
           current = mergeTenancy(current, factsFromEvidence([entry]));
         },
         // Resolved per call, so a Tool sees facts an earlier Tool of this run produced.
-        pinnedArgs: () => pinnedArgs(name, confirmedValues(current)),
+        pinnedArgs: () => pinnedArgs(baseTool.name, confirmedValues(current)),
+        guard: () => toolRefusal(baseTool.name, confirmedValues(current)),
       }),
     );
-    const summary = await runSubAgent({
-      agent,
-      model: models.subAgent,
-      tools: agentTools,
-      task: subAgentTask({ args, facts: confirmedValues(tenancy) }),
-    });
-    const failed = evidence.length > 0 && evidence.every((entry) => entry.error);
+    let summary;
+    try {
+      summary = await runSubAgent({
+        agent,
+        model: models.subAgent,
+        schemas: baseTools,
+        tools: agentTools,
+        task: subAgentTask({ args, facts: confirmedValues(tenancy) }),
+      });
+    } catch (error) {
+      emit({ type: "agent_step", agent: label, status: "failed" });
+      throw error;
+    }
+    // Failed: nothing succeeded because an official service is down. Input errors
+    // (a malformed address) are reported as results, so the user is asked to fix them.
+    const failed =
+      evidence.some((entry) => entry.error?.kind === "upstream") && evidence.every((entry) => entry.error);
     emit({ type: "agent_step", agent: label, status: failed ? "failed" : "finished" });
     const report = {
       status: failed ? "failed" : "done",
@@ -129,7 +141,7 @@ export function buildGraph({ models, tools, log, toolTimeoutMs }) {
           emit({ type: "agent_step", agent: SUB_AGENTS[agent].label, status: "needs_facts" });
           report = { status: "needs_facts", missing, unconfirmed };
         } else {
-          ({ report, updates } = await runAgent(agent, toolCall.args, tenancy, threadId));
+          ({ report, updates } = await delegateToSubAgent(agent, toolCall.args, tenancy, threadId));
         }
       } else {
         report = { status: "unavailable", agent: agent ?? null, message: "This Sub-agent is not available yet; answer without it." };

@@ -138,3 +138,39 @@ test("pinned arguments can be resolved at call time", async () => {
     { longitude: 13.3295, latitude: 52.4872 },
   ]);
 });
+
+test("arguments the Tool's schema rejects are an audited input error, not retried", async () => {
+  const { base, calls } = fakeTool(() => ({ predominantConstructionPeriod: null }));
+  const { wrapped, logs, evidence } = wrap(base);
+  const result = JSON.parse(await wrapped.invoke({ longitude: "east", latitude: 52.4 }));
+  assert.equal(result.error, "input");
+  assert.equal(calls(), 0);
+  assert.deepEqual(
+    logs.map((l) => [l.attempts, l.outcome, l.errorKind]),
+    [[1, "error", "input"]],
+  );
+  assert.equal(evidence[0].error.kind, "input");
+});
+
+test("pinned arguments fill in an argument the model left out", async () => {
+  const seen = [];
+  const { base } = fakeTool((args) => {
+    seen.push(args);
+    return { predominantConstructionPeriod: null };
+  });
+  const { wrapped } = wrap(base, { pinnedArgs: { longitude: 13.3295 } });
+  await wrapped.invoke({ latitude: 52.4 });
+  assert.deepEqual(seen, [{ longitude: 13.3295, latitude: 52.4 }]);
+});
+
+test("a guard that refuses the call returns an audited input error without calling the Tool", async () => {
+  const { base, calls } = fakeTool(() => ({ predominantConstructionPeriod: "1921 - 1930" }));
+  const { wrapped, logs, evidence } = wrap(base, { guard: () => "verify the address first" });
+  assert.deepEqual(JSON.parse(await wrapped.invoke(ARGS)), { error: "input", message: "verify the address first" });
+  assert.equal(calls(), 0);
+  assert.deepEqual(
+    logs.map((l) => [l.attempts, l.outcome, l.errorKind]),
+    [[0, "error", "input"]],
+  );
+  assert.equal(evidence[0].result, undefined);
+});

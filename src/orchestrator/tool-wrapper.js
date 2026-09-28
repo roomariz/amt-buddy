@@ -1,4 +1,5 @@
-import { tool } from "@langchain/core/tools";
+import { tool, ToolInputParsingException } from "@langchain/core/tools";
+import { z } from "zod";
 
 export const DEFAULT_TOOL_TIMEOUT_MS = 10_000;
 
@@ -14,8 +15,9 @@ class ToolTimeoutError extends Error {
 // "upstream": everything else, e.g. the Berlin WFS being slow or down.
 export function errorKind(error) {
   if (error?.kind === "input") return "input";
-  if (/InputError$/.test(error?.name ?? "") || /InputError$/.test(error?.constructor?.name ?? "")) return "input";
-  if (error?.name === "ToolInputParsingException" || error?.name === "ZodError") return "input";
+  if (/InputError$/.test(error?.name ?? "")) return "input";
+  // Arguments the Tool's schema rejects.
+  if (error instanceof ToolInputParsingException || error?.name === "ZodError") return "input";
   return "upstream";
 }
 
@@ -35,7 +37,10 @@ export function defaultAuditLog(entry) {
 // per call (argument names, never values), one evidence entry per call, and
 // structured errors returned to the Sub-agent instead of thrown.
 // `pinnedArgs` (an object, or a function returning one at call time) override whatever
-// the model passed, so Tools always see Tenancy values.
+// the model passed, so Tools always see Tenancy values. The Tool's own schema is
+// checked after pinning, inside the wrapper, so a malformed call is an audited input
+// error too; bind the model to the unwrapped Tool to give it the schema.
+// `guard` may refuse a call (returning the reason) before the Tool runs.
 export function wrapTool(
   baseTool,
   {
@@ -46,6 +51,7 @@ export function wrapTool(
     log = defaultAuditLog,
     onEvidence = () => {},
     pinnedArgs = {},
+    guard = () => undefined,
   },
 ) {
   return tool(
@@ -55,7 +61,9 @@ export function wrapTool(
       const startedAt = Date.now();
       let attempts = 0;
       let outcome;
-      while (attempts <= retries) {
+      const refusal = guard();
+      if (refusal) outcome = { error: { kind: "input", message: refusal } };
+      while (!refusal && attempts <= retries) {
         attempts += 1;
         try {
           outcome = { result: await withTimeout(Promise.resolve(baseTool.invoke(args)), timeoutMs, baseTool.name) };
@@ -80,6 +88,6 @@ export function wrapTool(
       if (outcome.error) return JSON.stringify({ error: outcome.error.kind, message: outcome.error.message });
       return JSON.stringify(outcome.result);
     },
-    { name: baseTool.name, description: baseTool.description, schema: baseTool.schema },
+    { name: baseTool.name, description: baseTool.description, schema: z.looseObject({}) },
   );
 }
