@@ -4,7 +4,7 @@ import { Annotation, END, getWriter, MessagesAnnotation, START, StateGraph } fro
 import { factsFromEvidence, hasComplianceVerdict } from "./evidence.js";
 import { intentSchema, normalizeIntents, routerMessages } from "./intents.js";
 import { reply } from "./replies.js";
-import { blockingFacts } from "./requirements.js";
+import { gateSubAgent } from "./requirements.js";
 import { pinnedArgs, runSubAgent, SUB_AGENTS, subAgentTask, toolRefusal } from "./sub-agents.js";
 import { AGENT_FOR_TOOL, SUPERVISOR_TOOLS, supervisorSystemMessage } from "./supervisor.js";
 import { confirmedValues, mergeTenancy, tenancyReducer } from "./tenancy.js";
@@ -137,15 +137,16 @@ export function buildGraph({ models, tools, log, toolTimeoutMs }) {
         updates = (toolCall.args.facts ?? []).map(({ fact, value }) => ({ fact, value, source: "user" }));
         report = { status: "recorded" };
       } else if (SUB_AGENTS[agent]) {
-        // Gating in code: a Sub-agent without its required facts does not run.
-        const { blocked, missing, unconfirmed } = blockingFacts(agent, toolCall.args ?? {}, tenancy);
-        if (blocked) {
-          emit({ type: "agent_step", agent: SUB_AGENTS[agent].label, status: "needs_facts" });
-          report = { status: "needs_facts", missing, unconfirmed };
-        } else {
+        // Gating in code: whatever lacks its required facts does not run; the rest does.
+        const { run, needsFacts } = gateSubAgent(agent, toolCall.args ?? {}, tenancy);
+        if (needsFacts) emit({ type: "agent_step", agent: SUB_AGENTS[agent].label, status: "needs_facts" });
+        if (run) {
           let evidence;
-          ({ report, updates, evidence } = await delegateToSubAgent(agent, toolCall.args, tenancy, threadId));
+          ({ report, updates, evidence } = await delegateToSubAgent(agent, run, tenancy, threadId));
           turnEvidence.push(...evidence);
+          if (needsFacts) report.needsFacts = needsFacts;
+        } else {
+          report = { status: "needs_facts", ...needsFacts };
         }
       } else {
         report = { status: "unavailable", agent: agent ?? null, message: "This Sub-agent is not available yet; answer without it." };

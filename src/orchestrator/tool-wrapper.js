@@ -38,9 +38,8 @@ export function defaultAuditLog(entry) {
 // structured errors returned to the Sub-agent instead of thrown.
 // `pinnedArgs` (an object, or a function returning one at call time) override whatever
 // the model passed (a pinned `undefined` removes the model's value), so Tools always see Tenancy values.
-// The Tool's own schema is
-// checked after pinning, inside the wrapper, so a malformed call is an audited input
-// error too; bind the model to the unwrapped Tool to give it the schema.
+// The Tool's own schema is checked after pinning, inside the wrapper, so a malformed
+// call is an audited input error too; bind the model to the unwrapped Tool to give it the schema.
 // `guard` may refuse a call (returning the reason) before the Tool runs.
 export function wrapTool(
   baseTool,

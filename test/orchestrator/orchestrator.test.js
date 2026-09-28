@@ -448,6 +448,7 @@ test("an occupancy check without occupants ends the turn with a question, and th
   assert.equal(models.subAgent.calls.length, 0, "the Sub-agent does not run");
   assert.deepEqual(JSON.parse(models.supervisor.calls[1].at(-1).content), {
     status: "needs_facts",
+    checks: ["occupancy"],
     missing: ["occupants", "childrenUpToSix"],
     unconfirmed: [],
   });
@@ -492,6 +493,54 @@ test("a Mietspiegel check without Wohnlage and building year reports needs_facts
     "residentialLocation",
     "buildingYear",
   ]);
+});
+
+test("a Compliance request with one check short of facts still runs the other check", async () => {
+  const { orchestrator, models, calls } = setup({
+    router: [{ intents: ["mietspiegel", "occupancy"], language: "en" }],
+    supervisor: [
+      {
+        toolCalls: [
+          {
+            name: "record_tenancy_facts",
+            args: {
+              facts: [
+                { fact: "address", value: "Berliner Str. 155" },
+                { fact: "livingAreaSqm", value: 50 },
+                { fact: "contractRent", value: 780 },
+                { fact: "rooms", value: 2 },
+              ],
+            },
+          },
+          { name: "ask_official_data_agent", args: { request: "Verify" } },
+          { name: "ask_compliance_agent", args: { request: "Both checks", checks: ["mietspiegel", "occupancy"] } },
+        ],
+      },
+      "Your rent of 780 € is above the range. How many people live in the flat, and how many are children up to six?",
+    ],
+    subAgent: [...OFFICIAL_DATA_SCRIPT, mietspiegelCall(780), "Calculated."],
+  });
+
+  const events = await collect(
+    orchestrator.send({ threadId: "t26", message: "Berliner Str. 155, 50 m², 2 rooms, 780 € cold. Too expensive? Overcrowded?" }),
+  );
+
+  assert.deepEqual(stepsOf(events), [
+    "OfficialDataAgent:started",
+    "OfficialDataAgent:finished",
+    "ComplianceAgent:needs_facts",
+    "ComplianceAgent:started",
+    "ComplianceAgent:finished",
+  ]);
+  assert.deepEqual(
+    calls.map((c) => c.name),
+    ["validate_berlin_address", "lookup_building_age", "calculate_mietspiegel"],
+  );
+  assert.match(models.subAgent.calls[3].map((m) => m.content).join("\n"), /Checks: mietspiegel\n/);
+  const report = JSON.parse(models.supervisor.calls[1].at(-1).content);
+  assert.equal(report.status, "done");
+  assert.deepEqual(report.needsFacts, { checks: ["occupancy"], missing: ["occupants", "childrenUpToSix"], unconfirmed: [] });
+  assert.equal(report.results[0].tool, "calculate_mietspiegel");
 });
 
 test("a correction replaces the fact and the check re-runs with the new value", async () => {
