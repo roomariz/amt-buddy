@@ -44,8 +44,9 @@ test("a blocked check shows as needs facts next to the check that could run", ()
     state.steps.map(({ status, label }) => ({ status, label })),
     [
       { status: "needs_facts", label: "Für die Prüfung fehlen noch Angaben" },
-      { status: "done", label: "Mietspiegel und Belegung geprüft" },
+      { status: "done", label: "Mögliche Prüfung abgeschlossen" },
     ],
+    "only one of the two checks ran, so the chip does not claim both",
   );
 });
 

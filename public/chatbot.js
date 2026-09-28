@@ -8,7 +8,7 @@
  * through renderMarkdown, which escapes everything first. Nothing here logs messages or uploads.
  */
 
-import { fetchChatMode, runTurn, uploadLease, UPLOAD_TEXT } from "./chat/api.js";
+import { fetchChatMode, MODE_LABEL, runTurn, uploadLease, UPLOAD_TEXT } from "./chat/api.js";
 import { renderMarkdown } from "./chat/markdown.js";
 import { confirmPayload, inputModeFor } from "./chat/tenancy.js";
 import { currentThreadId, startNewThread } from "./chat/thread.js";
@@ -53,6 +53,7 @@ let threadId = currentThreadId(localStore(), newId);
 let stagedFile = null;
 let busy = false;
 let activeTurn = null; // AbortController of the running turn
+let openReviewCard = null; // the latest review card, until it is sent or a newer turn starts
 
 // --- small DOM helpers -------------------------------------------------------------------------
 
@@ -62,6 +63,8 @@ function el(tag, className, text) {
   if (text !== undefined) node.textContent = text;
   return node;
 }
+
+const fileSizeLabel = (file) => `${Math.max(1, Math.round(file.size / 1024))} KB`;
 
 function scrollToBottom() {
   if (gptScrollContainer) gptScrollContainer.scrollTop = gptScrollContainer.scrollHeight;
@@ -100,7 +103,7 @@ function setStagedFile(file) {
     chatFileInput.value = "";
     return;
   }
-  chipFileName.textContent = `${file.name} (${Math.max(1, Math.round(file.size / 1024))} KB)`;
+  chipFileName.textContent = `${file.name} (${fileSizeLabel(file)})`;
   attachmentPreview.hidden = false;
   chatUserInput.focus();
 }
@@ -116,7 +119,7 @@ function appendUserMessage(text, file = null) {
     chip.append(
       el("span", "chip-icon", "📄"),
       el("span", "chip-name", file.name),
-      el("span", "chip-size", `(${Math.max(1, Math.round(file.size / 1024))} KB)`),
+      el("span", "chip-size", `(${fileSizeLabel(file)})`),
     );
     bubble.append(chip);
   }
@@ -137,17 +140,19 @@ function appendBotTurn() {
   header.append(el("span", "bot-name", "Amt-Buddy"), el("span", "bot-tag", "Offizielle Prüfung · Berlin Open Data"));
   const steps = el("ul", "agent-steps");
   steps.setAttribute("aria-label", "Arbeitsschritte");
-  const pending = el("p", "turn-pending", "Amt-Buddy arbeitet …");
+  const working = el("p", "turn-working", "Amt-Buddy arbeitet …");
   const content = el("div", "bot-content");
   const error = el("p", "turn-error");
   error.hidden = true;
   const extra = el("div", "turn-extra");
-  bubble.append(header, steps, pending, content, error, extra);
+  bubble.append(header, steps, working, content, error, extra);
   row.append(avatar, bubble);
   chatStream.append(row);
   scrollToBottom();
-  return { row, steps, pending, content, error, extra };
+  return { row, steps, working, content, error, extra };
 }
+
+const STEP_CLASS = { running: "is-running", done: "is-done", failed: "is-failed", needs_facts: "is-needs-facts" };
 
 function renderStepChip(list, { key, status, label }) {
   let chip = list.querySelector(`[data-step="${key}"]`);
@@ -159,15 +164,18 @@ function renderStepChip(list, { key, status, label }) {
     chip.append(icon, el("span", "step-label"));
     list.append(chip);
   }
-  chip.className = `step-chip is-${status.replace("_", "-")}`;
+  chip.className = `step-chip ${STEP_CLASS[status]}`;
   chip.querySelector(".step-label").textContent = label;
 }
 
 function renderTurn(view, state) {
   for (const step of state.steps) renderStepChip(view.steps, { key: step.id, status: step.status, label: step.label });
-  // Only the escaping Markdown renderer ever writes HTML from model output.
-  view.content.innerHTML = renderMarkdown(state.answer);
-  view.pending.hidden = state.phase !== "streaming" || state.steps.some((s) => s.status === "running") || !!state.answer;
+  // Only the escaping Markdown renderer ever writes HTML from model output (and only when it changed).
+  if (view.content.dataset.rendered !== state.answer) {
+    view.content.innerHTML = renderMarkdown(state.answer);
+    view.content.dataset.rendered = state.answer;
+  }
+  view.working.hidden = state.phase !== "streaming" || state.steps.some((s) => s.status === "running") || !!state.answer;
   view.error.hidden = !state.error;
   view.error.textContent = state.error ?? "";
   scrollToBottom();
@@ -186,7 +194,7 @@ function renderReviewCard(view, review) {
   const hint = el(
     "p",
     "review-hint",
-    "Gelb und rot markierte Werte sind unsicher erkannt. Bitte prüfen oder korrigieren Sie sie – erst dann rechnet Amt-Buddy damit.",
+    "Unsicher erkannte Werte sind gelb oder rot markiert. Bitte prüfen oder korrigieren Sie sie – erst dann rechnet Amt-Buddy damit.",
   );
   const grid = el("div", "doc-fact-grid");
   for (const field of review.fields) {
@@ -221,26 +229,35 @@ function renderReviewCard(view, review) {
     const inputs = Object.fromEntries(new FormData(form).entries());
     const confirm = confirmPayload(review.fields, inputs);
     if (Object.keys(confirm).length === 0) return;
-    for (const control of form.elements) control.disabled = true;
+    setFormDisabled(form, true);
     const summary = review.fields
       .filter((field) => field.name in confirm)
       .map((field) => `${field.label}: ${confirm[field.name]}${field.unit ? ` ${field.unit}` : ""}`)
       .join(", ");
-    sendTurn({ confirm }, { text: `Werte bestätigt – ${summary}` });
+    sendTurn({ confirm }, { text: `Werte bestätigt – ${summary}` }, null, form);
   });
 
+  openReviewCard = form;
   view.extra.append(form);
   scrollToBottom();
   form.querySelector("input:required")?.focus();
 }
 
+function setFormDisabled(form, disabled) {
+  for (const control of form.elements) control.disabled = disabled;
+}
+
 // --- turns -------------------------------------------------------------------------------------
 
 // Sends one turn. `request` holds message / documentId / confirm; `shown` is what the user bubble
-// shows ({ text, file }). A staged file is uploaded first and sent as documentId.
-async function sendTurn(request, shown, file = null) {
+// shows ({ text, file }). A staged file is uploaded first and sent as documentId. `reviewForm` is
+// the review card a confirm came from: it opens again if the confirm turn fails.
+async function sendTurn(request, shown, file = null, reviewForm = null) {
   if (busy) return;
   setBusy(true);
+  // An older review card would send values from before this turn: close it.
+  if (openReviewCard && openReviewCard !== reviewForm) setFormDisabled(openReviewCard, true);
+  openReviewCard = null;
   const controller = new AbortController();
   activeTurn = controller;
   const turnThread = threadId;
@@ -252,7 +269,7 @@ async function sendTurn(request, shown, file = null) {
     let documentId;
     if (file) {
       renderStepChip(view.steps, { key: "upload", status: "running", label: "Lade Ihren Mietvertrag hoch …" });
-      view.pending.hidden = true;
+      view.working.hidden = true;
       announce(["Lade Ihren Mietvertrag hoch …"]);
       try {
         ({ documentId } = await uploadLease({ fetchImpl: fetch, payload: await filePayload(file), signal: controller.signal }));
@@ -278,6 +295,10 @@ async function sendTurn(request, shown, file = null) {
       },
     });
     if (controller.signal.aborted) return;
+    if (reviewForm && state.phase === "error") {
+      setFormDisabled(reviewForm, false);
+      openReviewCard = reviewForm;
+    }
     if (state.review) {
       renderReviewCard(view, state.review);
       reviewShown = true;
@@ -324,6 +345,7 @@ function submitInput() {
 function resetToNewChat() {
   activeTurn?.abort(); // cancels the running turn on the server too
   activeTurn = null;
+  openReviewCard = null;
   setBusy(false);
   threadId = startNewThread(localStore(), newId);
   setStagedFile(null);
@@ -338,7 +360,7 @@ function resetToNewChat() {
 async function showChatMode() {
   const mode = await fetchChatMode(fetch);
   if (modeNote) modeNote.hidden = mode !== "rule_based";
-  if (modeLabel) modeLabel.textContent = mode === "rule_based" ? "Regelmodus" : mode === "orchestrator" ? "KI-Chat" : "Chat";
+  if (modeLabel) modeLabel.textContent = MODE_LABEL[mode] ?? "Chat";
 }
 
 // --- event listeners ---------------------------------------------------------------------------

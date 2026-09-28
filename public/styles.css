@@ -1711,14 +1711,14 @@ footer a { color: inherit; }
   }
 }
 
-.turn-pending {
+.turn-working {
   margin: 0;
   color: #64748b;
   font-size: 0.9rem;
   font-style: italic;
 }
 
-.turn-pending[hidden],
+.turn-working[hidden],
 .turn-error[hidden] {
   display: none;
 }

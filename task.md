@@ -118,28 +118,34 @@ Upgrade the front-end to support conversational AI, interactive tool previews, a
 - [x] **3.1 Chat Interface Layout & Message Stream**
   - **Task**: Floating, collapsible chat assistant widget with message bubble history, typing indicators, and markdown formatting.
   - **Priority**: High
-  - **Status**: Implemented (`public/index.html`, `public/app.js`, `public/styles.css`).
+  - **Status (LangGraph Orchestrator, `/chatbot`)**: Done: full-page free-text chat on the SSE endpoint (`public/chatbot.html`, `public/chatbot.js`, `public/chat/`), answers as safe Markdown (escape first, whitelist), status note in `rule_based` mode, keyboard submit, focus management, `aria-live` status.
+  - **Status (rule-based chatbot, floating widget)**: Implemented (`public/index.html`, `public/app.js`, `public/styles.css`).
 
 - [x] **3.2 Tool Call & Progress Visualization**
   - **Task**: Visual tool execution chips (`⚙️ Tool: <name> (X ms)`) indicating active operations in chat replies.
   - **Priority**: Medium
-  - **Status**: Implemented (`.tool-chip`).
+  - **Status (LangGraph Orchestrator, `/chatbot`)**: Done: live `agent_step` chips per Sub-agent (running / done / failed / needs facts), announced via `aria-live` (`public/chat/turn.js`).
+  - **Status (rule-based chatbot, floating widget)**: Implemented (`.tool-chip`).
 
 - [x] **3.3 Quick Suggestions & Follow-ups**
   - **Task**: Clickable prompt suggestion pills to explore Mietspiegel, address checks, and occupancy rules with one click.
   - **Priority**: Medium
-  - **Status**: Implemented (`.suggestion-pill`).
+  - **Status (LangGraph Orchestrator, `/chatbot`)**: Done: the guided wizard's buttons are now optional suggestion prompts that send a message.
+  - **Status (rule-based chatbot, floating widget)**: Implemented (`.suggestion-pill`).
 
-- [ ] **3.4 Extracted Data Review & Verification Card**
+- [x] **3.4 Extracted Data Review & Verification Card**
   - **Task**: Build an interactive form card inside chat allowing users to review and manually correct extracted OCR data (rent, area, address, rooms) before triggering compliance calculations.
   - **Priority**: High
   - **Acceptance Criteria**: Editable field cards with confidence highlights (green/yellow/red) allowing one-click confirmation to run calculations.
-  - **Status**: Backend only: `send({ confirm })` confirms Unconfirmed facts; no UI card yet.
+  - **Status (LangGraph Orchestrator, `/chatbot`)**: Done: a `tenancy` event with Unconfirmed facts shows an editable card of the lease's values, green / yellow / red by confidence (≥ 0.8 / > 0.5 / ≤ 0.5 or none); one click sends `confirm` and the check continues (`public/chat/tenancy.js`).
+  - **Status (rule-based chatbot, floating widget)**: Not planned (the rule-based chat has no Tenancy).
 
 - [ ] **3.5 Session Management & Conversation History**
   - **Task**: Provide conversation reset, thread persistence in `localStorage` or session backend, and export to PDF/Markdown report.
   - **Priority**: Low
   - **Acceptance Criteria**: User can restart context or save their compliance evaluation report.
+  - **Status (LangGraph Orchestrator, `/chatbot`)**: Partial: "Neuer Chat" starts a new `threadId` (and cancels a running turn); the `threadId` is kept in `localStorage`, so a reload continues the thread on the server, but the page does not redraw earlier messages. Threads live in server memory (lost on restart). No PDF/Markdown export yet.
+  - **Status (rule-based chatbot, floating widget)**: Not implemented.
 
 ---
 
@@ -194,7 +200,7 @@ Combine all components into seamless user journeys.
   - **Task**: Enable user to correct any parsed field in chat (e.g., "Actually the cold rent is 720, not 780") and have the orchestrator re-run tool calculations.
   - **Priority**: Medium
   - **Acceptance Criteria**: Tool recalculation reflects user adjustments immediately in subsequent chat messages.
-  - **Status**: Done in the Orchestrator and tested through `send()`; not yet wired to the UI.
+  - **Status**: Done in the Orchestrator and tested through `send()`; in the UI on `/chatbot` (free-text corrections and the review card).
 
 - [ ] **5.3 Automated Testing & E2E Verification**
   - **Task**: Write unit and integration tests for:

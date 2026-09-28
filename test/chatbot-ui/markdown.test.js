@@ -106,3 +106,24 @@ test("a bare URL at the end of an italic sentence keeps the italics", () => {
     '<p><strong>Quelle: <a href="https://daten.berlin.de/x" target="_blank" rel="noopener noreferrer">https://daten.berlin.de/x</a></strong></p>',
   );
 });
+
+test("a URL never swallows a link or code span next to it (no markup inside an href)", () => {
+  const inputs = [
+    "https://a.com[l](http://x/onmouseover=onerror=alert;throw/XSS/.source//)",
+    'https://a.com`x"y`',
+    '[l](https://a`x"y`)',
+  ];
+  for (const input of inputs) {
+    const html = renderMarkdown(input);
+    for (const [, href] of html.matchAll(/href="([^"]*)"/g)) {
+      assert.doesNotMatch(href, /[<>]/, `${input} → ${html}`);
+    }
+    assert.equal((html.match(/<a /g) ?? []).length, (html.match(/<\/a>/g) ?? []).length);
+    assert.doesNotMatch(html, /<a [^>]*<a /, `${input} → ${html}`);
+  }
+  assert.equal(
+    renderMarkdown("https://a.com[l](http://x/y)"),
+    '<p><a href="https://a.com" target="_blank" rel="noopener noreferrer">https://a.com</a>' +
+      '<a href="http://x/y" target="_blank" rel="noopener noreferrer">l</a></p>',
+  );
+});

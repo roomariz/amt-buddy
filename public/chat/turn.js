@@ -9,11 +9,12 @@ export const TURN_TEXT = {
   done: "Antwort ist da.",
 };
 
-// Sub-agent step wording per status. Compliance names the check the message asked for.
-function complianceCheck(intents) {
+// Sub-agent step wording per status. Compliance names the check the message asked for; when
+// both were asked for but one is blocked (needs_facts), the events do not say which one runs.
+function complianceCheck(intents, blocked) {
   const mietspiegel = intents.includes("mietspiegel");
   const occupancy = intents.includes("occupancy");
-  if (occupancy && mietspiegel) return "both";
+  if (occupancy && mietspiegel) return blocked ? "remaining" : "both";
   return occupancy ? "occupancy" : "mietspiegel";
 }
 
@@ -29,11 +30,13 @@ const STEP_LABELS = {
       mietspiegel: "Berechne den Mietspiegel …",
       occupancy: "Prüfe die Belegung (§ 7 WoAufG Bln) …",
       both: "Prüfe Mietspiegel und Belegung …",
+      remaining: "Führe die mögliche Prüfung durch …",
     },
     done: {
       mietspiegel: "Mietspiegel berechnet",
       occupancy: "Belegung geprüft",
       both: "Mietspiegel und Belegung geprüft",
+      remaining: "Mögliche Prüfung abgeschlossen",
     },
     failed: "Die Prüfung konnte nicht abgeschlossen werden",
     needs_facts: "Für die Prüfung fehlen noch Angaben",
@@ -53,9 +56,9 @@ const OTHER_STEP = {
   needs_facts: "Es fehlen noch Angaben",
 };
 
-function stepLabel(agent, status, intents) {
+function stepLabel(agent, status, intents, blocked = false) {
   const label = (STEP_LABELS[agent] ?? OTHER_STEP)[status];
-  return typeof label === "string" ? label : label[complianceCheck(intents)];
+  return typeof label === "string" ? label : label[complianceCheck(intents, blocked)];
 }
 
 // Event statuses → chip statuses.
@@ -75,7 +78,8 @@ function withStep(state, agent, status) {
   const step = running ?? { id: steps.length, agent };
   if (!running) steps.push(step);
   step.status = status;
-  step.label = stepLabel(agent, status, state.intents);
+  const blocked = steps.some((s) => s.agent === agent && s.status === "needs_facts");
+  step.label = stepLabel(agent, status, state.intents, blocked);
   return { ...state, steps };
 }
 

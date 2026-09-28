@@ -28,6 +28,9 @@ const postJson = (fetchImpl, url, body, signal) =>
     signal,
   });
 
+// How the sidebar names each chat mode.
+export const MODE_LABEL = { orchestrator: "KI-Chat", rule_based: "Regelmodus" };
+
 // "orchestrator" or "rule_based"; null when the status cannot be read.
 export async function fetchChatMode(fetchImpl) {
   try {
@@ -63,23 +66,17 @@ export async function uploadLease({ fetchImpl, payload, signal }) {
 // Resolves with the final state; it always ends in phase "done" or "error".
 export async function runTurn({ fetchImpl, request, signal, onChange = () => {} }) {
   let state = initialTurn();
+  const commit = (next) => {
+    if (next === state) return;
+    const previous = state;
+    state = next;
+    onChange(state, previous);
+  };
   const apply = (events) => {
-    for (const event of events) {
-      const next = reduceTurn(state, event);
-      if (next !== state) {
-        const previous = state;
-        state = next;
-        onChange(state, previous);
-      }
-    }
+    for (const event of events) commit(reduceTurn(state, event));
   };
   const finish = () => {
-    const next = endTurn(state);
-    if (next !== state) {
-      const previous = state;
-      state = next;
-      onChange(state, previous);
-    }
+    commit(endTurn(state));
     return state;
   };
 

@@ -18,20 +18,27 @@ function renderInline(raw) {
 
   let text = escapeHtml(raw);
   text = text.replace(/`([^`]+)`/g, (_, code) => hold(`<code>${code}</code>`));
-  text = text.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (_, label, url) =>
-    hold(`<a href="${url}" target="_blank" rel="noopener noreferrer">${emphasis(label)}</a>`),
+  // URLs never contain a placeholder (NUL), so a link or code span next to one stays outside the href.
+  text = text.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)\0]+)\)/g, (_, label, url) =>
+    hold(anchor(url, emphasis(label))),
   );
   // Bare URLs (already escaped: stop at an escaped quote or bracket); trailing punctuation stays text.
-  text = text.replace(/https?:\/\/(?:(?!&quot;|&#39;|&lt;|&gt;)\S)+/g, (match) => {
+  text = text.replace(/https?:\/\/(?:(?!&quot;|&#39;|&lt;|&gt;)[^\s\0])+/g, (match) => {
     const url = match.replace(/[.,:!?)\]_*]+$/, "");
-    const link = `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`;
-    return hold(link) + match.slice(url.length);
+    return hold(anchor(url, url)) + match.slice(url.length);
   });
   text = emphasis(text);
   while (text.includes(HOLD)) {
     text = text.replace(new RegExp(`${HOLD}(\\d+)${HOLD}`, "g"), (_, index) => held[Number(index)]);
   }
   return text;
+}
+
+// An http(s) link. `url` is already escaped; anything that could end the attribute or open a
+// tag (a quote, <, >, whitespace or a placeholder) means it is not a URL we built: show it as text.
+function anchor(url, labelHtml) {
+  if (!/^https?:\/\/[^\s"'<>\0]+$/.test(url)) return url;
+  return `<a href="${url}" target="_blank" rel="noopener noreferrer">${labelHtml}</a>`;
 }
 
 function emphasis(text) {
