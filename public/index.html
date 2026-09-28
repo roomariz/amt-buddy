@@ -121,6 +121,48 @@
         </p>
       </footer>
     </main>
+
+    <!-- Floating Chatbot Widget -->
+    <div id="chatbot-container" class="chatbot-container">
+      <button id="chatbot-toggle-btn" class="chatbot-toggle-btn" aria-label="Amt-Buddy Chatbot öffnen" title="Chatbot öffnen">
+        <span class="chatbot-icon" aria-hidden="true">💬</span>
+        <span class="chatbot-label">Amt-Buddy Assistent</span>
+      </button>
+
+      <div id="chatbot-window" class="chatbot-window" hidden aria-live="polite">
+        <header class="chatbot-header">
+          <div class="chatbot-title-group">
+            <span class="status-dot" aria-hidden="true"></span>
+            <strong>Amt-Buddy Assistent</strong>
+            <span class="chatbot-tag">KI &amp; Tools</span>
+          </div>
+          <button id="chatbot-close-btn" class="chatbot-close-btn" aria-label="Chat schließen" title="Schließen">✕</button>
+        </header>
+
+        <div id="chatbot-messages" class="chatbot-messages" role="log">
+          <!-- Messages will be injected here -->
+        </div>
+
+        <div id="chatbot-suggestions" class="chatbot-suggestions">
+          <!-- Quick suggestion prompt pills -->
+        </div>
+
+        <form id="chatbot-form" class="chatbot-form">
+          <input
+            type="text"
+            id="chatbot-input"
+            class="chatbot-input"
+            placeholder="Frage stellen oder Adresse eingeben …"
+            autocomplete="off"
+            required
+          />
+          <button type="submit" id="chatbot-send-btn" class="chatbot-send-btn" aria-label="Nachricht senden">
+            ➤
+          </button>
+        </form>
+      </div>
+    </div>
+
     <script type="module" src="/app.js"></script>
   </body>
 </html>
