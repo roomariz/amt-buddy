@@ -8,18 +8,21 @@ import {
 import { BERLIN_BUILDING_AGE_SOURCE, getBerlinBuildingAgeArea } from "../berlin-building-age.js";
 import { evaluateMietspiegel } from "../berlin-mietspiegel.js";
 import { assessOccupancy } from "../occupancy-assessment.js";
-import { createStubTools } from "./stub-tools.js";
+import { STUB_HANDLERS } from "./stub-tools.js";
 import { TOOL_CONTRACTS } from "./tool-contracts.js";
 import { DEFAULT_TOOL_TIMEOUT_MS } from "./tool-wrapper.js";
 
 // The register matches street names exactly (case-insensitive), and parseAddressInput
-// wants a comma or line break before the postal code. Chat addresses often have neither:
-// "Berliner Str. 155 10715" becomes "Berliner Straße 155, 10715".
-function normalizeChatAddress(address) {
-  const text = String(address)
+// wants a comma or line break right before the postal code. Chat addresses often have neither:
+// "Berliner Str. 155 10715" and "Berliner Str. 155, Berlin 10715" become "Berliner Straße 155, 10715";
+// "Berliner Straße 155 10715, Berlin" becomes "Berliner Straße 155, 10715 Berlin".
+function tidyChatAddress(address) {
+  return String(address)
     .replace(/(s)tr\.(?=[\s,\d]|$)/giu, "$1traße")
-    .replace(/(s)trasse(?=[\s,\d]|$)/giu, "$1traße");
-  return /[,\r\n]/.test(text) ? text : text.replace(/\s+(\d{5})(?=\s|$)/u, ", $1");
+    .replace(/(s)trasse(?=[\s,\d]|$)/giu, "$1traße")
+    .replace(/,[ \t]*Berlin[ \t]+(\d{5})(?=[\s,]|$)/iu, ", $1")
+    .replace(/(\d[ \t]*[a-z]?)[ \t]+(\d{5})(?=[\s,]|$)/iu, "$1, $2")
+    .replace(/(,[ \t]*\d{5})[ \t]*,[ \t]*(?=\S)/u, "$1 ");
 }
 
 const MISSING_PARTS =
@@ -29,7 +32,7 @@ const MISSING_PARTS =
 // is written for the web form; the Supervisor needs to know what to ask the user for.
 function parseChatAddress(address) {
   try {
-    return parseAddressInput({ address: normalizeChatAddress(address) });
+    return parseAddressInput({ address: tidyChatAddress(address) });
   } catch (error) {
     if (!(error instanceof AddressInputError)) throw error;
     error.message = error.details.some((detail) => detail.field === "address")
@@ -80,8 +83,10 @@ async function lookupBuildingAge({ longitude, latitude }, services) {
 const HANDLERS = {
   validate_berlin_address: validateBerlinAddress,
   lookup_building_age: lookupBuildingAge,
-  calculate_mietspiegel: (args) => evaluateMietspiegel(args),
-  assess_occupancy_compliance: (args) => assessOccupancy(args),
+  calculate_mietspiegel: evaluateMietspiegel,
+  assess_occupancy_compliance: assessOccupancy,
+  // Lease OCR is not wired in yet.
+  extract_lease_data: STUB_HANDLERS.extract_lease_data,
 };
 
 // The Tools backed by the official Berlin services and the real calculations, plus the
@@ -100,6 +105,5 @@ export function createBerlinTools({ fetchImpl, timeoutMs = DEFAULT_TOOL_TIMEOUT_
       schema,
     });
   });
-  const leaseStub = createStubTools().tools.find((candidate) => candidate.name === "extract_lease_data");
-  return { tools: [...tools, leaseStub] };
+  return { tools };
 }

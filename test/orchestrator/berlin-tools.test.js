@@ -70,6 +70,8 @@ test("validate_berlin_address accepts the address forms a chat passes: abbreviat
     "Berliner Strasse 155 10715 Berlin",
     "berliner str. 155, 10715",
     "Berliner Straße 155\n10715 Berlin-Wilmersdorf",
+    "Berliner Straße 155 10715, Berlin",
+    "Berliner Str. 155, Berlin 10715",
   ]) {
     const result = await call("validate_berlin_address", { address });
     assert.equal(result.verified, true, address);

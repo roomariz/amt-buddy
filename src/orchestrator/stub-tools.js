@@ -4,7 +4,7 @@ import { evaluateMietspiegel } from "../berlin-mietspiegel.js";
 import { assessOccupancy } from "../occupancy-assessment.js";
 import { TOOL_CONTRACTS } from "./tool-contracts.js";
 
-const DEFAULT_HANDLERS = {
+export const STUB_HANDLERS = {
   validate_berlin_address: () => ({
     verified: true,
     address: {
@@ -34,7 +34,7 @@ const DEFAULT_HANDLERS = {
 export function createStubTools(overrides = {}) {
   const calls = [];
   const tools = Object.values(TOOL_CONTRACTS).map((contract) => {
-    const handler = overrides[contract.name] ?? DEFAULT_HANDLERS[contract.name];
+    const handler = overrides[contract.name] ?? STUB_HANDLERS[contract.name];
     return tool(
       async (args) => {
         calls.push({ name: contract.name, args });
