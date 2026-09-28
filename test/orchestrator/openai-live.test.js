@@ -6,7 +6,7 @@ import { createOpenAIModels } from "../../src/orchestrator/openai.js";
 
 // The live tests call the real OpenAI API (stub Tools, so no Berlin services) and
 // run only when both variables are set; `npm test` stays offline otherwise.
-const live = Boolean(process.env.OPENAI_API_KEY && process.env.OPENAI_MODEL);
+const live = Boolean(process.env.OPENAI_API_KEY?.trim() && process.env.OPENAI_MODEL?.trim());
 const liveOptions = { skip: live ? false : "set OPENAI_API_KEY and OPENAI_MODEL to run", timeout: 180_000 };
 
 function liveOrchestrator() {

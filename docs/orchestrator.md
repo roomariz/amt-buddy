@@ -10,7 +10,7 @@ Vocabulary (Tenancy, Tenancy fact, Unconfirmed fact, Canonical address, Complian
 
 ## For Tool authors
 
-Build every Tool from its contract in `src/orchestrator/tool-contracts.js` (ADR 0001). `createOrchestrator` refuses to start if a Tool is missing, misnamed or not a LangChain tool.
+Build every Tool from its contract in `src/orchestrator/tool-contracts.js` (ADR 0001). `createOrchestrator` refuses to start if a Tool with a contract's name is missing (a misnamed Tool counts as missing) or has no `invoke` method.
 
 ```js
 import { tool } from "@langchain/core/tools";
@@ -22,7 +22,7 @@ export const calculateMietspiegelTool = tool(async (args) => evaluateMietspiegel
 
 | Tool | Sub-agent | Input | Returns |
 |---|---|---|---|
-| `validate_berlin_address` | Official Data | `{ address }` | `{ verified, address: { street, houseNumber, postalCode, district, coordinates: { longitude, latitude }, residentialLocation } \| null }` |
+| `validate_berlin_address` | Official Data | `{ address }` | `{ verified, address: { street, houseNumber, postalCode, district, coordinates: { longitude, latitude }, residentialLocation } \| null }`; `district`, `coordinates` and `residentialLocation` may be `null` |
 | `lookup_building_age` | Official Data | `{ longitude, latitude }` | `{ predominantConstructionPeriod }` (e.g. `"1921 - 1930"`, or `null`) |
 | `calculate_mietspiegel` | Compliance | `{ residentialLocation, buildingAgeOrYear, livingAreaSqm, contractRent? }` | result of `evaluateMietspiegel`, at least `{ status }` (`"calculated"` counts as a Compliance verdict) |
 | `assess_occupancy_compliance` | Compliance | `{ livingAreaSqm, rooms, occupants, childrenUpToSix }` | result of `assessOccupancy`, at least `{ status }` (`"meets_minimum"` / `"below_minimum"` count as a Compliance verdict) |
@@ -31,7 +31,7 @@ export const calculateMietspiegelTool = tool(async (args) => evaluateMietspiegel
 - **Return** a plain JSON-serialisable object. The Orchestrator does not validate your result against the contract's `output` schema, so check it yourself in your tests: `TOOL_CONTRACTS.<name>.output.parse(result)`. `test/orchestrator/tool-contracts.test.js` shows how.
 - **Errors: throw.** The Orchestrator sorts them into two kinds:
   - `input` — the arguments are wrong (e.g. an address that does not exist). Set `error.kind = "input"`, or throw an error class whose `name` ends in `InputError`. Arguments your schema rejects count as input errors too. Input errors are never retried; the Supervisor asks the user to check that value.
-  - `upstream` — anything else (the Berlin WFS is slow or down). Retried once; if it still fails the Sub-agent reports `failed` and the user is told the official service is not responding right now.
+  - `upstream` — anything else (the Berlin WFS is slow or down). Retried once; if it still fails, the error goes back to the Sub-agent as that call's result and the Supervisor tells the user the official service is not responding right now. The Sub-agent's step reports `failed` only when every Tool call of its run errored and at least one error was upstream; if another call succeeded (e.g. the address was verified but the building-age lookup timed out) it reports `finished` with the error in its results.
 - **No timeouts or retries of your own.** The Orchestrator wraps every call with a 10 s timeout per attempt (`DEFAULT_TOOL_TIMEOUT_MS`) and exactly one retry for upstream errors, so a call can take up to about 20 s before it gives up.
 - **Arguments come from the Tenancy.** The Orchestrator overwrites (pins) every Tenancy-backed argument with the Tenancy's confirmed value, whatever the Sub-agent model passed, and drops it when the fact is absent or unconfirmed. `extract_lease_data.documentId` is always the uploaded document, and `lookup_building_age` always gets the verified coordinates.
 - **Numbers are numbers**: `780.5`, not `"780,50 €"`. The one exception is `buildingAgeOrYear`, which is a year (`1935`) or an official construction period string (`"1921 - 1930"`).
@@ -62,15 +62,15 @@ const tenancy = await orchestrator.getTenancy(threadId);
 
 - `threadId` is required, plus at least one of `message`, `documentId` or `confirm`. Otherwise the generator throws a `TypeError` on its first iteration (no events are yielded).
 - `documentId` is the id of an uploaded lease, passed through to `extract_lease_data`. It is remembered for later turns of the thread. An upload without a message is handled as "the user uploaded a lease".
-- `confirm` holds the values the user confirmed or corrected on the review card, e.g. `{ contractRent: 720 }` or `{ contractRent: "720,50" }`. Keys are Tenancy fact names (`address`, `livingAreaSqm`, `contractRent`, `buildingYear`, `rooms`, `occupants`, `childrenUpToSix`); other keys and unparsable values are ignored. Confirmed values become the user's own Tenancy facts. A confirm without a message skips the Intent router, and the Supervisor is told which facts were confirmed.
+- `confirm` holds the values the user confirmed or corrected on the review card, e.g. `{ contractRent: 720 }` or `{ contractRent: "720,50" }`. Keys are Tenancy fact names (`address`, `livingAreaSqm`, `contractRent`, `buildingYear`, `rooms`, `occupants`, `childrenUpToSix`); other keys are ignored, and so are numeric values that do not parse and building years without a four-digit year (an `address` is taken as given). Confirmed values become the user's own Tenancy facts. A confirm without a message skips the Intent router, and the Supervisor is told which facts were confirmed.
 
 It yields these events:
 
 | Event | When |
 |---|---|
-| `{ type: "tenancy", tenancy }` | the Tenancy changed: as the first event of a turn whose `confirm` changed it, and after each delegation step that changed it |
+| `{ type: "tenancy", tenancy }` | the Tenancy changed: as the first event of a turn whose `confirm` changed it, and once after each round of Supervisor tool calls (all Sub-agents of that round) that changed it |
 | `{ type: "intent", intents }` | the message was classified (not on confirm-only turns). `intents` ⊆ `general`, `address`, `mietspiegel`, `occupancy`, `document`, `out_of_scope`; `out_of_scope` only ever stands alone |
-| `{ type: "agent_step", agent, status }` | `agent` is `OfficialDataAgent`, `ComplianceAgent` or `LeaseAnalysisAgent`; `status` is `started`, `finished`, `failed` or `needs_facts`. A partly blocked Compliance request emits `needs_facts` for the blocked check, then `started` / `finished` for the one that could run |
+| `{ type: "agent_step", agent, status }` | `agent` is `OfficialDataAgent`, `ComplianceAgent` or `LeaseAnalysisAgent`; `status` is `started`, `finished`, `failed` or `needs_facts` (`failed`: see the error convention above; also emitted when the Sub-agent's own loop breaks, e.g. its 12-step limit, and the turn then ends with `error`). A partly blocked Compliance request emits `needs_facts` for the blocked check, then `started` / `finished` for the one that could run |
 | `{ type: "token", text }` | the answer, once, after the grounding check: one event with the whole text, including the legal disclaimer when one applies |
 | `{ type: "done" }` or `{ type: "error", message }` | exactly one of them ends every turn |
 
@@ -94,7 +94,7 @@ import { createOrchestrator, createStubTools } from "./orchestrator/index.js";
 const orchestrator = createOrchestrator({ models: createOpenAIModels(), tools: createStubTools().tools });
 ```
 
-The stubs satisfy every contract: address and building-age lookups return a fixed Berliner Straße 155 result, the Mietspiegel and occupancy stubs run the real calculations in `src/berlin-mietspiegel.js` and `src/occupancy-assessment.js`, and the lease stub returns a lease with an Unconfirmed contract rent (780 €, confidence 0.6). `createStubTools(overrides)` replaces a handler by Tool name, e.g. to simulate a failing service.
+The stubs satisfy every contract: address verification always returns Berliner Straße 155, 10715 Berlin (Wohnlage `gut`), the building-age lookup always returns `"1921 - 1930"`, the Mietspiegel and occupancy stubs run the real calculations in `src/berlin-mietspiegel.js` and `src/occupancy-assessment.js`, and the lease stub returns a lease with an Unconfirmed contract rent (780 €, confidence 0.6). `createStubTools(overrides)` replaces a handler by Tool name, e.g. to simulate a failing service.
 
 ## Configuration
 
