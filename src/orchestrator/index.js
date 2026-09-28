@@ -39,6 +39,7 @@ export function createOrchestrator({
       messages: text ? [new HumanMessage(text)] : [],
       confirm: confirm ?? null,
       skipRouter: !text,
+      newDocument: Boolean(documentId),
     };
     if (documentId) input.documentId = documentId;
 

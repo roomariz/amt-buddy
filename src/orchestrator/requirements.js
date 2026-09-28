@@ -1,3 +1,4 @@
+import { SUB_AGENTS } from "./sub-agents.js";
 import { isUnconfirmed } from "./tenancy.js";
 
 // Tenancy facts each Sub-agent needs before it may run.
@@ -26,11 +27,14 @@ const union = (lists) => [...new Set(lists.flat())];
 
 // Gating in code: splits a Sub-agent request into what may run now (`run`, the
 // request's args, or null) and what lacks facts (`needsFacts`, or null).
+// `inputs` holds the turn's non-Tenancy inputs, e.g. `{ documentId }`.
 // Each Compliance check is gated on its own, so a check whose facts are known
 // still runs when another one of the same request is blocked.
-export function gateSubAgent(agent, args, tenancy) {
+export function gateSubAgent(agent, args, tenancy, inputs = {}) {
   if (agent !== "compliance" || !args.checks?.length) {
     const blocking = blockingFacts(tenancy, REQUIRED_FACTS[agent] ?? []);
+    // Non-Tenancy inputs a Sub-agent needs (Lease Analysis: the uploaded document) are missing too.
+    blocking.missing.push(...(SUB_AGENTS[agent]?.inputs ?? []).filter((name) => !inputs[name]));
     return isBlocked(blocking) ? { run: null, needsFacts: blocking } : { run: args, needsFacts: null };
   }
   const gated = args.checks.map((check) => {
