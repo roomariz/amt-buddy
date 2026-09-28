@@ -91,16 +91,6 @@
         <!-- Floating / Pinned Bottom Input Bar (ChatGPT style) -->
         <div class="gpt-input-area">
           <div class="input-wrapper">
-            <!-- File attachment preview chip -->
-            <div id="attachment-preview" class="chat-attachment-chip" hidden>
-              <span class="chip-file-icon">📄</span>
-              <span id="chip-file-name" class="chip-file-name"></span>
-              <button type="button" id="chip-file-remove" class="chip-remove-btn" title="Datei entfernen" aria-label="Datei entfernen">✕</button>
-            </div>
-
-            <!-- Suggestion / Decision chips above input -->
-            <div id="quick-options" class="gpt-quick-options" hidden></div>
-
             <form id="chat-input-form" class="gpt-input-box">
               <input
                 type="file"
@@ -118,12 +108,21 @@
                 +
               </button>
 
-              <textarea
-                id="chat-user-input"
-                class="gpt-textarea"
-                rows="1"
-                placeholder="Nachricht eingeben oder Dokument hochladen …"
-              ></textarea>
+              <div class="gpt-input-center">
+                <!-- File attachment preview chip inside textbox -->
+                <div id="attachment-preview" class="chat-attachment-chip" hidden>
+                  <span class="chip-file-icon">📄</span>
+                  <span id="chip-file-name" class="chip-file-name"></span>
+                  <button type="button" id="chip-file-remove" class="chip-remove-btn" title="Datei entfernen" aria-label="Datei entfernen">✕</button>
+                </div>
+
+                <textarea
+                  id="chat-user-input"
+                  class="gpt-textarea"
+                  rows="1"
+                  placeholder="Nachricht eingeben oder Dokument anhängen …"
+                ></textarea>
+              </div>
 
               <button type="submit" id="chat-send-btn" class="gpt-btn-send" title="Senden" aria-label="Senden">
                 ↑

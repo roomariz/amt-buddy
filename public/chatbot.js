@@ -82,40 +82,86 @@ function scrollToBottom() {
 
 function appendBotMessage(html) {
   showChatView();
-  const bubble = document.createElement("div");
-  bubble.className = "chat-bubble bot";
-  bubble.innerHTML = html;
-  chatStream.appendChild(bubble);
+  const row = document.createElement("div");
+  row.className = "chat-msg-row bot-row";
+  row.innerHTML = `
+    <div class="bot-avatar" title="Amt-Buddy">🏛️</div>
+    <div class="bot-bubble">
+      <div class="bot-header">
+        <span class="bot-name">Amt-Buddy</span>
+        <span class="bot-tag">Offizielle Prüfung · Berlin Open Data</span>
+      </div>
+      <div class="bot-content">${html}</div>
+    </div>
+  `;
+  chatStream.appendChild(row);
   scrollToBottom();
 }
 
-function appendUserMessage(text) {
+function appendUserMessage(text, file = null) {
   showChatView();
-  const bubble = document.createElement("div");
-  bubble.className = "chat-bubble user";
-  bubble.textContent = text;
-  chatStream.appendChild(bubble);
+  const row = document.createElement("div");
+  row.className = "chat-msg-row user-row";
+
+  let fileHtml = "";
+  if (file) {
+    const sizeKb = Math.round(file.size / 1024);
+    fileHtml = `
+      <div class="user-file-chip">
+        <span class="chip-icon">📄</span>
+        <span class="chip-name">${escapeHtml(file.name)}</span>
+        <span class="chip-size">(${sizeKb} KB)</span>
+      </div>
+    `;
+  }
+
+  const textHtml = text ? `<div class="user-msg-text">${escapeHtml(text)}</div>` : "";
+
+  row.innerHTML = `
+    <div class="user-bubble">
+      ${fileHtml}
+      ${textHtml}
+    </div>
+  `;
+  chatStream.appendChild(row);
   scrollToBottom();
 }
 
 function setActionButtons(options = []) {
-  quickOptions.innerHTML = "";
-  if (!options || options.length === 0) {
+  if (quickOptions) {
+    quickOptions.innerHTML = "";
     quickOptions.hidden = true;
+  }
+  if (!options || options.length === 0) {
     return;
   }
-  quickOptions.hidden = false;
+
+  // Render question options directly inside the chatbot's message bubble
+  const lastBotContent = chatStream.querySelector(".bot-row:last-child .bot-content");
+  if (!lastBotContent) {
+    return;
+  }
+
+  const existingGrid = lastBotContent.querySelector(".bot-options-grid");
+  if (existingGrid) existingGrid.remove();
+
+  const grid = document.createElement("div");
+  grid.className = "bot-options-grid";
 
   options.forEach((opt) => {
     const btn = document.createElement("button");
     btn.type = "button";
-    btn.className = "chat-option-btn";
+    btn.className = "bot-option-btn";
     btn.textContent = opt.label;
     btn.addEventListener("click", () => {
+      grid.querySelectorAll(".bot-option-btn").forEach((b) => (b.disabled = true));
+      btn.classList.add("selected");
       handleUserAction(opt.value || opt.label);
     });
-    quickOptions.appendChild(btn);
+    grid.appendChild(btn);
   });
+
+  lastBotContent.appendChild(grid);
   scrollToBottom();
 }
 
@@ -128,6 +174,8 @@ function resetToNewChat() {
   if (gptHero) gptHero.style.display = "block";
   if (chatUserInput) {
     chatUserInput.value = "";
+    chatUserInput.style.height = "auto";
+    chatUserInput.style.overflowY = "hidden";
     chatUserInput.focus();
   }
 }
@@ -643,14 +691,26 @@ chatInputForm?.addEventListener("submit", async (e) => {
     const fileToSend = stagedFile;
     setStagedFile(null);
     chatUserInput.value = "";
-    appendUserMessage(text ? `📄 ${fileToSend.name}\n${text}` : `📄 ${fileToSend.name}`);
+    chatUserInput.style.height = "auto";
+    chatUserInput.style.overflowY = "hidden";
+    appendUserMessage(text, fileToSend);
     await handleOcrUpload(fileToSend);
     return;
   }
 
   if (!text) return;
   chatUserInput.value = "";
+  chatUserInput.style.height = "auto";
+  chatUserInput.style.overflowY = "hidden";
+  appendUserMessage(text);
   handleUserAction(text);
+});
+
+chatUserInput?.addEventListener("input", () => {
+  chatUserInput.style.height = "auto";
+  const newHeight = Math.min(chatUserInput.scrollHeight, 160);
+  chatUserInput.style.height = `${newHeight}px`;
+  chatUserInput.style.overflowY = chatUserInput.scrollHeight > 160 ? "auto" : "hidden";
 });
 
 chatUserInput?.addEventListener("keydown", (e) => {
