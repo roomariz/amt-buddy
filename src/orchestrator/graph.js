@@ -23,6 +23,8 @@ export const OrchestratorState = Annotation.Root({
   intents: lastValue(() => []),
   language: lastValue(() => "en"),
   documentId: lastValue(() => null),
+  // Whether this turn's input carried the document (set by every send()).
+  newDocument: lastValue(() => false),
   disclaimerShown: lastValue(() => false),
   // Per-turn input and scratch values, reset by `ingest`.
   confirm: lastValue(() => null),
@@ -46,6 +48,17 @@ function emit(event) {
   }
 }
 
+function emitTenancyIfChanged(before, after) {
+  if (JSON.stringify(after) !== JSON.stringify(before)) emit({ type: "tenancy", tenancy: after });
+}
+
+// The confirmed values the Tenancy now holds as the user's; unparsable ones are left out.
+function recordedConfirmation(updates, tenancy) {
+  return Object.fromEntries(
+    updates.filter(({ fact }) => tenancy[fact]?.source === "user").map(({ fact }) => [fact, tenancy[fact].value]),
+  );
+}
+
 function textOf(message) {
   return typeof message.content === "string" ? message.content : JSON.stringify(message.content);
 }
@@ -61,17 +74,21 @@ export function buildGraph({ models, tools, log, toolTimeoutMs }) {
       ungroundedFigures: [],
     };
     // Confirmed values from the review card become the user's own Tenancy facts.
+    // A confirm-only turn tells the Supervisor what was recorded.
     if (state.confirm) {
       const updates = factsFromConfirm(state.confirm);
       const tenancy = mergeTenancy(state.tenancy, updates);
       update.tenancy = updates;
-      if (JSON.stringify(tenancy) !== JSON.stringify(state.tenancy)) emit({ type: "tenancy", tenancy });
+      emitTenancyIfChanged(state.tenancy, tenancy);
+      if (state.skipRouter) {
+        const message = new HumanMessage(
+          `[Confirmed Tenancy facts] ${JSON.stringify(recordedConfirmation(updates, tenancy))}`,
+        );
+        update.messages = [message];
+        update.userText = message.content;
+      }
     }
-    if (state.confirm && state.skipRouter) {
-      const message = new HumanMessage(`[Confirmed Tenancy facts] ${JSON.stringify(state.confirm)}`);
-      update.messages = [message];
-      update.userText = message.content;
-    } else {
+    if (!(state.confirm && state.skipRouter)) {
       update.userText = textOf(state.messages.at(-1));
     }
     return update;
@@ -99,8 +116,8 @@ export function buildGraph({ models, tools, log, toolTimeoutMs }) {
 
   // Runs one (already gated) Sub-agent over its wrapped Tools. Returns its report for
   // the Supervisor, the Tenancy fact updates its Tool results imply, and its evidence.
-  async function delegateToSubAgent(agent, args, tenancy, { threadId, documentId }) {
-    const inputs = agent === "lease_analysis" ? { documentId } : {};
+  // `inputs` are the turn's non-Tenancy inputs (the uploaded document's id).
+  async function delegateToSubAgent(agent, args, tenancy, { threadId, inputs }) {
     const label = SUB_AGENTS[agent].label;
     emit({ type: "agent_step", agent: label, status: "started" });
     const evidence = [];
@@ -128,7 +145,7 @@ export function buildGraph({ models, tools, log, toolTimeoutMs }) {
         model: models.subAgent,
         schemas: baseTools,
         tools: agentTools,
-        task: subAgentTask({ args, facts: confirmedValues(tenancy), ...inputs }),
+        task: subAgentTask({ agent, args, facts: confirmedValues(tenancy), inputs }),
       });
     } catch (error) {
       emit({ type: "agent_step", agent: label, status: "failed" });
@@ -156,6 +173,7 @@ export function buildGraph({ models, tools, log, toolTimeoutMs }) {
     const tenancyUpdates = [];
     const turnEvidence = [];
     const messages = [];
+    const inputs = { documentId: state.documentId };
 
     for (const toolCall of call.tool_calls) {
       let report;
@@ -166,14 +184,11 @@ export function buildGraph({ models, tools, log, toolTimeoutMs }) {
         report = { status: "recorded" };
       } else if (SUB_AGENTS[agent]) {
         // Gating in code: whatever lacks its required facts does not run; the rest does.
-        const { run, needsFacts } = gateSubAgent(agent, toolCall.args ?? {}, tenancy, { documentId: state.documentId });
+        const { run, needsFacts } = gateSubAgent(agent, toolCall.args ?? {}, tenancy, inputs);
         if (needsFacts) emit({ type: "agent_step", agent: SUB_AGENTS[agent].label, status: "needs_facts" });
         if (run) {
           let evidence;
-          ({ report, updates, evidence } = await delegateToSubAgent(agent, run, tenancy, {
-            threadId,
-            documentId: state.documentId,
-          }));
+          ({ report, updates, evidence } = await delegateToSubAgent(agent, run, tenancy, { threadId, inputs }));
           turnEvidence.push(...evidence);
           if (needsFacts) report.needsFacts = needsFacts;
         } else {
@@ -187,7 +202,7 @@ export function buildGraph({ models, tools, log, toolTimeoutMs }) {
       messages.push(new ToolMessage({ tool_call_id: toolCall.id, name: toolCall.name, content: JSON.stringify(report) }));
     }
 
-    if (JSON.stringify(tenancy) !== JSON.stringify(state.tenancy)) emit({ type: "tenancy", tenancy });
+    emitTenancyIfChanged(state.tenancy, tenancy);
     return { messages, tenancy: tenancyUpdates, evidence: turnEvidence };
   }
 

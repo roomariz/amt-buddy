@@ -143,6 +143,25 @@ test("confirming or correcting an Unconfirmed fact makes it the user's; unknown 
   assert.deepEqual(confirmedValues(tenancy), { contractRent: 780, rooms: 2 });
 });
 
+test("a lease fact without a numeric confidence is unconfirmed", () => {
+  const tenancy = mergeTenancy({}, [
+    { fact: "contractRent", value: 780, source: "lease", confidence: "high" },
+    { fact: "rooms", value: 2, source: "lease", confidence: Number.NaN },
+    { fact: "livingAreaSqm", value: 50, source: "lease" },
+  ]);
+  assert.deepEqual(confirmedValues(tenancy), {});
+});
+
+test("a lease address never replaces a Canonical address, even one the lease stated", () => {
+  let tenancy = mergeTenancy({}, [{ fact: "address", value: "Berliner Str. 155", source: "lease", confidence: 0.95 }]);
+  tenancy = mergeTenancy(tenancy, [
+    { fact: "address", value: "Berliner Straße 155, 10715 Berlin", source: "official" },
+    { fact: "residentialLocation", value: "gut", source: "official" },
+  ]);
+  const after = mergeTenancy(tenancy, [{ fact: "address", value: "Berliner Str. 155", source: "lease", confidence: 0.95 }]);
+  assert.deepEqual(after, tenancy);
+});
+
 test("a building year is a year or an official period; anything else is ignored", () => {
   const tenancy = mergeTenancy({}, [{ fact: "buildingYear", value: "1935", source: "user" }]);
   assert.deepEqual(tenancy.buildingYear, { value: 1935, source: "user" });

@@ -23,7 +23,8 @@ const SOURCE_RANK = { official: 1, lease: 2, user: 3 };
 export const CONFIDENCE_THRESHOLD = 0.8;
 
 export function isUnconfirmed(fact) {
-  return fact?.source === "lease" && (fact.confidence ?? 0) < CONFIDENCE_THRESHOLD;
+  // A missing or non-numeric confidence counts as low.
+  return fact?.source === "lease" && !(fact.confidence >= CONFIDENCE_THRESHOLD);
 }
 
 // Numeric facts accept numbers or German/English numeric strings ("720,50");
@@ -80,6 +81,8 @@ export function mergeTenancy(current, updates) {
     }
 
     if (existing && SOURCE_RANK[source] < rank(existing)) continue;
+    // Only the user changes a verified address; a lease read again never undoes the verification.
+    if (name === "address" && source === "lease" && existing?.source === "official") continue;
     if (name === "address" && existing?.value !== incoming.value) clearAddressDerivedFacts(next);
     next[name] = incoming;
   }

@@ -1,13 +1,9 @@
+import { SUB_AGENTS } from "./sub-agents.js";
 import { isUnconfirmed } from "./tenancy.js";
 
 // Tenancy facts each Sub-agent needs before it may run.
 const REQUIRED_FACTS = {
   official_data: ["address"],
-};
-
-// Inputs other than Tenancy facts a Sub-agent needs: Lease Analysis reads the uploaded document.
-const REQUIRED_INPUTS = {
-  lease_analysis: ["documentId"],
 };
 
 // Tenancy facts each Compliance check needs. An unconfirmed contract rent also
@@ -37,7 +33,8 @@ const union = (lists) => [...new Set(lists.flat())];
 export function gateSubAgent(agent, args, tenancy, inputs = {}) {
   if (agent !== "compliance" || !args.checks?.length) {
     const blocking = blockingFacts(tenancy, REQUIRED_FACTS[agent] ?? []);
-    blocking.missing.push(...(REQUIRED_INPUTS[agent] ?? []).filter((name) => !inputs[name]));
+    // Non-Tenancy inputs a Sub-agent needs (Lease Analysis: the uploaded document) are missing too.
+    blocking.missing.push(...(SUB_AGENTS[agent]?.inputs ?? []).filter((name) => !inputs[name]));
     return isBlocked(blocking) ? { run: null, needsFacts: blocking } : { run: args, needsFacts: null };
   }
   const gated = args.checks.map((check) => {

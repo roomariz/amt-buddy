@@ -766,10 +766,22 @@ test("confirming the unconfirmed contract rent skips Intent classification and c
   assert.deepEqual((await orchestrator.getTenancy("t51")).contractRent, { value: 780, source: "user" });
   assert.equal(calls.filter((c) => c.name === "calculate_mietspiegel").at(-1).args.contractRent, 780);
   assert.match(models.supervisor.calls[4][0].content, /contractRent: 780 \(user\)/);
+  assert.match(models.supervisor.calls[0][0].content, /Uploaded document: doc-1 \(new this turn\)/);
+  assert.match(models.supervisor.calls[4][0].content, /Uploaded document: doc-1 \(uploaded earlier\)/);
   const answer = answerOf(events);
   assert.match(answer, /225 € above the upper Mietspiegel threshold/);
   assert.match(answer, /not legal advice/, "the Compliance verdict carries the disclaimer");
   assert.equal(models.supervisor.remaining, 0, "no grounding rewrite was needed");
+  assert.equal(events.at(-1).type, "done");
+});
+
+test("a confirmation reports to the Supervisor only the values it could record", async () => {
+  const { orchestrator, models } = setup({ supervisor: ["Thanks, I noted 2 rooms. Which rent is right?"] });
+
+  const events = await collect(orchestrator.send({ threadId: "t55", confirm: { contractRent: "abc", rooms: 2 } }));
+
+  assert.deepEqual(await orchestrator.getTenancy("t55"), { rooms: { value: 2, source: "user" } });
+  assert.equal(models.supervisor.calls[0].at(-1).content, '[Confirmed Tenancy facts] {"rooms":2}');
   assert.equal(events.at(-1).type, "done");
 });
 
