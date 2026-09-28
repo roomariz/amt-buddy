@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Amt Buddy Chatbot - Geführter Assistent für Berliner Adressprüfung, Mietspiegel 2026 und Belegungsprüfung (§ 7 WoAufG Bln)."
+    />
+    <title>Amt Buddy · Geführter Chatbot</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body class="chatbot-page">
+    <main class="shell chatbot-shell">
+      <header class="chatbot-page-header">
+        <div class="nav-bar">
+          <a href="/" class="nav-back-link">← Zur Formularansicht</a>
+          <span class="berlin-only">Nur Berlin</span>
+        </div>
+        <p class="eyebrow">BERLIN OPEN DATA · INTERAKTIVER CHATBOT</p>
+        <h1 class="chatbot-title">Amt-Buddy Chatbot</h1>
+        <p class="intro">
+          Geführter, regelbasierter Dialog für Berliner Adressprüfung, Mietspiegel 2026, Belegungsstandards (§ 7 WoAufG Bln) und Mietvertrags-OCR.
+        </p>
+      </header>
+
+      <section class="card chatbot-full-card" aria-label="Chatbot Unterhaltung">
+        <div class="chatbot-card-header">
+          <div class="status-indicator">
+            <span class="status-dot live" aria-hidden="true"></span>
+            <strong>Amt-Buddy Assistent</strong>
+            <span class="mode-badge">Geführter Modus</span>
+          </div>
+          <button type="button" id="btn-reset-chat" class="reset-chat-btn" title="Chatverlauf zurücksetzen">
+            🔄 Neu starten
+          </button>
+        </div>
+
+        <div id="chat-stream" class="chat-stream" role="log" aria-live="polite">
+          <!-- Chat messages injected by chatbot.js -->
+        </div>
+
+        <div id="quick-options" class="quick-options" aria-label="Schnelloptionen">
+          <!-- Interactive decision buttons -->
+        </div>
+
+        <form id="chat-input-form" class="chat-input-form">
+          <input
+            type="file"
+            id="chat-file-input"
+            accept=".pdf,.txt,.md,.json"
+            style="display:none;"
+          />
+          <button
+            type="button"
+            id="chat-upload-btn"
+            class="chat-action-btn"
+            title="Mietvertrag oder Dokument hochladen (PDF/Text)"
+            aria-label="Dokument hochladen"
+          >
+            📎
+          </button>
+          <input
+            type="text"
+            id="chat-user-input"
+            class="chat-text-input"
+            placeholder="Antwort eingeben oder Option wählen …"
+            autocomplete="off"
+            required
+          />
+          <button type="submit" id="chat-send-btn" class="chat-submit-btn">
+            Senden <span aria-hidden="true">→</span>
+          </button>
+        </form>
+      </section>
+
+      <footer>
+        <span class="source-mark" aria-hidden="true">BE</span>
+        <p>
+          Quellen: Adressen Berlin WFS · Berliner Mietspiegel 2026 (§§ 558c, 558d BGB) · § 7 WoAufG Bln (Land Berlin)<br />
+          Keine Speicherung personenbezogener Daten · Offizielle Berliner Open Data (DL-DE Zero 2.0)
+        </p>
+      </footer>
+    </main>
+
+    <script type="module" src="/chatbot.js"></script>
+  </body>
+</html>
