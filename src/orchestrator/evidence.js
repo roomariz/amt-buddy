@@ -22,3 +22,13 @@ export function factsFromEvidence(evidence) {
   }
   return updates;
 }
+
+// True when a Tool result in the evidence is a Compliance verdict: a calculated
+// Mietspiegel range or a § 7 WoAufG Bln occupancy assessment.
+export function hasComplianceVerdict(evidence) {
+  return evidence.some(
+    ({ tool, result }) =>
+      (tool === "calculate_mietspiegel" && result?.status === "calculated") ||
+      (tool === "assess_occupancy_compliance" && ["meets_minimum", "below_minimum"].includes(result?.status)),
+  );
+}

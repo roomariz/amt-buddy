@@ -20,9 +20,13 @@ A message may have several Intents. A short answer to the assistant's previous q
 
 const CONTEXT_MESSAGES = 6;
 
-// The router sees the last few messages, so a short follow-up keeps the context of the question it answers.
+// The router sees the last few conversation messages, so a short follow-up keeps the
+// context of the question it answers. The Supervisor's tool calls and their results
+// are left out: they are not conversation, and a tool result cut off from its call is
+// an invalid model input.
 export function routerMessages(messages) {
-  return [new SystemMessage(ROUTER_PROMPT), ...messages.slice(-CONTEXT_MESSAGES)];
+  const conversation = messages.filter((m) => m.getType() === "human" || (m.getType() === "ai" && !m.tool_calls?.length));
+  return [new SystemMessage(ROUTER_PROMPT), ...conversation.slice(-CONTEXT_MESSAGES)];
 }
 
 // out_of_scope only ever stands alone: mixed with a housing Intent, the request is in scope.
