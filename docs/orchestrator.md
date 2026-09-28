@@ -100,12 +100,15 @@ The stubs satisfy every contract: address verification always returns Berliner S
 
 | Variable | Purpose |
 |---|---|
-| `OPENAI_API_KEY` | OpenAI credentials |
+| `OPENAI_API_KEY` | OpenAI (or OpenRouter) credentials |
+| `OPENAI_BASE_URL` | optional API endpoint; set `https://openrouter.ai/api/v1` to go through OpenRouter (read by `@langchain/openai`, no code needed). Leave unset for OpenAI directly |
 | `OPENAI_MODEL` | chat model for the Supervisor and the Sub-agents (**required**; `createOpenAIModels` throws `Set OPENAI_MODEL …` without it) |
 | `OPENAI_ROUTER_MODEL` | optional cheaper model for Intent classification; defaults to `OPENAI_MODEL` |
 | `LANGSMITH_TRACING`, `LANGSMITH_API_KEY`, `LANGSMITH_PROJECT` | LangSmith tracing, **development only** |
 
-No model name is hard-coded. Never commit keys or a `.env` file.
+No model name is hard-coded. Copy `.env.example` to `.env` (gitignored) and load it with Node's built-in loader, e.g. `node --env-file=.env src/server.js`. Never commit keys or a `.env` file.
+
+Through OpenRouter, prefer OpenAI models (e.g. `openai/gpt-4.1`, router `openai/gpt-4.1-mini`): the Intent router uses a strict JSON schema and the Supervisor uses tool calling, which other providers support unevenly.
 
 > **Warning: LangSmith traces contain personal data.** A trace holds the full prompts, messages, Tenancy and Tool payloads, including the contents of uploaded leases. Keep `LANGSMITH_TRACING` off whenever real leases or real tenants' data are processed; use it only with stub Tools and made-up data. The built-in audit log never contains argument values.
 
@@ -116,17 +119,18 @@ No model name is hard-coded. Never commit keys or a `.env` file.
 The live smoke tests in `test/orchestrator/openai-live.test.js` call the real OpenAI API (with stub Tools) and are skipped unless both `OPENAI_API_KEY` and `OPENAI_MODEL` are set:
 
 ```sh
-OPENAI_API_KEY=… OPENAI_MODEL=… node --test test/orchestrator/openai-live.test.js
+node --env-file=.env --test test/orchestrator/openai-live.test.js
+# or: OPENAI_API_KEY=… OPENAI_MODEL=… node --test test/orchestrator/openai-live.test.js
 ```
 
 They check that a German Mietspiegel question ends with `done`, a finished `ComplianceAgent` step and the German disclaimer, and that confirming the lease's Unconfirmed contract rent re-runs the Mietspiegel check.
 
 ## Known gaps
 
-- **Re-running a check after a confirmation is a prompt rule, not code.** When the user confirms an Unconfirmed fact, the Supervisor prompt tells the model to re-run the checks that were waiting for it; nothing in the graph tracks the pending check. The second live smoke test covers this; run it (or try it by hand) whenever the prompt or model changes.
+- **Re-running a check after a confirmation is a prompt rule, not code.** When the user confirms an Unconfirmed fact, the Supervisor prompt tells the model to re-run the checks that were waiting for it; nothing in the graph tracks the pending check. The second live smoke test covers this and passed on 2026-09-28 with `openai/gpt-4.1`; run it again (or try it by hand) whenever the prompt or model changes.
 - **A low-confidence lease building year blocks the Mietspiegel check.** A lease value outranks official data, so an Unconfirmed lease `buildingYear` replaces the official construction period and blocks the Mietspiegel check until the user confirms it.
 - **`confirm` together with a message** merges the facts as the user's, but the Supervisor only sees them as `(user)` facts in the Tenancy, with no "[Confirmed Tenancy facts]" marker.
 - **Tool results are not validated** against the contracts' `output` schemas at runtime (see "For Tool authors").
 - **Grounding is number-based and permissive** (ADR 0003): Unconfirmed lease values count as grounded, any integer equal to a rounded grounded value passes, every number inside a Tool result string (years, house numbers, postal codes) is grounded, and Compliance verdicts themselves are not checked. Dates must match a source literally.
 - **The disclaimer follows this turn's Tool results.** A later answer that restates an earlier verdict without calling a Tool again gets no disclaimer (unless it is the conversation's first answer).
-- **Not yet verified against a real model** (no credentials were available when this was built): whether a real model trips grounding rewrites on citations such as "§ 7 Abs. 1" or on dates it writes, whether it follows the confirm-and-re-run rule, and whether OpenAI accepts the Intent router's strict JSON schema and the router's trimmed history. The request payloads were checked offline only. Run the live smoke tests before the demo.
+- **Verified against a real model, with limits.** On 2026-09-28 both live smoke tests passed via OpenRouter with `openai/gpt-4.1` (router `openai/gpt-4.1-mini`), with stub Tools: the provider accepted the Intent router's strict JSON schema, the trimmed router history and the Supervisor's tool calls; a German Mietspiegel question ended with `done`, a finished `ComplianceAgent` step and the German disclaimer; and the model re-ran the Mietspiegel check after the rent was confirmed. Still unverified: the OpenAI API directly (without OpenRouter), other models, real (non-stub) Tools, and the quality of the answers — the tests assert the event structure, not whether a real model trips grounding rewrites on citations such as "§ 7 Abs. 1" or on dates it writes.
