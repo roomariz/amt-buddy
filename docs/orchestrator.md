@@ -1,0 +1,132 @@
+# Orchestrator: handoff notes
+
+The Orchestrator (`src/orchestrator/`) is the conversational agent behind the chat. It is a LangGraph.js graph: an Intent router, then a Supervisor that delegates to three Sub-agents (Official Data, Compliance, Lease Analysis), each calling its own Tools, then a grounding check before the answer reaches the user.
+
+```
+ingest → classifyIntent → (rejectOutOfScope | supervisor ⇄ delegate) → verifyGrounding (⇄ supervisor once) → finalize
+```
+
+Vocabulary (Tenancy, Tenancy fact, Unconfirmed fact, Canonical address, Compliance verdict, Grounded claim): [`CONTEXT.md`](../CONTEXT.md). Decisions: [`docs/adr/`](adr/) — 0001 shared Tool contracts, 0002 missing facts end the turn, 0003 grounding check.
+
+## For Tool authors
+
+Build every Tool from its contract in `src/orchestrator/tool-contracts.js` (ADR 0001). `createOrchestrator` refuses to start if a Tool is missing, misnamed or not a LangChain tool.
+
+```js
+import { tool } from "@langchain/core/tools";
+import { TOOL_CONTRACTS } from "./orchestrator/tool-contracts.js";
+
+const { name, description, schema } = TOOL_CONTRACTS.calculate_mietspiegel;
+export const calculateMietspiegelTool = tool(async (args) => evaluateMietspiegel(args), { name, description, schema });
+```
+
+| Tool | Sub-agent | Input | Returns |
+|---|---|---|---|
+| `validate_berlin_address` | Official Data | `{ address }` | `{ verified, address: { street, houseNumber, postalCode, district, coordinates: { longitude, latitude }, residentialLocation } \| null }` |
+| `lookup_building_age` | Official Data | `{ longitude, latitude }` | `{ predominantConstructionPeriod }` (e.g. `"1921 - 1930"`, or `null`) |
+| `calculate_mietspiegel` | Compliance | `{ residentialLocation, buildingAgeOrYear, livingAreaSqm, contractRent? }` | result of `evaluateMietspiegel`, at least `{ status }` (`"calculated"` counts as a Compliance verdict) |
+| `assess_occupancy_compliance` | Compliance | `{ livingAreaSqm, rooms, occupants, childrenUpToSix }` | result of `assessOccupancy`, at least `{ status }` (`"meets_minimum"` / `"below_minimum"` count as a Compliance verdict) |
+| `extract_lease_data` | Lease Analysis | `{ documentId }` | `{ fields: { address?, contractRent?, livingAreaSqm?, rooms?, buildingYear? } }`, each `{ value, confidence }` |
+
+- **Return** a plain JSON-serialisable object. The Orchestrator does not validate your result against the contract's `output` schema, so check it yourself in your tests: `TOOL_CONTRACTS.<name>.output.parse(result)`. `test/orchestrator/tool-contracts.test.js` shows how.
+- **Errors: throw.** The Orchestrator sorts them into two kinds:
+  - `input` — the arguments are wrong (e.g. an address that does not exist). Set `error.kind = "input"`, or throw an error class whose `name` ends in `InputError`. Arguments your schema rejects count as input errors too. Input errors are never retried; the Supervisor asks the user to check that value.
+  - `upstream` — anything else (the Berlin WFS is slow or down). Retried once; if it still fails the Sub-agent reports `failed` and the user is told the official service is not responding right now.
+- **No timeouts or retries of your own.** The Orchestrator wraps every call with a 10 s timeout per attempt (`DEFAULT_TOOL_TIMEOUT_MS`) and exactly one retry for upstream errors, so a call can take up to about 20 s before it gives up.
+- **Arguments come from the Tenancy.** The Orchestrator overwrites (pins) every Tenancy-backed argument with the Tenancy's confirmed value, whatever the Sub-agent model passed, and drops it when the fact is absent or unconfirmed. `extract_lease_data.documentId` is always the uploaded document, and `lookup_building_age` always gets the verified coordinates.
+- **Numbers are numbers**: `780.5`, not `"780,50 €"`. The one exception is `buildingAgeOrYear`, which is a year (`1935`) or an official construction period string (`"1921 - 1930"`).
+- **Confidence** (lease extraction only) is a number between 0 and 1. A lease value with confidence below **0.8** — or with no numeric confidence at all — is an Unconfirmed fact: no Compliance check runs on it until the user confirms it.
+- **Audit log**: the Orchestrator logs one entry per Tool call — `{ event: "tool_call", threadId, agent, tool, argKeys, attempts, latencyMs, outcome, errorKind? }` — with argument names but never values or results. By default it is written as a JSON line to stdout; pass `log` to `createOrchestrator` to send it elsewhere.
+
+## For the UI
+
+```js
+import { createOrchestrator } from "./orchestrator/index.js";
+import { createOpenAIModels } from "./orchestrator/openai.js";
+
+const orchestrator = createOrchestrator({ models: createOpenAIModels(), tools });
+
+for await (const event of orchestrator.send({ threadId, message, documentId, confirm })) {
+  // write `event` to the SSE stream
+}
+const tenancy = await orchestrator.getTenancy(threadId);
+```
+
+`createOrchestrator({ models, tools, checkpointer?, log?, toolTimeoutMs? })`:
+
+- `models`: `{ router, supervisor, subAgent }` chat models; `createOpenAIModels()` builds them from the environment (see Configuration).
+- `tools`: the five Tools above.
+- `checkpointer`: where conversations live. The default is LangGraph's in-memory `MemorySaver`, so conversations are lost when the process restarts.
+
+`send({ threadId, message?, documentId?, confirm? })` runs one user turn:
+
+- `threadId` is required, plus at least one of `message`, `documentId` or `confirm`. Otherwise the generator throws a `TypeError` on its first iteration (no events are yielded).
+- `documentId` is the id of an uploaded lease, passed through to `extract_lease_data`. It is remembered for later turns of the thread. An upload without a message is handled as "the user uploaded a lease".
+- `confirm` holds the values the user confirmed or corrected on the review card, e.g. `{ contractRent: 720 }` or `{ contractRent: "720,50" }`. Keys are Tenancy fact names (`address`, `livingAreaSqm`, `contractRent`, `buildingYear`, `rooms`, `occupants`, `childrenUpToSix`); other keys and unparsable values are ignored. Confirmed values become the user's own Tenancy facts. A confirm without a message skips the Intent router, and the Supervisor is told which facts were confirmed.
+
+It yields these events:
+
+| Event | When |
+|---|---|
+| `{ type: "tenancy", tenancy }` | the Tenancy changed: as the first event of a turn whose `confirm` changed it, and after each delegation step that changed it |
+| `{ type: "intent", intents }` | the message was classified (not on confirm-only turns). `intents` ⊆ `general`, `address`, `mietspiegel`, `occupancy`, `document`, `out_of_scope`; `out_of_scope` only ever stands alone |
+| `{ type: "agent_step", agent, status }` | `agent` is `OfficialDataAgent`, `ComplianceAgent` or `LeaseAnalysisAgent`; `status` is `started`, `finished`, `failed` or `needs_facts`. A partly blocked Compliance request emits `needs_facts` for the blocked check, then `started` / `finished` for the one that could run |
+| `{ type: "token", text }` | the answer, once, after the grounding check: one event with the whole text, including the legal disclaimer when one applies |
+| `{ type: "done" }` or `{ type: "error", message }` | exactly one of them ends every turn |
+
+An out-of-scope message yields `intent`, `token`, `done` and never reaches the Supervisor. A Supervisor that keeps delegating is stopped by the graph's recursion limit (40) with an `error` event.
+
+**The Tenancy** (`tenancy` events and `getTenancy()`, which returns `{}` for an unknown thread) maps each fact name to `{ value, source, confidence?, statedBy? }`:
+
+- Facts: `address`, `livingAreaSqm`, `contractRent`, `buildingYear`, `rooms`, `occupants`, `childrenUpToSix`, plus the official-only `coordinates` and `residentialLocation`.
+- `source` is `user`, `lease` or `official`. Precedence is user > lease > official, except that the Canonical address (official) always replaces a stated address; it then carries `statedBy` with the source of the address it replaced.
+- A fact is Unconfirmed when `source === "lease"` and `confidence` is missing or below 0.8. Show these on the review card and send the user's answer back as `confirm`.
+
+**The legal disclaimer** is appended by code (ADR 0003), in the user's language: to every answer with a Compliance verdict from this turn's Tool results, and otherwise to the conversation's first answer that is not an out-of-scope reply.
+
+### Running with stub Tools
+
+Until the real Tools exist, pass the stub Tools:
+
+```js
+import { createOrchestrator, createStubTools } from "./orchestrator/index.js";
+
+const orchestrator = createOrchestrator({ models: createOpenAIModels(), tools: createStubTools().tools });
+```
+
+The stubs satisfy every contract: address and building-age lookups return a fixed Berliner Straße 155 result, the Mietspiegel and occupancy stubs run the real calculations in `src/berlin-mietspiegel.js` and `src/occupancy-assessment.js`, and the lease stub returns a lease with an Unconfirmed contract rent (780 €, confidence 0.6). `createStubTools(overrides)` replaces a handler by Tool name, e.g. to simulate a failing service.
+
+## Configuration
+
+| Variable | Purpose |
+|---|---|
+| `OPENAI_API_KEY` | OpenAI credentials |
+| `OPENAI_MODEL` | chat model for the Supervisor and the Sub-agents (**required**; `createOpenAIModels` throws `Set OPENAI_MODEL …` without it) |
+| `OPENAI_ROUTER_MODEL` | optional cheaper model for Intent classification; defaults to `OPENAI_MODEL` |
+| `LANGSMITH_TRACING`, `LANGSMITH_API_KEY`, `LANGSMITH_PROJECT` | LangSmith tracing, **development only** |
+
+No model name is hard-coded. Never commit keys or a `.env` file.
+
+> **Warning: LangSmith traces contain personal data.** A trace holds the full prompts, messages, Tenancy and Tool payloads, including the contents of uploaded leases. Keep `LANGSMITH_TRACING` off whenever real leases or real tenants' data are processed; use it only with stub Tools and made-up data. The built-in audit log never contains argument values.
+
+## Tests
+
+`npm test` runs everything offline against a scripted fake model (`test/orchestrator/helpers/scripted-model.js`) and the stub Tools.
+
+The live smoke tests in `test/orchestrator/openai-live.test.js` call the real OpenAI API (with stub Tools) and are skipped unless both `OPENAI_API_KEY` and `OPENAI_MODEL` are set:
+
+```sh
+OPENAI_API_KEY=… OPENAI_MODEL=… node --test test/orchestrator/openai-live.test.js
+```
+
+They check that a German Mietspiegel question ends with `done`, a finished `ComplianceAgent` step and the German disclaimer, and that confirming the lease's Unconfirmed contract rent re-runs the Mietspiegel check.
+
+## Known gaps
+
+- **Re-running a check after a confirmation is a prompt rule, not code.** When the user confirms an Unconfirmed fact, the Supervisor prompt tells the model to re-run the checks that were waiting for it; nothing in the graph tracks the pending check. The second live smoke test covers this; run it (or try it by hand) whenever the prompt or model changes.
+- **A low-confidence lease building year blocks the Mietspiegel check.** A lease value outranks official data, so an Unconfirmed lease `buildingYear` replaces the official construction period and blocks the Mietspiegel check until the user confirms it.
+- **`confirm` together with a message** merges the facts as the user's, but the Supervisor only sees them as `(user)` facts in the Tenancy, with no "[Confirmed Tenancy facts]" marker.
+- **Tool results are not validated** against the contracts' `output` schemas at runtime (see "For Tool authors").
+- **Grounding is number-based and permissive** (ADR 0003): Unconfirmed lease values count as grounded, any integer equal to a rounded grounded value passes, every number inside a Tool result string (years, house numbers, postal codes) is grounded, and Compliance verdicts themselves are not checked. Dates must match a source literally.
+- **The disclaimer follows this turn's Tool results.** A later answer that restates an earlier verdict without calling a Tool again gets no disclaimer (unless it is the conversation's first answer).
+- **Not yet verified against a real model** (no credentials were available when this was built): whether a real model trips grounding rewrites on citations such as "§ 7 Abs. 1" or on dates it writes, whether it follows the confirm-and-re-run rule, and whether OpenAI accepts the Intent router's strict JSON schema and the router's trimmed history. The request payloads were checked offline only. Run the live smoke tests before the demo.
