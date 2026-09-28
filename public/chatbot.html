@@ -12,7 +12,7 @@
   </head>
   <body class="gpt-body">
     <div class="gpt-layout">
-      <!-- Left Sidebar (ChatGPT style) -->
+      <!-- Left Sidebar -->
       <aside class="gpt-sidebar" id="gpt-sidebar">
         <div class="sidebar-top">
           <div class="sidebar-header">
@@ -20,39 +20,14 @@
             <span class="brand-name">Amt-Buddy Chatbot</span>
           </div>
           <button type="button" id="btn-new-chat" class="new-chat-btn">
-            <span class="icon">✏️</span> Neuer Chat
+            <span class="icon">💬</span> Neuer Chat
           </button>
         </div>
 
         <nav class="sidebar-nav">
-          <div class="nav-section-title">Funktionen &amp; Module</div>
-          <button type="button" class="nav-item" data-action="start_address">
-            <span class="nav-icon">📍</span> Adresse prüfen
-          </button>
-          <button type="button" class="nav-item" data-action="start_mietspiegel">
-            <span class="nav-icon">💶</span> Mietspiegel 2026
-          </button>
-          <button type="button" class="nav-item" data-action="start_occupancy">
-            <span class="nav-icon">👥</span> Belegung (§ 7 WoAufG)
-          </button>
-          <button type="button" class="nav-item" data-action="start_ocr">
-            <span class="nav-icon">📄</span> Mietvertrag OCR
-          </button>
-          <button type="button" class="nav-item" data-action="faq">
-            <span class="nav-icon">❓</span> Häufige Fragen
-          </button>
-
-          <div class="nav-section-title">Beispiele &amp; Abfragen</div>
-          <div id="chat-history-list" class="history-list">
-            <button type="button" class="history-item" data-prompt="Berliner Straße 155, 10715 Berlin">
-              📍 Berliner Straße 155
-            </button>
-            <button type="button" class="history-item" data-prompt="Pariser Platz 1, 10117 Berlin">
-              📍 Pariser Platz 1
-            </button>
-            <button type="button" class="history-item" data-prompt="Mietspiegel für 50 m² in guter Wohnlage">
-              💶 Mietspiegel 50 m² gut
-            </button>
+          <div class="sidebar-chat-item active">
+            <span class="chat-icon">💬</span>
+            <span class="chat-name">Chatbot</span>
           </div>
         </nav>
 
@@ -63,8 +38,8 @@
           <div class="sidebar-user">
             <div class="user-avatar">BE</div>
             <div class="user-meta">
-              <span class="user-name">Berlin Open Data</span>
-              <span class="user-role">Geführter Modus · Kataster</span>
+              <span class="user-name">Amt-Buddy</span>
+              <span class="user-role">Geführter Modus</span>
             </div>
           </div>
         </div>
@@ -78,7 +53,7 @@
             ☰
           </button>
           <div class="topbar-center">
-            <span class="topbar-title">Amt-Buddy Chat · Geführter Modus</span>
+            <span class="topbar-title">Amt-Buddy Chatbot</span>
           </div>
           <a href="/" class="topbar-exit-btn">
             Standard-Formular ↗
@@ -87,39 +62,23 @@
 
         <!-- Chat Scroll Container -->
         <div class="gpt-scroll-container" id="gpt-scroll-container">
-          <!-- Initial Center Hero (hidden once conversation starts) -->
+          <!-- Initial Center Hero: Document Upload & Welcome -->
           <div id="gpt-hero" class="gpt-hero">
-            <h2 class="hero-title">Wie kann Amt-Buddy Ihnen heute helfen?</h2>
+            <h2 class="hero-title">Amt-Buddy Chatbot</h2>
+            <p class="hero-subtitle">
+              Laden Sie ein Dokument (PDF/Text) hoch oder stellen Sie eine Frage, um Berliner Adressen, Mietdaten und Wohnungsauflagen automatisiert zu prüfen.
+            </p>
 
-            <div class="hero-cards-grid">
-              <button type="button" class="hero-card" data-action="start_address">
-                <span class="card-icon">📍</span>
-                <div class="card-text">
-                  <strong>Berliner Adresse prüfen</strong>
-                  <span>Gleicht Anschriften mit dem offiziellen WFS-Kataster ab</span>
-                </div>
-              </button>
-              <button type="button" class="hero-card" data-action="start_mietspiegel">
-                <span class="card-icon">💶</span>
-                <div class="card-text">
-                  <strong>Mietspiegel 2026 berechnen</strong>
-                  <span>Referenzmietspanne &amp; Kaltmietenvergleich ermitteln</span>
-                </div>
-              </button>
-              <button type="button" class="hero-card" data-action="start_occupancy">
-                <span class="card-icon">👥</span>
-                <div class="card-text">
-                  <strong>Belegung (§ 7 WoAufG)</strong>
-                  <span>Mindestwohnfläche &amp; Überbelegungsrisiko prüfen</span>
-                </div>
-              </button>
-              <button type="button" class="hero-card" data-action="start_ocr">
-                <span class="card-icon">📄</span>
-                <div class="card-text">
-                  <strong>Mietvertrag per OCR</strong>
-                  <span>PDF-Mietvertrag hochladen &amp; Mietdaten extrahieren</span>
-                </div>
-              </button>
+            <!-- Prominent Document Upload Box -->
+            <div class="hero-upload-card" id="hero-upload-card">
+              <div class="upload-card-icon">📄</div>
+              <div class="upload-card-body">
+                <h3 class="upload-card-title">Mietvertrag oder Dokument hochladen</h3>
+                <p class="upload-card-desc">PDF, TXT oder Markdown hier ablegen oder Datei auswählen</p>
+                <button type="button" class="btn-select-file" id="btn-hero-select-file">
+                  Datei auswählen
+                </button>
+              </div>
             </div>
           </div>
 
@@ -132,6 +91,13 @@
         <!-- Floating / Pinned Bottom Input Bar (ChatGPT style) -->
         <div class="gpt-input-area">
           <div class="input-wrapper">
+            <!-- File attachment preview chip -->
+            <div id="attachment-preview" class="chat-attachment-chip" hidden>
+              <span class="chip-file-icon">📄</span>
+              <span id="chip-file-name" class="chip-file-name"></span>
+              <button type="button" id="chip-file-remove" class="chip-remove-btn" title="Datei entfernen" aria-label="Datei entfernen">✕</button>
+            </div>
+
             <!-- Suggestion / Decision chips above input -->
             <div id="quick-options" class="gpt-quick-options" hidden></div>
 
@@ -156,8 +122,7 @@
                 id="chat-user-input"
                 class="gpt-textarea"
                 rows="1"
-                placeholder="Frage stellen, Adresse eingeben oder Dokument hochladen …"
-                required
+                placeholder="Nachricht eingeben oder Dokument hochladen …"
               ></textarea>
 
               <button type="submit" id="chat-send-btn" class="gpt-btn-send" title="Senden" aria-label="Senden">

@@ -15,6 +15,13 @@ const chatUploadBtn = document.querySelector("#chat-upload-btn");
 const btnNewChat = document.querySelector("#btn-new-chat");
 const sidebarToggleBtn = document.querySelector("#sidebar-toggle-btn");
 const gptSidebar = document.querySelector("#gpt-sidebar");
+const heroUploadCard = document.querySelector("#hero-upload-card");
+const btnHeroSelectFile = document.querySelector("#btn-hero-select-file");
+const attachmentPreview = document.querySelector("#attachment-preview");
+const chipFileName = document.querySelector("#chip-file-name");
+const chipFileRemove = document.querySelector("#chip-file-remove");
+
+let stagedFile = null;
 
 // State machine states
 const STATES = {
@@ -34,6 +41,25 @@ const STATES = {
 
 let currentState = STATES.HERO;
 let sessionData = {};
+
+function setStagedFile(file) {
+  stagedFile = file;
+  if (!file) {
+    if (attachmentPreview) attachmentPreview.hidden = true;
+    if (chatFileInput) chatFileInput.value = "";
+    return;
+  }
+  if (chipFileName) {
+    const sizeKb = Math.round(file.size / 1024);
+    chipFileName.textContent = `${file.name} (${sizeKb} KB)`;
+  }
+  if (attachmentPreview) {
+    attachmentPreview.hidden = false;
+  }
+  if (chatUserInput) {
+    chatUserInput.focus();
+  }
+}
 
 function escapeHtml(str) {
   return String(str ?? "")
@@ -96,6 +122,7 @@ function setActionButtons(options = []) {
 function resetToNewChat() {
   currentState = STATES.HERO;
   sessionData = {};
+  setStagedFile(null);
   chatStream.innerHTML = "";
   setActionButtons([]);
   if (gptHero) gptHero.style.display = "block";
@@ -289,28 +316,41 @@ async function handleOcrUpload(file) {
 
     const { fields, confidence } = body.data;
     sessionData.ocrExtracted = fields;
+    if (fields.livingAreaSqm) sessionData.livingAreaSqm = fields.livingAreaSqm;
+    if (fields.contractRent) sessionData.contractRent = fields.contractRent;
+    if (fields.rooms) sessionData.rooms = fields.rooms;
+    if (fields.buildingYear) sessionData.buildingYear = fields.buildingYear;
+
+    const confScore = Math.round((confidence?.overall || 0) * 100);
 
     appendBotMessage(
-      `✓ <strong>Mietvertrag erfolgreich per OCR eingelesen!</strong><br /><br />` +
-        `• <strong>Adresse:</strong> ${escapeHtml(fields.address || "Nicht erkannt")}<br />` +
-        `• <strong>Kaltmiete:</strong> ${fields.contractRent ? `${fields.contractRent} €` : "Nicht erkannt"}<br />` +
-        `• <strong>Wohnfläche:</strong> ${fields.livingAreaSqm ? `${fields.livingAreaSqm} m²` : "Nicht erkannt"}<br />` +
-        `• <strong>Zimmer:</strong> ${fields.rooms || "Nicht erkannt"}<br />` +
-        `• <strong>Baujahr:</strong> ${fields.buildingYear || "Nicht erkannt"}<br />` +
-        `• <strong>Erkennungsrate:</strong> ${Math.round((confidence.overall || 0) * 100)}%`,
+      `✓ <strong>Dokument erfolgreich eingelesen und analysiert!</strong><br />` +
+        `<div class="doc-result-card">` +
+        `  <div class="doc-title">📋 Extrahierte Vertragsdaten (${escapeHtml(file.name)})</div>` +
+        `  <div class="doc-fact-grid">` +
+        `    <div class="doc-fact-item"><span>Adresse</span><strong>${escapeHtml(fields.address || "Nicht angegeben")}</strong></div>` +
+        `    <div class="doc-fact-item"><span>Nettokaltmiete</span><strong>${fields.contractRent ? `${fields.contractRent} € / Monat` : "Nicht angegeben"}</strong></div>` +
+        `    <div class="doc-fact-item"><span>Wohnfläche</span><strong>${fields.livingAreaSqm ? `${fields.livingAreaSqm} m²` : "Nicht angegeben"}</strong></div>` +
+        `    <div class="doc-fact-item"><span>Zimmer</span><strong>${fields.rooms || "Nicht angegeben"}</strong></div>` +
+        `    <div class="doc-fact-item"><span>Baujahr</span><strong>${fields.buildingYear || "Nicht angegeben"}</strong></div>` +
+        `    <div class="doc-fact-item"><span>OCR-Erkennung</span><strong>${confScore}%</strong></div>` +
+        `  </div>` +
+        `</div>`,
     );
 
     if (fields.address) {
-      setActionButtons([
-        { label: `📍 Adresse direkt verifizieren: "${fields.street} ${fields.houseNumber}"`, value: `verify_ocr_address` },
-        { label: "🔙 Zum Start", value: "menu" },
-      ]);
+      appendBotMessage(`🔍 <em>Gleiche extrahierte Adresse "${escapeHtml(fields.address)}" direkt mit dem amtlichen Berliner WFS-Kataster ab …</em>`);
+      await verifyAddressFlow(fields.address);
     } else {
-      setActionButtons([{ label: "🔙 Zum Start", value: "menu" }]);
+      setActionButtons([
+        { label: "📍 Adresse manuell eingeben", value: "start_address" },
+        { label: "💶 Mietspiegel berechnen", value: "start_mietspiegel" },
+        { label: "💬 Neuer Chat", value: "menu" },
+      ]);
     }
   } catch (err) {
     appendBotMessage(`⚠️ Fehler bei der OCR-Extraktion: ${escapeHtml(err.message)}`);
-    setActionButtons([{ label: "🔙 Zum Start", value: "menu" }]);
+    setActionButtons([{ label: "🔙 Neuer Chat", value: "menu" }]);
   }
 }
 
@@ -594,9 +634,20 @@ function handleStateInput(input) {
 }
 
 // Event Listeners
-chatInputForm?.addEventListener("submit", (e) => {
+chatInputForm?.addEventListener("submit", async (e) => {
   e.preventDefault();
   const text = chatUserInput.value.trim();
+
+  // If a document was staged, send the document and any optional text
+  if (stagedFile) {
+    const fileToSend = stagedFile;
+    setStagedFile(null);
+    chatUserInput.value = "";
+    appendUserMessage(text ? `📄 ${fileToSend.name}\n${text}` : `📄 ${fileToSend.name}`);
+    await handleOcrUpload(fileToSend);
+    return;
+  }
+
   if (!text) return;
   chatUserInput.value = "";
   handleUserAction(text);
@@ -621,14 +672,58 @@ chatUploadBtn?.addEventListener("click", () => {
   chatFileInput.click();
 });
 
-chatFileInput?.addEventListener("change", (e) => {
-  const file = e.target.files?.[0];
+btnHeroSelectFile?.addEventListener("click", (e) => {
+  e.stopPropagation();
+  chatFileInput.click();
+});
+
+heroUploadCard?.addEventListener("click", () => {
+  chatFileInput.click();
+});
+
+heroUploadCard?.addEventListener("dragover", (e) => {
+  e.preventDefault();
+  heroUploadCard.classList.add("drag-over");
+});
+
+heroUploadCard?.addEventListener("dragleave", () => {
+  heroUploadCard.classList.remove("drag-over");
+});
+
+heroUploadCard?.addEventListener("drop", (e) => {
+  e.preventDefault();
+  heroUploadCard.classList.remove("drag-over");
+  const file = e.dataTransfer?.files?.[0];
   if (file) {
-    handleOcrUpload(file);
+    setStagedFile(file);
   }
 });
 
-// Sidebar nav items & hero cards event delegation
+chatFileInput?.addEventListener("change", (e) => {
+  const file = e.target.files?.[0];
+  if (file) {
+    setStagedFile(file);
+  }
+});
+
+chipFileRemove?.addEventListener("click", () => {
+  setStagedFile(null);
+});
+
+// Window-wide drag and drop for documents
+window.addEventListener("dragover", (e) => {
+  e.preventDefault();
+});
+
+window.addEventListener("drop", (e) => {
+  e.preventDefault();
+  const file = e.dataTransfer?.files?.[0];
+  if (file) {
+    setStagedFile(file);
+  }
+});
+
+// Action buttons & suggestions event delegation
 document.addEventListener("click", (e) => {
   const navBtn = e.target.closest("[data-action]");
   if (navBtn) {

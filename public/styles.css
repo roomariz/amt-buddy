@@ -988,60 +988,202 @@ footer a { color: inherit; }
   text-align: center;
 }
 
-.hero-title {
-  font-size: clamp(1.8rem, 4vw, 2.3rem);
+.sidebar-chat-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 0.92rem;
   font-weight: 600;
-  margin: 0 0 32px;
+  color: #0d0d0d;
+  background: #ebebeb;
+}
+
+.sidebar-chat-item .chat-icon {
+  font-size: 1.1rem;
+}
+
+.hero-title {
+  font-size: clamp(1.8rem, 4vw, 2.4rem);
+  font-weight: 700;
+  margin: 0 0 10px;
   color: #0d0d0d;
   letter-spacing: -0.02em;
 }
 
-.hero-cards-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 12px;
-  text-align: left;
+.hero-subtitle {
+  font-size: 0.95rem;
+  color: #666666;
+  max-width: 580px;
+  margin: 0 auto 28px;
+  line-height: 1.5;
 }
 
-.hero-card {
-  display: flex;
-  align-items: flex-start;
-  gap: 14px;
-  padding: 16px;
-  background: #ffffff;
-  border: 1px solid #e5e5e5;
-  border-radius: 16px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
-}
-
-.hero-card:hover {
-  border-color: #b4b4b4;
-  background: #fcfcfc;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-}
-
-.card-icon {
-  font-size: 1.5rem;
-}
-
-.card-text {
+/* Document Upload Card */
+.hero-upload-card {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 36px 24px;
+  background: #ffffff;
+  border: 2px dashed #d1d5db;
+  border-radius: 20px;
+  cursor: pointer;
+  max-width: 560px;
+  margin: 0 auto;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.03);
 }
 
-.card-text strong {
-  font-size: 0.92rem;
+.hero-upload-card:hover,
+.hero-upload-card.drag-over {
+  border-color: #171714;
+  background: #fafafa;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.07);
+}
+
+.upload-card-icon {
+  font-size: 2.8rem;
+  line-height: 1;
+}
+
+.upload-card-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.upload-card-title {
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin: 0;
   color: #0d0d0d;
 }
 
-.card-text span {
-  font-size: 0.8rem;
+.upload-card-desc {
+  font-size: 0.85rem;
   color: #717171;
-  line-height: 1.35;
+  margin: 0 0 8px;
+}
+
+.btn-select-file {
+  background: #171714;
+  color: #ffffff;
+  border: none;
+  padding: 8px 18px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  border-radius: 20px;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+
+.btn-select-file:hover {
+  background: #3b3b3b;
+  transform: scale(1.03);
+}
+
+/* Attachment Preview Chip above bottom input */
+.chat-attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  align-self: flex-start;
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  padding: 6px 12px;
+  border-radius: 14px;
+  font-size: 0.84rem;
+  color: #1e293b;
+  font-weight: 500;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+}
+
+.chat-attachment-chip[hidden] {
+  display: none;
+}
+
+.chip-file-icon {
+  font-size: 1rem;
+}
+
+.chip-file-name {
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chip-remove-btn {
+  background: none;
+  border: none;
+  color: #64748b;
+  cursor: pointer;
+  font-size: 0.85rem;
+  padding: 0 4px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.chip-remove-btn:hover {
+  color: #dc2626;
+  background: #fee2e2;
+}
+
+/* Document Response Card inside Chat Bubble */
+.doc-result-card {
+  margin-top: 10px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+}
+
+.doc-result-card .doc-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #0f172a;
+  border-bottom: 1px solid #f1f5f9;
+  padding-bottom: 6px;
+  margin-bottom: 4px;
+}
+
+.doc-fact-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 8px;
+}
+
+.doc-fact-item {
+  background: #f8fafc;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 0.84rem;
+}
+
+.doc-fact-item span {
+  display: block;
+  font-size: 0.72rem;
+  color: #64748b;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.doc-fact-item strong {
+  color: #0f172a;
+  font-size: 0.88rem;
 }
 
 /* Chat Message Stream */
