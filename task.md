@@ -35,10 +35,11 @@ This document outlines the tasks required to evolve Amt-Buddy into an intelligen
 
 The Orchestrator acts as the central brain that manages conversation state, routes user requests to specialized workers or tools, and synthesizes answers for the user.
 
-- [ ] **1.1 Core Orchestration Engine**
+- [x] **1.1 Core Orchestration Engine**
   - **Task**: Define the central orchestrator lifecycle (Receive Input -> Plan Steps -> Invoke Tools/Agents -> Evaluate Output -> Respond).
   - **Priority**: High
   - **Acceptance Criteria**: State machine maintains conversation memory, session state, and execution history across multi-turn dialogs.
+  - **Status**: Done in `src/orchestrator/` (LangGraph state machine, per-thread checkpointer, Tenancy, audit log).
 
 - [ ] **1.2 Intent Classification & Router**
   - **Task**: Implement intent classification to distinguish between:
@@ -49,19 +50,22 @@ The Orchestrator acts as the central brain that manages conversation state, rout
     - Document analysis / lease contract upload workflows.
   - **Priority**: High
   - **Acceptance Criteria**: Router selects the appropriate sub-pipeline or worker with >95% accuracy.
+  - **Status**: Partial: router with all five Intents plus `out_of_scope`, multi-Intent and follow-up aware (`src/orchestrator/intents.js`). The >95% accuracy has not been measured yet.
 
-- [ ] **1.3 Multi-Agent Handoff & Worker Coordination**
+- [x] **1.3 Multi-Agent Handoff & Worker Coordination**
   - **Task**: Create specialized sub-agents:
     - `LeaseAnalysisAgent`: Focuses on interpreting parsed lease documents.
     - `ComplianceAgent`: Evaluates rent caps, Mietspiegel tiers, and overcrowding.
     - `OfficialDataAgent`: Interfaces with Berlin open data endpoints.
   - **Priority**: Medium
   - **Acceptance Criteria**: Orchestrator delegates tasks to sub-agents and gracefully aggregates results into a single coherent response.
+  - **Status**: Done: OfficialDataAgent, ComplianceAgent, LeaseAnalysisAgent, delegated by the Supervisor.
 
-- [ ] **1.4 Guardrails, Safety & Fallbacks**
+- [x] **1.4 Guardrails, Safety & Fallbacks**
   - **Task**: Implement prompt guardrails, hallucination checks against Berlin statutory rules, and graceful fallback responses for ambiguous inputs.
   - **Priority**: Medium
   - **Acceptance Criteria**: Disclaimer provided that outputs do not replace formal legal counsel; out-of-scope requests are politely rejected.
+  - **Status**: Done: out-of-scope rejection, grounding check on every figure, "not legal advice" disclaimer on verdicts, fallback question.
 
 ---
 
@@ -73,6 +77,7 @@ Formalize functions as structured tools conforming to standard JSON schemas for 
   - **Task**: Build an extensible `ToolRegistry` with standardized definitions (name, description, JSON schema parameters, execute callback).
   - **Priority**: High
   - **Acceptance Criteria**: Any new tool can be registered with type-safe schema definitions and automatic input validation.
+  - **Status**: Partial: Tool contracts with zod input/output schemas and validation (`src/orchestrator/tool-contracts.js`); no general-purpose registry.
 
 - [ ] **2.2 Existing Service Tool Adapters**
   - **Task**: Wrap current Amt-Buddy backend services into callable agent tools:
@@ -82,16 +87,19 @@ Formalize functions as structured tools conforming to standard JSON schemas for 
     - `assess_occupancy_compliance`: Calls `src/occupancy-assessment.js` for § 7 WoAufG Bln living area per person checks.
   - **Priority**: High
   - **Acceptance Criteria**: Agent reliably invokes tools with correct extracted parameters and handles API error responses gracefully.
+  - **Status**: Partial: contract-conforming stub Tools; the Mietspiegel and occupancy stubs call the real domain functions, address and building-age stubs return fixed data.
 
-- [ ] **2.3 Dynamic Tool Execution & Error Handling**
+- [x] **2.3 Dynamic Tool Execution & Error Handling**
   - **Task**: Implement execution pipeline handling tool timeouts, retries, parameter coercion, and structured error feedback returned to the model.
   - **Priority**: High
   - **Acceptance Criteria**: When a tool returns missing data or errors, the orchestrator asks clarifying questions or attempts recovery.
+  - **Status**: Done: timeout, one retry, argument pinning and number parsing, input vs. upstream errors, `needs_facts` leads to clarifying questions.
 
-- [ ] **2.4 Tool Execution Auditing & Logging**
+- [x] **2.4 Tool Execution Auditing & Logging**
   - **Task**: Log tool call traces (input arguments, execution latency, raw response, error states) for debugging and audit compliance.
   - **Priority**: Low
   - **Acceptance Criteria**: Structured log events generated for each tool execution during a conversation.
+  - **Status**: Done: one structured audit line per Tool call (latency, attempts, outcome); argument values and raw responses are left out on purpose (PII).
 
 ---
 
@@ -118,6 +126,7 @@ Upgrade the front-end to support conversational AI, streaming responses, interac
   - **Task**: Build an interactive form card inside chat allowing users to review and manually correct extracted OCR data (rent, area, address, rooms) before triggering compliance calculations.
   - **Priority**: High
   - **Acceptance Criteria**: Editable field cards with confidence highlights (green/yellow/red) allowing one-click confirmation to run calculations.
+  - **Status**: Backend only: `send({ confirm })` confirms Unconfirmed facts; no UI card yet.
 
 - [ ] **3.5 Session Management & Conversation History**
   - **Task**: Provide conversation reset, thread persistence in `localStorage` or session backend, and export to PDF/Markdown report.
@@ -154,6 +163,7 @@ Extract relevant tenancy and dwelling metadata from user-uploaded files (rental 
   - **Task**: Compute field-level extraction confidence scores; flag ambiguous or low-confidence values for user confirmation.
   - **Priority**: Medium
   - **Acceptance Criteria**: Fields with confidence < 80% prompt the Orchestrator to confirm details with the user in chat.
+  - **Status**: Orchestrator side only: lease facts with confidence < 0.8 are Unconfirmed and block verdicts until the user confirms them.
 
 - [ ] **4.5 Privacy, PII Sanitization & Data Retention Policy**
   - **Task**: Mask unnecessary personally identifiable information (tenant bank details, IDs, phone numbers) and enforce ephemeral file cleanup.
@@ -171,10 +181,11 @@ Combine all components into seamless user journeys.
   - **Priority**: High
   - **Acceptance Criteria**: Uploading a standard Berlin rental contract yields a full compliance check report without manual data entry.
 
-- [ ] **5.2 Conversational Correction Loop**
+- [x] **5.2 Conversational Correction Loop**
   - **Task**: Enable user to correct any parsed field in chat (e.g., "Actually the cold rent is 720, not 780") and have the orchestrator re-run tool calculations.
   - **Priority**: Medium
   - **Acceptance Criteria**: Tool recalculation reflects user adjustments immediately in subsequent chat messages.
+  - **Status**: Done in the Orchestrator and tested through `send()`; not yet wired to the UI.
 
 - [ ] **5.3 Automated Testing & E2E Verification**
   - **Task**: Write unit and integration tests for:
@@ -183,6 +194,7 @@ Combine all components into seamless user journeys.
     - Orchestrator multi-turn state transitions.
   - **Priority**: Medium
   - **Acceptance Criteria**: Test suite passes with `npm test`.
+  - **Status**: Partial: Tool contract and Orchestrator multi-turn tests pass with `npm test`; OCR mock tests are not part of the Orchestrator work.
 
 ---
 
