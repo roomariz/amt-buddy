@@ -190,6 +190,48 @@ function round(value) {
   return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
+const FEATURE_GROUPS = ["bathroom", "kitchen", "apartment", "building", "surroundings"];
+const GROUP_WEIGHTS = { positive: 20, neutral: 0, negative: -20 };
+
+export function calculateMietspiegelWeight(groups) {
+  if (groups === null || typeof groups !== "object" || Array.isArray(groups)) {
+    throw new TypeError("Feature groups must be an object.");
+  }
+
+  for (const group of Object.keys(groups)) {
+    if (!FEATURE_GROUPS.includes(group)) {
+      throw new RangeError(`Unknown feature group: ${group}.`);
+    }
+  }
+
+  return FEATURE_GROUPS.reduce((total, group) => {
+    if (!Object.hasOwn(groups, group)) {
+      throw new RangeError(`Missing feature group: ${group}.`);
+    }
+    const value = groups[group];
+    if (typeof value !== "string" || !Object.hasOwn(GROUP_WEIGHTS, value)) {
+      throw new RangeError(`Invalid value for ${group}: ${String(value)}.`);
+    }
+    return total + GROUP_WEIGHTS[value];
+  }, 0);
+}
+
+export function calculateAdjustedMietspiegelRent({ lower, median, upper, weightPercent } = {}) {
+  if (![lower, median, upper, weightPercent].every(Number.isFinite)) {
+    throw new TypeError("Mietspiegel span and weight must be finite numbers.");
+  }
+  if (lower > median || median > upper) {
+    throw new RangeError("Mietspiegel span must satisfy lower <= median <= upper.");
+  }
+  if (weightPercent < -100 || weightPercent > 100) {
+    throw new RangeError("Mietspiegel weight must be between -100 and 100.");
+  }
+
+  const weight = weightPercent / 100;
+  const span = weight >= 0 ? upper - median : median - lower;
+  return round(median + weight * span);
+}
+
 export function normalizeBuildingAgeCategory(buildingAgeOrYear) {
   if (!buildingAgeOrYear) return null;
 
@@ -254,6 +296,7 @@ export function evaluateMietspiegel(options = {}) {
     buildingAgeOrYear,
     livingAreaSqm,
     contractRent,
+    featureGroups,
   } = options;
 
   const loc = String(residentialLocation ?? "").trim().toLocaleLowerCase("de-DE");
@@ -302,6 +345,25 @@ export function evaluateMietspiegel(options = {}) {
     upper: round(area * rentPerSqm.upper),
   };
 
+  let adjustedReferenceRent;
+  if (featureGroups !== undefined) {
+    const weightPercent = calculateMietspiegelWeight(featureGroups);
+    const adjustedRentPerSqm = calculateAdjustedMietspiegelRent({
+      ...rentPerSqm,
+      weightPercent,
+    });
+    adjustedReferenceRent = {
+      weightPercent,
+      rentPerSqm: adjustedRentPerSqm,
+      monthlyRent: calculateAdjustedMietspiegelRent({
+        lower: area * rentPerSqm.lower,
+        median: area * rentPerSqm.median,
+        upper: area * rentPerSqm.upper,
+        weightPercent,
+      }),
+    };
+  }
+
   let contractRentComparison = null;
   if (contractRent !== undefined && contractRent !== null && String(contractRent).trim() !== "") {
     const actualMonthly = Number(contractRent);
@@ -340,6 +402,7 @@ export function evaluateMietspiegel(options = {}) {
     field: tableEntry.field,
     rentPerSqm,
     monthlyReferenceRent,
+    ...(adjustedReferenceRent && { adjustedReferenceRent }),
     currency: MIETSPIEGEL_SOURCE.currency,
     basis: MIETSPIEGEL_SOURCE.basis,
     contractRentComparison,
