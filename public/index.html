@@ -20,6 +20,28 @@
         </p>
       </header>
 
+      <section class="card ocr-card" aria-labelledby="ocr-heading">
+        <div class="card-heading">
+          <div>
+            <p class="step">SCHRITT 00 (OPTIONAL)</p>
+            <h2 id="ocr-heading">Dokument per OCR einlesen</h2>
+          </div>
+          <span class="ocr-badge">PDF &amp; Scan Upload</span>
+        </div>
+        <p class="intro-sub">
+          Laden Sie Ihren Berliner Mietvertrag oder eine Wohnungsgeberbestätigung (PDF oder Text) hoch. Die Daten werden automatisch per OCR extrahiert und in das Formular eingetragen.
+        </p>
+        <div id="ocr-dropzone" class="ocr-dropzone" tabindex="0" role="button" aria-label="Datei per Drag-and-Drop ablegen oder zum Durchsuchen klicken">
+          <input type="file" id="ocr-file-input" accept=".pdf,.txt,.md,.json" style="display:none;" />
+          <div class="ocr-prompt">
+            <span class="ocr-icon" aria-hidden="true">📄</span>
+            <p><strong>Mietvertrag hierher ziehen</strong> oder <button type="button" id="ocr-browse-btn" class="ocr-browse-btn">Datei auswählen</button></p>
+            <span class="ocr-hint">Unterstützt PDF, TXT bis 15 MB</span>
+          </div>
+        </div>
+        <div id="ocr-feedback" class="ocr-feedback" hidden aria-live="polite"></div>
+      </section>
+
       <section class="card" aria-labelledby="form-title">
         <div class="card-heading">
           <div>
@@ -46,7 +68,7 @@
           <fieldset class="optional-fieldset">
             <legend>Optionale Wohnungsangaben</legend>
             <p class="fieldset-hint">
-              Wohnfläche (m²) für die Mietspiegel-Vergleichsmiete; Zimmer und Personen für die Belegungsprüfung (§ 7 WoAufG Bln).
+              Wohnfläche (m²) und Kaltmiete für die Mietspiegel-Vergleichsmiete; Zimmer und Personen für die Belegungsprüfung (§ 7 WoAufG Bln).
             </p>
             <div class="row">
               <label>
@@ -54,21 +76,25 @@
                 <input type="number" step="0.1" min="1" name="livingAreaSqm" placeholder="z. B. 50" />
               </label>
               <label>
-                Baujahr (optional)
-                <input type="number" step="1" min="1700" max="2026" name="buildingYear" placeholder="z. B. 1935" />
+                Nettokaltmiete (€, optional)
+                <input type="number" step="0.01" min="1" name="contractRent" placeholder="z. B. 850" />
               </label>
             </div>
             <div class="row">
+              <label>
+                Baujahr (optional)
+                <input type="number" step="1" min="1700" max="2026" name="buildingYear" placeholder="z. B. 1935" />
+              </label>
               <label>
                 Zimmeranzahl
                 <input type="number" step="0.5" min="1" name="rooms" placeholder="z. B. 2" />
               </label>
+            </div>
+            <div class="row">
               <label>
                 Personen gesamt
                 <input type="number" step="1" min="1" name="occupants" placeholder="z. B. 2" />
               </label>
-            </div>
-            <div class="row">
               <label>
                 Kinder bis 6 J.
                 <input type="number" step="1" min="0" name="childrenUpToSix" placeholder="z. B. 0" />

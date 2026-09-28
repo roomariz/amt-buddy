@@ -28,6 +28,7 @@ form.addEventListener("submit", async (event) => {
 
   const optionalFields = [
     "livingAreaSqm",
+    "contractRent",
     "rooms",
     "occupants",
     "childrenUpToSix",
@@ -261,3 +262,177 @@ form.addEventListener("submit", async (event) => {
     button.innerHTML = 'Adresse prüfen <span aria-hidden="true">→</span>';
   }
 });
+
+// ==========================================
+// OCR Document Ingestion & Auto-Fill
+// ==========================================
+
+const ocrDropzone = document.querySelector("#ocr-dropzone");
+const ocrFileInput = document.querySelector("#ocr-file-input");
+const ocrBrowseBtn = document.querySelector("#ocr-browse-btn");
+const ocrFeedback = document.querySelector("#ocr-feedback");
+
+if (ocrDropzone && ocrFileInput) {
+  ocrBrowseBtn?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    ocrFileInput.click();
+  });
+
+  ocrDropzone.addEventListener("click", () => {
+    ocrFileInput.click();
+  });
+
+  ocrDropzone.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      ocrFileInput.click();
+    }
+  });
+
+  ocrDropzone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    ocrDropzone.classList.add("dragover");
+  });
+
+  ocrDropzone.addEventListener("dragleave", () => {
+    ocrDropzone.classList.remove("dragover");
+  });
+
+  ocrDropzone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    ocrDropzone.classList.remove("dragover");
+    const files = e.dataTransfer?.files;
+    if (files && files.length > 0) {
+      handleFileSelected(files[0]);
+    }
+  });
+
+  ocrFileInput.addEventListener("change", (e) => {
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      handleFileSelected(files[0]);
+    }
+  });
+}
+
+async function handleFileSelected(file) {
+  if (!file) return;
+
+  if (file.size > 15 * 1024 * 1024) {
+    showOcrFeedback("error", "Die Datei überschreitet die maximale Größe von 15 MB.");
+    return;
+  }
+
+  showOcrFeedback("loading", `📄 Verarbeite "${escapeHtml(file.name)}" per OCR … Bitte warten.`);
+
+  try {
+    const base64Data = await readFileAsBase64(file);
+    const response = await fetch("/api/v1/documents/ocr", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        file: base64Data,
+        mimeType: file.type || "application/pdf",
+        fileName: file.name,
+      }),
+    });
+
+    const body = await response.json();
+
+    if (!response.ok) {
+      const msg = body.error?.details?.[0]?.message ?? body.error?.message ?? "OCR Extraktion fehlgeschlagen.";
+      throw new Error(msg);
+    }
+
+    const { fields, confidence, prefilledApiPayload, warnings } = body.data;
+
+    // Prefill form
+    if (prefilledApiPayload.address) {
+      const addressField = form.querySelector('[name="address"]');
+      if (addressField) addressField.value = prefilledApiPayload.address;
+    }
+    if (prefilledApiPayload.livingAreaSqm !== undefined) {
+      const areaField = form.querySelector('[name="livingAreaSqm"]');
+      if (areaField) areaField.value = prefilledApiPayload.livingAreaSqm;
+    }
+    if (prefilledApiPayload.contractRent !== undefined) {
+      const rentField = form.querySelector('[name="contractRent"]');
+      if (rentField) rentField.value = prefilledApiPayload.contractRent;
+    }
+    if (prefilledApiPayload.buildingYear !== undefined) {
+      const yearField = form.querySelector('[name="buildingYear"]');
+      if (yearField) yearField.value = prefilledApiPayload.buildingYear;
+    }
+    if (prefilledApiPayload.rooms !== undefined) {
+      const roomsField = form.querySelector('[name="rooms"]');
+      if (roomsField) roomsField.value = prefilledApiPayload.rooms;
+    }
+    if (prefilledApiPayload.occupants !== undefined) {
+      const occupantsField = form.querySelector('[name="occupants"]');
+      if (occupantsField) occupantsField.value = prefilledApiPayload.occupants;
+    }
+    if (prefilledApiPayload.childrenUpToSix !== undefined) {
+      const childrenField = form.querySelector('[name="childrenUpToSix"]');
+      if (childrenField) childrenField.value = prefilledApiPayload.childrenUpToSix;
+    }
+
+    // Build success message with pills
+    const pills = [];
+    if (fields.street && fields.houseNumber) {
+      pills.push(`<span class="ocr-pill high-conf">📍 ${escapeHtml(fields.street)} ${escapeHtml(fields.houseNumber)} (${Math.round((confidence.address || 0) * 100)}%)</span>`);
+    }
+    if (fields.postalCode) {
+      pills.push(`<span class="ocr-pill high-conf">📮 PLZ ${escapeHtml(fields.postalCode)}</span>`);
+    }
+    if (fields.livingAreaSqm) {
+      pills.push(`<span class="ocr-pill high-conf">📐 ${fields.livingAreaSqm} m²</span>`);
+    }
+    if (fields.contractRent) {
+      pills.push(`<span class="ocr-pill high-conf">💶 Kaltmiete: ${fields.contractRent} €</span>`);
+    }
+    if (fields.buildingYear) {
+      pills.push(`<span class="ocr-pill high-conf">🏗️ Baujahr: ${fields.buildingYear}</span>`);
+    }
+    if (fields.rooms) {
+      pills.push(`<span class="ocr-pill med-conf">🚪 ${fields.rooms} Zimmer</span>`);
+    }
+    if (fields.occupants) {
+      pills.push(`<span class="ocr-pill med-conf">👥 ${fields.occupants} Personen</span>`);
+    }
+
+    let warningHtml = "";
+    if (warnings && warnings.length > 0) {
+      warningHtml = `<p style="margin: 8px 0 0; font-size: 0.85rem; color: #b45309;">⚠️ ${warnings.map(escapeHtml).join(" ")}</p>`;
+    }
+
+    showOcrFeedback(
+      "success",
+      `<strong>✓ Daten erfolgreich extrahiert und in das Formular eingetragen!</strong>
+       <div class="ocr-pill-grid">${pills.join("")}</div>
+       ${warningHtml}
+       <p style="margin: 10px 0 0; font-size: 0.85rem;">Bitte überprüfen Sie die eingetragenen Daten und klicken Sie unten auf <strong>"Adresse prüfen"</strong>.</p>`
+    );
+  } catch (err) {
+    showOcrFeedback("error", `<strong>Fehler bei der OCR-Extraktion:</strong> ${escapeHtml(err.message)}`);
+  }
+}
+
+function showOcrFeedback(type, html) {
+  if (!ocrFeedback) return;
+  ocrFeedback.className = `ocr-feedback ${type}`;
+  ocrFeedback.innerHTML = html;
+  ocrFeedback.hidden = false;
+}
+
+function readFileAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result;
+      const base64 = dataUrl.split(",")[1];
+      resolve(base64);
+    };
+    reader.onerror = (err) => reject(err);
+    reader.readAsDataURL(file);
+  });
+}

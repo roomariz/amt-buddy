@@ -154,6 +154,64 @@ network access.
 }
 ```
 
+`POST /api/v1/documents/ocr`
+
+Extracts tenancy facts (address, net cold rent, living area, construction year, rooms, occupants, children) from uploaded rental contracts (`Mietvertrag`) or registration documents (`Wohnungsgeberbestätigung`).
+
+### Request
+
+```json
+{
+  "file": "<base64_encoded_file_content>",
+  "mimeType": "application/pdf",
+  "fileName": "mietvertrag.pdf"
+}
+```
+*(Or send `{ "text": "raw contract text" }` directly).*
+
+### Response
+
+```json
+{
+  "data": {
+    "rawTextLength": 1250,
+    "fields": {
+      "street": "Berliner Straße",
+      "houseNumber": "155",
+      "postalCode": "10715",
+      "city": "Berlin",
+      "address": "Berliner Straße 155\n10715 Berlin",
+      "livingAreaSqm": 75.5,
+      "contractRent": 850.0,
+      "buildingYear": 1935,
+      "rooms": 3,
+      "occupants": 2,
+      "childrenUpToSix": 1
+    },
+    "confidence": {
+      "address": 0.95,
+      "livingAreaSqm": 0.95,
+      "contractRent": 0.95,
+      "buildingYear": 0.95,
+      "rooms": 0.9,
+      "occupants": 0.85,
+      "childrenUpToSix": 0.85,
+      "overall": 0.92
+    },
+    "prefilledApiPayload": {
+      "address": "Berliner Straße 155\n10715 Berlin",
+      "livingAreaSqm": 75.5,
+      "contractRent": 850.0,
+      "buildingYear": 1935,
+      "rooms": 3,
+      "occupants": 2,
+      "childrenUpToSix": 1
+    },
+    "warnings": []
+  }
+}
+```
+
 ### Output specifics & limitations
 
 1. **Berliner Mietspiegel 2026 Reference Rent Range (`mietspiegel`)**:
