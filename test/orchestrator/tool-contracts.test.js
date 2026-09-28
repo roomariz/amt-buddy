@@ -40,3 +40,28 @@ test("stub overrides replace a handler and calls are recorded", async () => {
   });
   assert.deepEqual(calls, [{ name: "validate_berlin_address", args: { address: "Nowhere 1" } }]);
 });
+
+test("calculate_mietspiegel takes optional feature group ratings, all five or none", async () => {
+  const { schema, output } = TOOL_CONTRACTS.calculate_mietspiegel;
+  const base = { residentialLocation: "gut", buildingAgeOrYear: "1921 - 1930", livingAreaSqm: 50 };
+  const featureGroups = {
+    bathroom: "positive",
+    kitchen: "positive",
+    apartment: "neutral",
+    building: "negative",
+    surroundings: "positive",
+  };
+
+  assert.doesNotThrow(() => schema.parse(base), "the ratings are optional");
+  assert.deepEqual(schema.parse({ ...base, featureGroups }).featureGroups, featureGroups);
+  const { surroundings, ...fourGroups } = featureGroups;
+  assert.throws(() => schema.parse({ ...base, featureGroups: fourGroups }), "all five groups or none");
+  assert.throws(() => schema.parse({ ...base, featureGroups: { ...featureGroups, kitchen: "better" } }));
+
+  const { tools } = createStubTools();
+  const result = await assertToolsMatchContracts(tools).get("calculate_mietspiegel").invoke({ ...base, featureGroups });
+  assert.doesNotThrow(() => output.parse(result));
+  // 50 m², gut, 1919–1949: 8.20 / 9.45 / 11.10 €/m². Three positive, one negative: +40 % of the
+  // upper span, 9.45 + 0.4 × 1.65 €/m² and 472.50 + 0.4 × 82.50 € a month.
+  assert.deepEqual(result.adjustedReferenceRent, { weightPercent: 40, rentPerSqm: 10.11, monthlyRent: 505.5 });
+});

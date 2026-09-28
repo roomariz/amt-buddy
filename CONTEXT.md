@@ -40,6 +40,14 @@ _Avoid_: Draft, pending, guess
 The official form of the Tenancy's address as returned by address verification. Once it exists, it replaces whatever address the user or lease supplied.
 _Avoid_: Normalized address, clean address
 
+**Feature group rating**:
+The tenant's rating of one of the five feature groups of the Mietspiegel Orientierungshilfe (bathroom, kitchen, apartment, building, surroundings): positive, neutral or negative, i.e. better than usual, average or worse. A Tenancy fact the tenant states; it belongs to the flat, so a changed address clears it.
+_Avoid_: Score, grade, Merkmal
+
+**Adjusted reference rent**:
+An estimate of the flat's reference rent within the Mietspiegel range, weighted by all five Feature group ratings. It is based on the Orientierungshilfe, which is not part of the qualified Mietspiegel, so the range stays the reference and the contract rent is compared with the range.
+_Avoid_: Exact rent, precise Mietspiegel value
+
 ### Answers
 
 **Compliance verdict**:

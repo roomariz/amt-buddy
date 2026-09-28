@@ -2,7 +2,7 @@ import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { END, MessagesAnnotation, START, StateGraph } from "@langchain/langgraph";
 import { ToolNode, toolsCondition } from "@langchain/langgraph/prebuilt";
 
-import { CONFIDENCE_THRESHOLD } from "./tenancy.js";
+import { CONFIDENCE_THRESHOLD, FEATURE_GROUP_RATINGS } from "./tenancy.js";
 
 const SHARED_RULES = `Call your tools with values taken exactly from the Tenancy facts given to you; never invent or guess a value.
 If a tool returns an error, do not retry it yourself; report the error.
@@ -21,7 +21,7 @@ ${SHARED_RULES}`,
     label: "ComplianceAgent",
     tools: ["calculate_mietspiegel", "assess_occupancy_compliance"],
     prompt: `You are the Compliance Sub-agent of Amt-Buddy. You run only the checks you are asked for:
-- mietspiegel: call calculate_mietspiegel with residentialLocation, buildingYear (as buildingAgeOrYear), livingAreaSqm and, if known, contractRent.
+- mietspiegel: call calculate_mietspiegel with residentialLocation, buildingYear (as buildingAgeOrYear), livingAreaSqm and, if known, contractRent. The feature group ratings (featureGroups) are added automatically when all five are known; never rate them yourself.
 - occupancy: call assess_occupancy_compliance with livingAreaSqm, rooms, occupants and childrenUpToSix.
 ${SHARED_RULES}`,
   },
@@ -71,15 +71,24 @@ export function toolRefusal(toolName, facts, checks = []) {
   return undefined;
 }
 
+// `featureGroups` from the five feature group ratings, or undefined unless all five are confirmed.
+function featureGroupsFrom(facts) {
+  const entries = Object.entries(FEATURE_GROUP_RATINGS).map(([group, fact]) => [group, facts[fact]]);
+  return entries.every(([, rating]) => rating !== undefined) ? Object.fromEntries(entries) : undefined;
+}
+
 // Arguments pinned to confirmed Tenancy values, so a Sub-agent model cannot
 // pass a Tool a value that differs from the Tenancy. An argument whose fact is
 // not confirmed is pinned to undefined, so the model cannot supply its own value.
 // Within an Official Data run, the coordinates come from the verification that just happened.
 // The lease to read is always the uploaded document (`inputs.documentId`).
+// The Mietspiegel feature groups come only from the tenant's five ratings.
 export function pinnedArgs(toolName, facts, inputs = {}) {
   if (toolName === "lookup_building_age") return facts.coordinates ?? {};
   if (toolName === "extract_lease_data") return { documentId: inputs.documentId };
-  return Object.fromEntries(Object.entries(TOOL_ARG_FACTS[toolName] ?? {}).map(([arg, fact]) => [arg, facts[fact]]));
+  const pinned = Object.fromEntries(Object.entries(TOOL_ARG_FACTS[toolName] ?? {}).map(([arg, fact]) => [arg, facts[fact]]));
+  if (toolName === "calculate_mietspiegel") pinned.featureGroups = featureGroupsFrom(facts);
+  return pinned;
 }
 
 const MAX_SUB_AGENT_STEPS = 12;
