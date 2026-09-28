@@ -2,10 +2,54 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  calculateAdjustedMietspiegelRent,
+  calculateMietspiegelWeight,
   evaluateMietspiegel,
   normalizeBuildingAgeCategory,
   getSizeCategory,
 } from "../src/berlin-mietspiegel.js";
+
+const exampleSpan = { lower: 5.9, median: 7.3, upper: 9.55 };
+const featureGroups = {
+  bathroom: "positive",
+  kitchen: "positive",
+  apartment: "positive",
+  building: "negative",
+  surroundings: "negative",
+};
+
+test("adjusts the Mietspiegel span above and below the median", () => {
+  assert.equal(calculateAdjustedMietspiegelRent({ ...exampleSpan, weightPercent: 20 }), 7.75);
+  assert.equal(calculateAdjustedMietspiegelRent({ ...exampleSpan, weightPercent: -20 }), 7.02);
+});
+
+test("span adjustment reaches the bounds and preserves the median at zero", () => {
+  assert.equal(calculateAdjustedMietspiegelRent({ ...exampleSpan, weightPercent: 100 }), 9.55);
+  assert.equal(calculateAdjustedMietspiegelRent({ ...exampleSpan, weightPercent: -100 }), 5.9);
+  assert.equal(calculateAdjustedMietspiegelRent({ ...exampleSpan, weightPercent: 0 }), 7.3);
+});
+
+test("aggregates the five semantic feature groups", () => {
+  assert.equal(calculateMietspiegelWeight(featureGroups), 20);
+  assert.equal(calculateMietspiegelWeight(Object.fromEntries(
+    Object.keys(featureGroups).map((group) => [group, "neutral"]),
+  )), 0);
+});
+
+test("rejects invalid, missing, and unknown feature groups", () => {
+  assert.throws(() => calculateMietspiegelWeight({ ...featureGroups, kitchen: "good" }), /Invalid value/);
+  assert.throws(() => calculateMietspiegelWeight({ ...featureGroups, kitchen: 20 }), /Invalid value/);
+  const { bathroom, ...incompleteGroups } = featureGroups;
+  assert.throws(() => calculateMietspiegelWeight(incompleteGroups), /Missing feature group/);
+  assert.throws(() => calculateMietspiegelWeight({ ...featureGroups, location: "neutral" }), /Unknown feature group/);
+});
+
+test("rejects invalid span ordering, out-of-range weights, and non-finite numbers", () => {
+  assert.throws(() => calculateAdjustedMietspiegelRent({ lower: 8, median: 7.3, upper: 9.55, weightPercent: 20 }), /lower <= median <= upper/);
+  assert.throws(() => calculateAdjustedMietspiegelRent({ ...exampleSpan, weightPercent: 101 }), /between -100 and 100/);
+  assert.throws(() => calculateAdjustedMietspiegelRent({ ...exampleSpan, weightPercent: -101 }), /between -100 and 100/);
+  assert.throws(() => calculateAdjustedMietspiegelRent({ ...exampleSpan, weightPercent: Infinity }), /finite numbers/);
+});
 
 test("normalizes building age strings and years to Mietspiegel categories", () => {
   assert.equal(normalizeBuildingAgeCategory(1910), "bis 1918");
@@ -58,6 +102,37 @@ test("evaluates Mietspiegel reference rent matching prompt example (field D4)", 
   assert.equal(result.currency, "EUR");
   assert.equal(result.basis, "net cold rent");
   assert.equal(result.contractRentComparison, null);
+  assert.equal(Object.hasOwn(result, "adjustedReferenceRent"), false);
+});
+
+test("adds an adjusted reference rent without changing existing values", () => {
+  const result = evaluateMietspiegel({
+    residentialLocation: "gut",
+    buildingAgeOrYear: "1919–1949",
+    livingAreaSqm: 50,
+    featureGroups,
+  });
+
+  assert.deepEqual(result.adjustedReferenceRent, {
+    weightPercent: 20,
+    rentPerSqm: 9.78,
+    monthlyRent: 489,
+  });
+  assert.deepEqual(result.rentPerSqm, { lower: 8.2, median: 9.45, upper: 11.1 });
+  assert.deepEqual(result.monthlyReferenceRent, { lower: 410, median: 472.5, upper: 555 });
+});
+
+test("calculates monthly rent before rounding the adjusted rent per square meter", () => {
+  const result = evaluateMietspiegel({
+    residentialLocation: "einfach",
+    buildingAgeOrYear: "1919–1949",
+    livingAreaSqm: 50,
+    featureGroups,
+  });
+
+  assert.equal(result.field, "D1b");
+  assert.equal(result.adjustedReferenceRent.rentPerSqm, 8.26);
+  assert.equal(result.adjustedReferenceRent.monthlyRent, 412.9);
 });
 
 test("evaluates contractual rent comparison (below, within, above)", () => {
