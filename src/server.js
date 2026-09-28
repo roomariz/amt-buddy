@@ -8,6 +8,7 @@ import { AddressInputError, verifyBerlinAddress } from "./berlin-address.js";
 import { listenOnAvailablePort, PortUnavailableError } from "./listen.js";
 import { OccupancyInputError } from "./occupancy-assessment.js";
 import { DocumentOcrError, processDocumentOcr } from "./ocr-extraction.js";
+import { processChat } from "./chatbot-orchestrator.js";
 
 const publicDirectory = fileURLToPath(new URL("../public/", import.meta.url));
 const configuredPort = process.env.PORT;
@@ -100,8 +101,37 @@ async function handleDocumentOcr(request, response) {
   }
 }
 
+async function handleChat(request, response) {
+  try {
+    const input = await readJson(request, 1024 * 1024);
+    if (!input || !input.message) {
+      sendJson(response, 422, {
+        error: {
+          code: "validation_error",
+          message: "Field 'message' is required in chat request body.",
+        },
+      });
+      return;
+    }
+
+    const result = await processChat(input);
+    sendJson(response, 200, { data: result });
+  } catch (error) {
+    console.error(error);
+    sendJson(response, 500, {
+      error: {
+        code: "chat_orchestrator_error",
+        message: "Failed to process chat query.",
+      },
+    });
+  }
+}
+
 async function serveStatic(pathname, response) {
-  const relativePath = pathname === "/" ? "index.html" : pathname.slice(1);
+  let relativePath = pathname === "/" ? "index.html" : pathname.slice(1);
+  if (relativePath === "chatbot" || relativePath === "chat") {
+    relativePath = "chatbot.html";
+  }
   const filePath = normalize(join(publicDirectory, relativePath));
 
   if (!filePath.startsWith(publicDirectory)) {
@@ -132,6 +162,11 @@ const server = createServer(async (request, response) => {
 
   if (request.method === "POST" && url.pathname === "/api/v1/documents/ocr") {
     await handleDocumentOcr(request, response);
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/v1/chat") {
+    await handleChat(request, response);
     return;
   }
 

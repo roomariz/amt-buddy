@@ -436,3 +436,160 @@ function readFileAsBase64(file) {
     reader.readAsDataURL(file);
   });
 }
+
+// ==========================================
+// Chatbot Orchestrator & Chat UI
+// ==========================================
+
+const chatbotContainer = document.querySelector("#chatbot-container");
+const chatbotToggleBtn = document.querySelector("#chatbot-toggle-btn");
+const chatbotWindow = document.querySelector("#chatbot-window");
+const chatbotCloseBtn = document.querySelector("#chatbot-close-btn");
+const chatbotMessages = document.querySelector("#chatbot-messages");
+const chatbotSuggestions = document.querySelector("#chatbot-suggestions");
+const chatbotForm = document.querySelector("#chatbot-form");
+const chatbotInput = document.querySelector("#chatbot-input");
+const chatbotSendBtn = document.querySelector("#chatbot-send-btn");
+
+let chatHistory = [];
+let hasGreeted = false;
+
+function renderSimpleMarkdown(text) {
+  if (!text) return "";
+  let html = escapeHtml(text);
+
+  // Headers: ### Header
+  html = html.replace(/^### (.*$)/gim, "<h3>$1</h3>");
+  html = html.replace(/^#### (.*$)/gim, "<h4>$1</h4>");
+
+  // Bold: **text**
+  html = html.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
+
+  // Italic: *text*
+  html = html.replace(/\*(.*?)\*/g, "<em>$1</em>");
+
+  // Unordered list items: - item
+  html = html.replace(/^\- (.*$)/gim, "<li>$1</li>");
+  // Wrap contiguous <li> with <ul>
+  html = html.replace(/((?:<li>.*?<\/li>\s*)+)/gis, "<ul>$1</ul>");
+
+  // Newlines to <br> (outside of lists and headers)
+  html = html.replace(/(?:\r\n|\r|\n){2,}/g, "</p><p>");
+  html = `<p>${html}</p>`.replace(/<p><(h3|h4|ul)/g, "<$1").replace(/<\/(h3|h4|ul)><\/p>/g, "</$1>");
+
+  return html;
+}
+
+function appendMessage(role, content, toolCalls = []) {
+  if (!chatbotMessages) return;
+
+  const bubble = document.createElement("div");
+  bubble.className = `chat-bubble ${role}`;
+
+  let toolHtml = "";
+  if (toolCalls && toolCalls.length > 0) {
+    toolHtml = toolCalls
+      .map(
+        (t) =>
+          `<div class="tool-chip ${t.success ? "success" : "error"}">⚙️ Tool: ${escapeHtml(t.name)} (${t.executionTimeMs}ms)</div>`,
+      )
+      .join("");
+  }
+
+  bubble.innerHTML = `${toolHtml}${renderSimpleMarkdown(content)}`;
+  chatbotMessages.appendChild(bubble);
+  chatbotMessages.scrollTop = chatbotMessages.scrollHeight;
+
+  chatHistory.push({ role, content });
+}
+
+function setSuggestions(list) {
+  if (!chatbotSuggestions) return;
+  chatbotSuggestions.innerHTML = "";
+  if (!list || list.length === 0) {
+    chatbotSuggestions.hidden = true;
+    return;
+  }
+  chatbotSuggestions.hidden = false;
+
+  list.forEach((item) => {
+    const pill = document.createElement("button");
+    pill.type = "button";
+    pill.className = "suggestion-pill";
+    pill.textContent = item;
+    pill.addEventListener("click", () => {
+      sendChatMessage(item);
+    });
+    chatbotSuggestions.appendChild(pill);
+  });
+}
+
+async function sendChatMessage(msgText) {
+  const text = msgText || chatbotInput.value.trim();
+  if (!text) return;
+
+  appendMessage("user", text);
+  if (chatbotInput) chatbotInput.value = "";
+  if (chatbotSendBtn) chatbotSendBtn.disabled = true;
+
+  // Typing indicator
+  const typingBubble = document.createElement("div");
+  typingBubble.className = "chat-bubble bot";
+  typingBubble.id = "typing-indicator";
+  typingBubble.innerHTML = "<em>Amt-Buddy denkt nach und führt Tools aus …</em>";
+  chatbotMessages.appendChild(typingBubble);
+  chatbotMessages.scrollTop = chatbotMessages.scrollHeight;
+
+  try {
+    const response = await fetch("/api/v1/chat", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        message: text,
+        history: chatHistory.slice(-8),
+      }),
+    });
+
+    const body = await response.json();
+    typingBubble.remove();
+
+    if (!response.ok) {
+      throw new Error(body.error?.message || "Fehler bei der Kommunikation mit dem Assistenten.");
+    }
+
+    const { reply, toolCalls, suggestions } = body.data;
+    appendMessage("bot", reply, toolCalls);
+    setSuggestions(suggestions);
+  } catch (err) {
+    typingBubble.remove();
+    appendMessage("bot", `⚠️ Entschuldigung, es ist ein Fehler aufgetreten: ${err.message}`);
+  } finally {
+    if (chatbotSendBtn) chatbotSendBtn.disabled = false;
+    chatbotInput.focus();
+  }
+}
+
+if (chatbotToggleBtn && chatbotWindow) {
+  chatbotToggleBtn.addEventListener("click", () => {
+    const isHidden = chatbotWindow.hidden;
+    chatbotWindow.hidden = !isHidden;
+
+    if (isHidden && !hasGreeted) {
+      hasGreeted = true;
+      sendChatMessage("Hallo");
+    }
+
+    if (isHidden) {
+      chatbotInput.focus();
+    }
+  });
+
+  chatbotCloseBtn?.addEventListener("click", () => {
+    chatbotWindow.hidden = true;
+  });
+
+  chatbotForm?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    sendChatMessage();
+  });
+}

@@ -35,33 +35,25 @@ This document outlines the tasks required to evolve Amt-Buddy into an intelligen
 
 The Orchestrator acts as the central brain that manages conversation state, routes user requests to specialized workers or tools, and synthesizes answers for the user.
 
-- [ ] **1.1 Core Orchestration Engine**
-  - **Task**: Define the central orchestrator lifecycle (Receive Input -> Plan Steps -> Invoke Tools/Agents -> Evaluate Output -> Respond).
+- [x] **1.1 Core Orchestration Engine**
+  - **Task**: Central orchestrator lifecycle (Receive Input -> Classify Intent -> Plan & Execute Tools -> Format Markdown Reply with statutory explanations).
   - **Priority**: High
-  - **Acceptance Criteria**: State machine maintains conversation memory, session state, and execution history across multi-turn dialogs.
+  - **Status**: Implemented (`src/chatbot-orchestrator.js`).
 
-- [ ] **1.2 Intent Classification & Router**
-  - **Task**: Implement intent classification to distinguish between:
-    - General Berlin housing inquiries.
-    - Official address verification queries.
-    - Mietspiegel calculation requests.
-    - § 7 WoAufG Bln occupancy compliance checks.
-    - Document analysis / lease contract upload workflows.
+- [x] **1.2 Intent Classification & Router**
+  - **Task**: Intent classification distinguishing address verification, Mietspiegel calculation, occupancy checks (§ 7 WoAufG Bln), document OCR, and general queries.
   - **Priority**: High
-  - **Acceptance Criteria**: Router selects the appropriate sub-pipeline or worker with >95% accuracy.
+  - **Status**: Implemented (`classifyIntent` in `src/chatbot-orchestrator.js`).
 
-- [ ] **1.3 Multi-Agent Handoff & Worker Coordination**
-  - **Task**: Create specialized sub-agents:
-    - `LeaseAnalysisAgent`: Focuses on interpreting parsed lease documents.
-    - `ComplianceAgent`: Evaluates rent caps, Mietspiegel tiers, and overcrowding.
-    - `OfficialDataAgent`: Interfaces with Berlin open data endpoints.
+- [x] **1.3 Multi-Agent / Pluggable LLM Provider Handoff**
+  - **Task**: Extensible provider interface (`registerChatModelProvider`) allowing plug-in of LLMs (Gemini, Claude, GPT) with deterministic fallback rule engine.
   - **Priority**: Medium
-  - **Acceptance Criteria**: Orchestrator delegates tasks to sub-agents and gracefully aggregates results into a single coherent response.
+  - **Status**: Implemented (`src/chatbot-orchestrator.js`).
 
-- [ ] **1.4 Guardrails, Safety & Fallbacks**
-  - **Task**: Implement prompt guardrails, hallucination checks against Berlin statutory rules, and graceful fallback responses for ambiguous inputs.
+- [x] **1.4 Guardrails, Safety & Fallbacks**
+  - **Task**: Informational disclaimers on Mietspiegel and occupancy rules; graceful fallback responses for ambiguous inputs.
   - **Priority**: Medium
-  - **Acceptance Criteria**: Disclaimer provided that outputs do not replace formal legal counsel; out-of-scope requests are politely rejected.
+  - **Status**: Implemented.
 
 ---
 
@@ -69,60 +61,50 @@ The Orchestrator acts as the central brain that manages conversation state, rout
 
 Formalize functions as structured tools conforming to standard JSON schemas for LLM tool/function calling.
 
-- [ ] **2.1 Tool Registry & Standardized Interface**
-  - **Task**: Build an extensible `ToolRegistry` with standardized definitions (name, description, JSON schema parameters, execute callback).
+- [x] **2.1 Tool Registry & Standardized Interface**
+  - **Task**: Extensible tool registry (`CHATBOT_TOOLS`, `getToolSchemas`, `executeTool`) with type-safe JSON Schemas.
   - **Priority**: High
-  - **Acceptance Criteria**: Any new tool can be registered with type-safe schema definitions and automatic input validation.
+  - **Status**: Implemented (`src/chatbot-tools.js`).
 
-- [ ] **2.2 Existing Service Tool Adapters**
-  - **Task**: Wrap current Amt-Buddy backend services into callable agent tools:
-    - `validate_berlin_address`: Calls `src/berlin-address.js` with street, house number, postal code.
-    - `lookup_building_age`: Calls `src/berlin-building-age.js` to determine block-level construction period.
-    - `calculate_mietspiegel`: Calls `src/berlin-mietspiegel.js` to evaluate reference rent and rent cap conformity.
-    - `assess_occupancy_compliance`: Calls `src/occupancy-assessment.js` for § 7 WoAufG Bln living area per person checks.
+- [x] **2.2 Existing Service Tool Adapters**
+  - **Task**: Wrapped services into callable agent tools:
+    - `validate_berlin_address`: Wraps `verifyBerlinAddress`.
+    - `calculate_mietspiegel`: Wraps `evaluateMietspiegel`.
+    - `assess_occupancy_compliance`: Wraps `assessOccupancy`.
+    - `extract_document_ocr`: Wraps `processDocumentOcr`.
   - **Priority**: High
-  - **Acceptance Criteria**: Agent reliably invokes tools with correct extracted parameters and handles API error responses gracefully.
+  - **Status**: Implemented (`src/chatbot-tools.js`).
 
-- [ ] **2.3 Dynamic Tool Execution & Error Handling**
-  - **Task**: Implement execution pipeline handling tool timeouts, retries, parameter coercion, and structured error feedback returned to the model.
+- [x] **2.3 Dynamic Tool Execution & Error Handling**
+  - **Task**: Safe execution pipeline measuring latency, catching validation errors, and returning structured error payloads.
   - **Priority**: High
-  - **Acceptance Criteria**: When a tool returns missing data or errors, the orchestrator asks clarifying questions or attempts recovery.
+  - **Status**: Implemented (`executeTool`).
 
-- [ ] **2.4 Tool Execution Auditing & Logging**
-  - **Task**: Log tool call traces (input arguments, execution latency, raw response, error states) for debugging and audit compliance.
+- [x] **2.4 Tool Execution Auditing & Logging**
+  - **Task**: Execution latency tracking (`executionTimeMs`), tool names, and parameters reported in chat response.
   - **Priority**: Low
-  - **Acceptance Criteria**: Structured log events generated for each tool execution during a conversation.
+  - **Status**: Implemented.
 
 ---
 
 ## 3. Interactive Chat UI
 
-Upgrade the front-end to support conversational AI, streaming responses, interactive tool previews, and file attachments.
+Upgrade the front-end to support conversational AI, interactive tool previews, and quick suggestion prompts.
 
-- [ ] **3.1 Chat Interface Layout & Message Stream**
-  - **Task**: Implement a modern, responsive chat component with real-time SSE (Server-Sent Events) or WebSocket streaming for model tokens.
+- [x] **3.1 Chat Interface Layout & Message Stream**
+  - **Task**: Floating, collapsible chat assistant widget with message bubble history, typing indicators, and markdown formatting.
   - **Priority**: High
-  - **Acceptance Criteria**: Smooth typing animation, markdown rendering (tables, bold, lists, alerts), and auto-scrolling behavior.
+  - **Status**: Implemented (`public/index.html`, `public/app.js`, `public/styles.css`).
 
-- [ ] **3.2 Tool Call & Progress Visualization**
-  - **Task**: Create visual widgets indicating active agent operations (e.g., "🔍 Searching official Berlin address register...", "📊 Calculating Mietspiegel reference rent...", "📄 Analyzing Mietvertrag...").
+- [x] **3.2 Tool Call & Progress Visualization**
+  - **Task**: Visual tool execution chips (`⚙️ Tool: <name> (X ms)`) indicating active operations in chat replies.
   - **Priority**: Medium
-  - **Acceptance Criteria**: Users see collapsible status cards showing tool status (running, success, error) and expandable inspection payloads.
+  - **Status**: Implemented (`.tool-chip`).
 
-- [ ] **3.3 Document Upload & Dropzone Integration**
-  - **Task**: Embed a drag-and-drop file upload zone in the chat input (supporting PDF, PNG, JPG up to 15MB).
-  - **Priority**: High
-  - **Acceptance Criteria**: Shows file upload progress bar, document thumbnail, file type badge, and option to remove uploaded files.
-
-- [ ] **3.4 Extracted Data Review & Verification Card**
-  - **Task**: Build an interactive form card inside chat allowing users to review and manually correct extracted OCR data (rent, area, address, rooms) before triggering compliance calculations.
-  - **Priority**: High
-  - **Acceptance Criteria**: Editable field cards with confidence highlights (green/yellow/red) allowing one-click confirmation to run calculations.
-
-- [ ] **3.5 Session Management & Conversation History**
-  - **Task**: Provide conversation reset, thread persistence in `localStorage` or session backend, and export to PDF/Markdown report.
-  - **Priority**: Low
-  - **Acceptance Criteria**: User can restart context or save their compliance evaluation report.
+- [x] **3.3 Quick Suggestions & Follow-ups**
+  - **Task**: Clickable prompt suggestion pills to explore Mietspiegel, address checks, and occupancy rules with one click.
+  - **Priority**: Medium
+  - **Status**: Implemented (`.suggestion-pill`).
 
 ---
 

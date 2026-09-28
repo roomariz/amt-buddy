@@ -212,6 +212,42 @@ Extracts tenancy facts (address, net cold rent, living area, construction year, 
 }
 ```
 
+`POST /api/v1/chat`
+
+Conversational AI orchestrator that interprets natural language queries in German or English, classifies user intent, calls official backend tools (`validate_berlin_address`, `calculate_mietspiegel`, `assess_occupancy_compliance`, `extract_document_ocr`), and synthesizes markdown explanations with statutory citations.
+
+### Request
+
+```json
+{
+  "message": "Prüfe bitte Pariser Platz 1, 10117 Berlin und sag mir den Mietspiegel für 50 m²",
+  "history": []
+}
+```
+
+### Response
+
+```json
+{
+  "data": {
+    "reply": "### Offizielle Berliner Adresse bestätigt: **Pariser Platz 1**\n\n- **Postleitzahl & Ort**: 10117 Berlin (Mitte)\n- **Wohnlage**: **gut**...",
+    "intent": "address_verification",
+    "toolCalls": [
+      {
+        "success": true,
+        "name": "validate_berlin_address",
+        "executionTimeMs": 28,
+        "result": { "..." : "..." }
+      }
+    ],
+    "suggestions": [
+      "Mietspiegel für diese Adresse berechnen",
+      "Belegung für 3 Personen prüfen"
+    ]
+  }
+}
+```
+
 ### Output specifics & limitations
 
 1. **Berliner Mietspiegel 2026 Reference Rent Range (`mietspiegel`)**:
