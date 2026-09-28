@@ -4,6 +4,7 @@ import { MemorySaver } from "@langchain/langgraph";
 import { createEventTranslator } from "./events.js";
 import { buildGraph } from "./graph.js";
 import { assertToolsMatchContracts } from "./tool-contracts.js";
+import { DEFAULT_TOOL_TIMEOUT_MS, defaultAuditLog } from "./tool-wrapper.js";
 
 export { TOOL_CONTRACTS, TOOL_NAMES } from "./tool-contracts.js";
 export { createStubTools } from "./stub-tools.js";
@@ -13,12 +14,21 @@ const DOCUMENT_ONLY_MESSAGE = "[The user uploaded a lease document]";
 
 // models: { router, supervisor, subAgent } chat models supporting bindTools / withStructuredOutput.
 // tools: LangChain tools implementing every contract in TOOL_CONTRACTS.
-export function createOrchestrator({ models, tools, checkpointer = new MemorySaver() }) {
-  assertToolsMatchContracts(tools);
-  const graph = buildGraph({ models }).compile({ checkpointer });
+// log: receives one PII-free audit entry per Tool call (default: JSON lines on stdout).
+// toolTimeoutMs: per-attempt Tool timeout.
+export function createOrchestrator({
+  models,
+  tools,
+  checkpointer = new MemorySaver(),
+  log = defaultAuditLog,
+  toolTimeoutMs = DEFAULT_TOOL_TIMEOUT_MS,
+}) {
+  const toolsByName = assertToolsMatchContracts(tools);
+  const graph = buildGraph({ models, tools: toolsByName, log, toolTimeoutMs }).compile({ checkpointer });
 
   // One user turn. Yields domain events:
-  // { type: "intent", intents } | { type: "token", text } | { type: "done" } | { type: "error", message }
+  // { type: "intent", intents } | { type: "agent_step", agent, status } | { type: "tenancy", tenancy }
+  // | { type: "token", text } | { type: "done" } | { type: "error", message }
   // Exactly one terminal event (done or error) ends every turn.
   async function* send({ threadId, message, documentId, confirm } = {}) {
     if (!threadId) throw new TypeError("send() requires a threadId");

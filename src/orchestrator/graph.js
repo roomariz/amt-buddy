@@ -1,15 +1,22 @@
 import { AIMessage, HumanMessage, ToolMessage } from "@langchain/core/messages";
 import { Annotation, END, getWriter, MessagesAnnotation, START, StateGraph } from "@langchain/langgraph";
 
+import { factsFromEvidence } from "./evidence.js";
 import { intentSchema, normalizeIntents, routerMessages } from "./intents.js";
 import { reply } from "./replies.js";
+import { blockingFacts } from "./requirements.js";
+import { pinnedArgs, runSubAgent, SUB_AGENTS, subAgentTask, toolRefusal } from "./sub-agents.js";
 import { AGENT_FOR_TOOL, SUPERVISOR_TOOLS, supervisorSystemMessage } from "./supervisor.js";
+import { confirmedValues, mergeTenancy, tenancyReducer } from "./tenancy.js";
+import { wrapTool } from "./tool-wrapper.js";
 
 // A channel whose latest write wins.
 const lastValue = (fallback) => Annotation({ reducer: (_, update) => update, default: fallback });
 
 export const OrchestratorState = Annotation.Root({
   ...MessagesAnnotation.spec,
+  // The Tenancy of the conversation; updates are Tenancy fact updates, `null` resets it.
+  tenancy: Annotation({ reducer: tenancyReducer, default: () => ({}) }),
   intents: lastValue(() => []),
   language: lastValue(() => "en"),
   documentId: lastValue(() => null),
@@ -32,7 +39,7 @@ function textOf(message) {
   return typeof message.content === "string" ? message.content : JSON.stringify(message.content);
 }
 
-export function buildGraph({ models }) {
+export function buildGraph({ models, tools, log, toolTimeoutMs }) {
   async function ingest(state) {
     const update = { intents: [], draft: "", confirm: null };
     if (state.confirm && state.skipRouter) {
@@ -61,23 +68,91 @@ export function buildGraph({ models }) {
     return { draft: textOf(response).trim() || reply("fallback", state.language) };
   }
 
-  // Walking skeleton: Sub-agents are not wired in yet, so every delegation is
-  // answered with an "unavailable" report and the Supervisor answers directly.
-  async function delegate(state) {
-    const call = state.messages.at(-1);
-    const messages = call.tool_calls.map(
-      (toolCall) =>
-        new ToolMessage({
-          tool_call_id: toolCall.id,
-          name: toolCall.name,
-          content: JSON.stringify({
-            status: "unavailable",
-            agent: AGENT_FOR_TOOL[toolCall.name] ?? null,
-            message: "This Sub-agent is not available yet; answer without it.",
-          }),
-        }),
+  // Runs one (already gated) Sub-agent over its wrapped Tools. Returns its report for
+  // the Supervisor and the Tenancy fact updates its Tool results imply.
+  async function delegateToSubAgent(agent, args, tenancy, threadId) {
+    const label = SUB_AGENTS[agent].label;
+    emit({ type: "agent_step", agent: label, status: "started" });
+    const evidence = [];
+    let current = tenancy;
+    const baseTools = SUB_AGENTS[agent].tools.map((name) => tools.get(name));
+    const agentTools = baseTools.map((baseTool) =>
+      wrapTool(baseTool, {
+        agent,
+        threadId,
+        timeoutMs: toolTimeoutMs,
+        log,
+        onEvidence: (entry) => {
+          evidence.push(entry);
+          current = mergeTenancy(current, factsFromEvidence([entry]));
+        },
+        // Resolved per call, so a Tool sees facts an earlier Tool of this run produced.
+        pinnedArgs: () => pinnedArgs(baseTool.name, confirmedValues(current)),
+        guard: () => toolRefusal(baseTool.name, confirmedValues(current)),
+      }),
     );
-    return { messages };
+    let summary;
+    try {
+      summary = await runSubAgent({
+        agent,
+        model: models.subAgent,
+        schemas: baseTools,
+        tools: agentTools,
+        task: subAgentTask({ args, facts: confirmedValues(tenancy) }),
+      });
+    } catch (error) {
+      emit({ type: "agent_step", agent: label, status: "failed" });
+      throw error;
+    }
+    // Failed: nothing succeeded because an official service is down. Input errors
+    // (a malformed address) are reported as results, so the user is asked to fix them.
+    const failed =
+      evidence.some((entry) => entry.error?.kind === "upstream") && evidence.every((entry) => entry.error);
+    emit({ type: "agent_step", agent: label, status: failed ? "failed" : "finished" });
+    const report = {
+      status: failed ? "failed" : "done",
+      summary,
+      results: evidence.map(({ tool, result, error }) => (error ? { tool, error } : { tool, result })),
+    };
+    return { report, updates: factsFromEvidence(evidence) };
+  }
+
+  // Executes the Supervisor's tool calls in order, so a later Sub-agent sees the
+  // facts an earlier one produced. Compliance and Lease Analysis are not wired in
+  // yet and answer "unavailable".
+  async function delegate(state, config) {
+    const threadId = config?.configurable?.thread_id;
+    const call = state.messages.at(-1);
+    let tenancy = state.tenancy;
+    const tenancyUpdates = [];
+    const messages = [];
+
+    for (const toolCall of call.tool_calls) {
+      let report;
+      let updates = [];
+      const agent = AGENT_FOR_TOOL[toolCall.name];
+      if (toolCall.name === "record_tenancy_facts") {
+        updates = (toolCall.args.facts ?? []).map(({ fact, value }) => ({ fact, value, source: "user" }));
+        report = { status: "recorded" };
+      } else if (SUB_AGENTS[agent]) {
+        // Gating in code: a Sub-agent without its required facts does not run.
+        const { blocked, missing, unconfirmed } = blockingFacts(agent, tenancy);
+        if (blocked) {
+          emit({ type: "agent_step", agent: SUB_AGENTS[agent].label, status: "needs_facts" });
+          report = { status: "needs_facts", missing, unconfirmed };
+        } else {
+          ({ report, updates } = await delegateToSubAgent(agent, toolCall.args, tenancy, threadId));
+        }
+      } else {
+        report = { status: "unavailable", agent: agent ?? null, message: "This Sub-agent is not available yet; answer without it." };
+      }
+      tenancy = mergeTenancy(tenancy, updates);
+      tenancyUpdates.push(...updates);
+      messages.push(new ToolMessage({ tool_call_id: toolCall.id, name: toolCall.name, content: JSON.stringify(report) }));
+    }
+
+    if (JSON.stringify(tenancy) !== JSON.stringify(state.tenancy)) emit({ type: "tenancy", tenancy });
+    return { messages, tenancy: tenancyUpdates };
   }
 
   // The disclaimer is appended by code, at most once per conversation.
