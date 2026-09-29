@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "start": "node src/server.js",
-    "test": "node --test"
+    "test": "node --test",
+    "pool:generate": "node scripts/generate-applicant-pool.js",
+    "pool:summary": "node scripts/applicant-pool-summary.js"
   },
   "engines": {
     "node": ">=22.5"
