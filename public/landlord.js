@@ -1,0 +1,232 @@
+/**
+ * Amt-Buddy /landlord page: sign in with a name, enter the Listing, see its Rent check.
+ *
+ * The logic lives in ./landlord/ (server calls, the form and range-bar view model, the stored
+ * sign-in); this file only wires it to the DOM. Server text is always set as textContent.
+ */
+
+import { fetchDashboard, saveListing, signIn } from "./landlord/api.js";
+import { listingFormValues, listingRequest, rentCheckView } from "./landlord/listing.js";
+import { forgetLandlord, rememberLandlord, storedLandlord } from "./landlord/session.js";
+import { getLanguage, onLanguageChange, startI18n, t } from "./i18n.js";
+
+const $ = (selector) => document.querySelector(selector);
+
+const signInSection = $("#sign-in");
+const signInForm = $("#sign-in-form");
+const signInName = $("#sign-in-name");
+const signInError = $("#sign-in-error");
+const listingSection = $("#listing");
+const listingForm = $("#listing-form");
+const listingError = $("#listing-error");
+const saveButton = $("#btn-save-listing");
+const rentCheckSection = $("#rent-check");
+const rentCheckBody = $("#rent-check-body");
+const nameLabel = $("#landlord-name");
+const signOutButton = $("#btn-sign-out");
+
+function localStore() {
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+let landlord = storedLandlord(localStore());
+let listing = null;
+
+const money = (amount) =>
+  new Intl.NumberFormat(getLanguage() === "en" ? "en-GB" : "de-DE", { style: "currency", currency: "EUR" }).format(amount);
+
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+function showError(node, message) {
+  node.textContent = message ?? "";
+  node.hidden = !message;
+}
+
+// --- rendering ---------------------------------------------------------------------------------
+
+function renderSignedIn() {
+  const signedIn = Boolean(landlord);
+  signInSection.hidden = signedIn;
+  listingSection.hidden = !signedIn;
+  signOutButton.hidden = !signedIn;
+  nameLabel.hidden = !signedIn;
+  nameLabel.textContent = signedIn ? t("landlord.signedInAs", { name: landlord.name }) : "";
+  if (!signedIn) rentCheckSection.hidden = true;
+}
+
+function fillForm(values) {
+  for (const [field, value] of Object.entries(values)) listingForm.elements[field].value = value;
+}
+
+function showFieldProblems(problems = {}) {
+  for (const node of listingForm.querySelectorAll("[data-error-for]")) {
+    const message = problems[node.dataset.errorFor];
+    node.textContent = message ?? "";
+    node.hidden = !message;
+    listingForm.elements[node.dataset.errorFor]?.setAttribute("aria-invalid", String(Boolean(message)));
+  }
+}
+
+function fact(list, label, value) {
+  const row = el("div", "landlord-fact");
+  row.append(el("dt", "", label), el("dd", "", value ?? t("landlord.unknown")));
+  list.append(row);
+}
+
+function rangeBar(view, rentCheck) {
+  const bar = el("div", "rent-bar");
+  bar.setAttribute("role", "img");
+  bar.setAttribute(
+    "aria-label",
+    `${t("landlord.rangeLabel")}: ${money(rentCheck.range.lower)} – ${money(rentCheck.range.upper)}; ${t("landlord.askingMark")}: ${money(rentCheck.askingRent)}`,
+  );
+  const band = el("div", "rent-bar-range");
+  band.style.left = `${view.lowerPercent}%`;
+  band.style.width = `${view.upperPercent - view.lowerPercent}%`;
+  bar.append(band);
+  const mark = (className, percent, label) => {
+    const node = el("div", `rent-bar-mark ${className}`);
+    node.style.left = `${percent}%`;
+    node.append(el("span", "rent-bar-label", label));
+    bar.append(node);
+  };
+  mark("is-median", view.medianPercent, t("landlord.median"));
+  mark("is-allowed", view.allowedPercent, t("landlord.allowedMark"));
+  mark(`is-asking is-${view.position}`, view.askingPercent, t("landlord.askingMark"));
+  return bar;
+}
+
+function renderRentCheck() {
+  rentCheckBody.replaceChildren();
+  rentCheckSection.hidden = !listing;
+  if (!listing) return;
+
+  const facts = el("dl", "landlord-facts");
+  const address = listing.canonicalAddress;
+  fact(facts, t("landlord.officialAddress"), address ? `${address.street} ${address.houseNumber}, ${address.postalCode} ${address.city ?? "Berlin"}` : null);
+  fact(facts, t("landlord.residentialLocation"), listing.residentialLocation);
+  fact(facts, t("landlord.buildingAgePeriod"), listing.buildingAgePeriod);
+  if (listing.buildingYear) fact(facts, t("landlord.buildingYearUsed"), String(listing.buildingYear));
+  rentCheckBody.append(facts);
+
+  if (listing.note) {
+    const key = `landlord.notes.${listing.note.code}`;
+    const text = t(key);
+    rentCheckBody.append(el("p", "landlord-note", text === key ? listing.note.message : text));
+  }
+
+  const rentCheck = listing.rentCheck;
+  if (!rentCheck) return;
+  const view = rentCheckView(rentCheck);
+  rentCheckBody.append(el("h3", "rent-check-subtitle", t("landlord.rangeLabel")), rangeBar(view, rentCheck));
+
+  const range = el("dl", "rent-range");
+  for (const bound of ["lower", "median", "upper"]) {
+    const item = el("div", "rent-range-item");
+    item.append(el("dt", "", t(`landlord.${bound}`)), el("dd", "", money(rentCheck.range[bound])));
+    range.append(item);
+  }
+  rentCheckBody.append(range);
+
+  rentCheckBody.append(
+    el("p", `rent-position is-${view.position}`, t(`landlord.position.${view.position}`, { rent: money(rentCheck.askingRent) })),
+  );
+  if (view.warning) {
+    const warning = el(
+      "p",
+      "rent-warning",
+      t("landlord.warning", { excess: money(view.warning.excess), allowed: money(view.warning.allowedRent) }),
+    );
+    warning.setAttribute("role", "alert");
+    rentCheckBody.append(warning);
+  } else {
+    rentCheckBody.append(el("p", "rent-within-cap", t("landlord.withinCap", { allowed: money(rentCheck.allowedRent) })));
+  }
+}
+
+// --- actions -----------------------------------------------------------------------------------
+
+function signOut() {
+  forgetLandlord(localStore());
+  landlord = null;
+  listing = null;
+  fillForm(listingFormValues(null));
+  showFieldProblems();
+  showError(listingError, null);
+  renderSignedIn();
+  renderRentCheck();
+  signInName.focus();
+}
+
+async function loadDashboard() {
+  try {
+    const dashboard = await fetchDashboard({ fetchImpl: fetch, landlordId: landlord.landlordId });
+    if (dashboard.signedOut) {
+      signOut();
+      return;
+    }
+    listing = dashboard.listing;
+    fillForm(listingFormValues(listing));
+    renderRentCheck();
+  } catch (error) {
+    showError(listingError, error.message);
+  }
+}
+
+signInForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  showError(signInError, null);
+  try {
+    landlord = await signIn({ fetchImpl: fetch, name: signInName.value });
+  } catch (error) {
+    showError(signInError, error.message);
+    return;
+  }
+  rememberLandlord(localStore(), landlord);
+  signInForm.reset();
+  renderSignedIn();
+  await loadDashboard();
+});
+
+listingForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  showError(listingError, null);
+  showFieldProblems();
+  const values = Object.fromEntries(new FormData(listingForm));
+  saveButton.disabled = true;
+  saveButton.textContent = t("landlord.saving");
+  try {
+    const result = await saveListing({ fetchImpl: fetch, landlordId: landlord.landlordId, request: listingRequest(values) });
+    if (result.signedOut) signOut();
+    else if (result.problems) showFieldProblems(result.problems);
+    else {
+      listing = result.listing;
+      renderRentCheck();
+    }
+  } catch (error) {
+    showError(listingError, error.message);
+  } finally {
+    saveButton.disabled = false;
+    saveButton.textContent = t("landlord.save");
+  }
+});
+
+signOutButton.addEventListener("click", signOut);
+
+onLanguageChange(() => {
+  renderSignedIn();
+  renderRentCheck();
+});
+
+startI18n();
+renderSignedIn();
+if (landlord) loadDashboard();

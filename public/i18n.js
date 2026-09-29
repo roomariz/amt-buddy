@@ -12,6 +12,9 @@ const de = {
     chatTitle: "Amt-Buddy · Chat",
     chatDescription:
       "Amt-Buddy Chat: Fragen zu Berliner Adressen, Mietspiegel 2026 und Belegung (§ 7 WoAufG Bln) stellen oder den Mietvertrag prüfen lassen.",
+    landlordTitle: "Amt-Buddy · Vermieter",
+    landlordDescription:
+      "Amt-Buddy für Vermieter: Wohnung eintragen und die Angebotsmiete mit dem Berliner Mietspiegel 2026 und der Mietpreisbremse vergleichen.",
   },
   lang: { label: "Sprache" },
   turn: {
@@ -122,6 +125,63 @@ const de = {
     confirmedValues: "Werte bestätigt – {summary}",
     leaseUploaded: "Mietvertrag hochgeladen",
   },
+  landlord: {
+    title: "Amt-Buddy Vermieter",
+    toChat: "Zum Mieter-Chat",
+    signOut: "Abmelden",
+    signedInAs: "Angemeldet als {name}",
+    signInTitle: "Anmelden",
+    signInIntro:
+      "Geben Sie Ihren Namen ein. Ein Passwort gibt es nicht: Mit demselben Namen finden Sie Ihre Wohnung beim nächsten Mal wieder.",
+    name: "Ihr Name",
+    signIn: "Anmelden",
+    listingTitle: "Ihre Wohnung",
+    listingIntro:
+      "Amt-Buddy prüft die Adresse im amtlichen Berliner Register, sucht Wohnlage und Baualter heraus und vergleicht Ihre Angebotsmiete mit dem Mietspiegel 2026.",
+    address: "Adresse",
+    addressPlaceholder: "Wühlischstraße 30, 10245 Berlin",
+    livingArea: "Wohnfläche (m²)",
+    rooms: "Zimmer",
+    askingRent: "Angebotsmiete netto kalt (€ / Monat)",
+    buildingYear: "Baujahr (optional)",
+    buildingYearHint: "Ohne Baujahr nimmt Amt-Buddy das überwiegende Baualter des Blocks.",
+    save: "Wohnung speichern und prüfen",
+    saving: "Prüfe …",
+    rentCheckTitle: "Mietcheck",
+    officialAddress: "Amtliche Adresse",
+    residentialLocation: "Wohnlage",
+    buildingAgePeriod: "Baualter des Blocks",
+    buildingYearUsed: "Baujahr (Ihre Angabe)",
+    unknown: "unbekannt",
+    rangeLabel: "Mietspiegel-Spanne für Ihre Wohnung",
+    lower: "Untergrenze",
+    median: "Mittelwert",
+    upper: "Obergrenze",
+    allowedMark: "Mietspiegel + 10 %",
+    askingMark: "Ihre Miete",
+    position: {
+      low: "Ihre Angebotsmiete von {rent} liegt unter der Mietspiegel-Spanne.",
+      typical: "Ihre Angebotsmiete von {rent} liegt innerhalb der Mietspiegel-Spanne.",
+      high: "Ihre Angebotsmiete von {rent} liegt über der Mietspiegel-Spanne.",
+    },
+    warning:
+      "Achtung: Ihre Angebotsmiete liegt {excess} über Mietspiegel + 10 %. Nach der Mietpreisbremse sind höchstens {allowed} zulässig, außer die Vormiete war höher.",
+    withinCap: "Ihre Angebotsmiete liegt innerhalb von Mietspiegel + 10 % (zulässig bis {allowed}).",
+    notes: {
+      address_not_verified:
+        "Diese Adresse steht nicht im amtlichen Berliner Adressregister. Bitte prüfen Sie Straße, Hausnummer und Postleitzahl.",
+      berlin_data_service_unavailable:
+        "Ein amtlicher Berliner Datendienst antwortet gerade nicht. Ihre Wohnung ist gespeichert, den Mietcheck gibt es, wenn Sie sie später noch einmal speichern.",
+      rent_check_not_possible: "Für diese Adresse lässt sich der Mietspiegel nicht berechnen (zum Beispiel ohne amtliche Wohnlage).",
+    },
+    disclaimer:
+      "Der Mietcheck dient der Orientierung und ist keine Rechtsberatung. Nicht berücksichtigt: eine höhere Vormiete, Modernisierung und die Ausnahme für Neubauten.",
+    errors: {
+      unreachable: "Amt-Buddy ist gerade nicht erreichbar. Bitte versuchen Sie es gleich noch einmal.",
+      failed: "Das hat nicht geklappt. Bitte versuchen Sie es noch einmal.",
+      nameRequired: "Bitte geben Sie Ihren Namen ein (höchstens 100 Zeichen).",
+    },
+  },
 };
 
 const en = {
@@ -129,6 +189,9 @@ const en = {
     chatTitle: "Amt-Buddy · Chat",
     chatDescription:
       "Amt-Buddy chat: ask about Berlin addresses, the Mietspiegel 2026 and occupancy (§ 7 WoAufG Bln), or have your lease checked.",
+    landlordTitle: "Amt-Buddy · Landlord",
+    landlordDescription:
+      "Amt-Buddy for landlords: enter your flat and compare the asking rent with the Berlin Mietspiegel 2026 and the Mietpreisbremse.",
   },
   lang: { label: "Language" },
   turn: {
@@ -237,6 +300,62 @@ const en = {
     working: "Amt-Buddy is working …",
     confirmedValues: "Values confirmed – {summary}",
     leaseUploaded: "Lease uploaded",
+  },
+  landlord: {
+    title: "Amt-Buddy Landlord",
+    toChat: "Tenant chat",
+    signOut: "Sign out",
+    signedInAs: "Signed in as {name}",
+    signInTitle: "Sign in",
+    signInIntro: "Enter your name. There is no password: signing in with the same name brings your flat back next time.",
+    name: "Your name",
+    signIn: "Sign in",
+    listingTitle: "Your flat",
+    listingIntro:
+      "Amt-Buddy checks the address in the official Berlin register, looks up the Wohnlage and building age, and compares your asking rent with the Mietspiegel 2026.",
+    address: "Address",
+    addressPlaceholder: "Wühlischstraße 30, 10245 Berlin",
+    livingArea: "Living area (m²)",
+    rooms: "Rooms",
+    askingRent: "Asking net cold rent (€ / month)",
+    buildingYear: "Building year (optional)",
+    buildingYearHint: "Without a building year, Amt-Buddy uses the block's predominant construction period.",
+    save: "Save and check the flat",
+    saving: "Checking …",
+    rentCheckTitle: "Rent check",
+    officialAddress: "Official address",
+    residentialLocation: "Wohnlage",
+    buildingAgePeriod: "Block's construction period",
+    buildingYearUsed: "Building year (as you stated)",
+    unknown: "unknown",
+    rangeLabel: "Mietspiegel range for your flat",
+    lower: "Lower bound",
+    median: "Median",
+    upper: "Upper bound",
+    allowedMark: "Mietspiegel + 10 %",
+    askingMark: "Your rent",
+    position: {
+      low: "Your asking rent of {rent} is below the Mietspiegel range.",
+      typical: "Your asking rent of {rent} is within the Mietspiegel range.",
+      high: "Your asking rent of {rent} is above the Mietspiegel range.",
+    },
+    warning:
+      "Warning: your asking rent is {excess} above Mietspiegel + 10 %. Under the Mietpreisbremse at most {allowed} is allowed, unless the previous rent was higher.",
+    withinCap: "Your asking rent is within Mietspiegel + 10 % (allowed up to {allowed}).",
+    notes: {
+      address_not_verified:
+        "This address is not in the official Berlin address register. Please check the street, house number and postal code.",
+      berlin_data_service_unavailable:
+        "An official Berlin data service is not answering right now. Your flat is saved; save it again later to get the rent check.",
+      rent_check_not_possible: "The Mietspiegel cannot be calculated for this address (for example without an official Wohnlage).",
+    },
+    disclaimer:
+      "The rent check is for orientation and is not legal advice. Not considered: a higher previous rent, modernisation and the new-build exemption.",
+    errors: {
+      unreachable: "Amt-Buddy cannot be reached right now. Please try again in a moment.",
+      failed: "That did not work. Please try again.",
+      nameRequired: "Please enter your name (at most 100 characters).",
+    },
   },
 };
 

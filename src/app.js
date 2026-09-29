@@ -12,41 +12,19 @@ import { DocumentOcrError, extractDocumentText, parseTenancyDocument, processDoc
 import { createBerlinTools } from "./orchestrator/berlin-tools.js";
 import { createOrchestrator } from "./orchestrator/index.js";
 import { createOpenAIModels } from "./orchestrator/openai.js";
+import { readJson as readJsonBody, sendError, sendJson } from "./http-json.js";
+import { createLandlordApi } from "./landlord/http.js";
+import { createLandlordStore, landlordDatabasePath } from "./landlord/store.js";
 
 const publicDirectory = fileURLToPath(new URL("../public/", import.meta.url));
+const readJson = (request, maxBytes = 16_384, ErrorClass = AddressInputError) =>
+  readJsonBody(request, maxBytes, ErrorClass);
+
 const contentTypes = {
   ".css": "text/css; charset=utf-8",
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
 };
-
-function sendJson(response, status, body) {
-  response.writeHead(status, { "content-type": "application/json; charset=utf-8" });
-  response.end(JSON.stringify(body));
-}
-
-async function readJson(request, maxBytes = 16_384, ErrorClass = AddressInputError) {
-  const chunks = [];
-  let size = 0;
-
-  for await (const chunk of request) {
-    size += chunk.length;
-    if (size > maxBytes) {
-      throw new ErrorClass([
-        { field: "body", code: "too_large", message: `Request body exceeds limit of ${maxBytes} bytes.` },
-      ]);
-    }
-    chunks.push(chunk);
-  }
-
-  try {
-    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
-  } catch {
-    throw new ErrorClass([
-      { field: "body", code: "invalid_json", message: "Request body must be valid JSON." },
-    ]);
-  }
-}
 
 async function handleVerification(request, response) {
   try {
@@ -133,6 +111,7 @@ async function serveStatic(pathname, response) {
   if (relativePath === "" || relativePath === "chatbot" || relativePath === "chat") {
     relativePath = "chatbot.html";
   }
+  if (relativePath === "landlord") relativePath = "landlord.html";
   const filePath = normalize(join(publicDirectory, relativePath));
 
   if (!filePath.startsWith(publicDirectory)) {
@@ -170,9 +149,6 @@ const MAX_MESSAGE_LENGTH = 4_000;
 const THREAD_PATH = "/api/v1/orchestrator/threads/";
 const EMPTY_THREAD = { transcript: [], tenancy: {} };
 
-function sendError(response, status, code, message, details) {
-  sendJson(response, status, { error: details ? { code, message, details } : { code, message } });
-}
 
 class ChatInputError extends Error {
   constructor(details) {
@@ -276,17 +252,28 @@ async function* ruleBasedTurn({ message, documentId }, documents) {
   }
 }
 
-// createApp({ env?, documents?, createChatOrchestrator? }) → an http.Server, not yet listening.
-// - env: decides the chat mode (see chatMode); default process.env.
+// createApp({ env?, documents?, createChatOrchestrator?, landlordStore?, fetchImpl? }) → an
+// http.Server, not yet listening.
+// - env: decides the chat mode (see chatMode) and the landlord database path; default process.env.
 // - documents: the in-memory store of uploaded leases (default: 30 min, at most 100).
 // - createChatOrchestrator({ env, documents }): builds the one Orchestrator of this server,
 //   lazily on the first chat turn (default: OpenAI models from env + the real Berlin Tools).
+// - landlordStore: the landlord store (default: SQLite at landlordDatabasePath(env), opened on
+//   the first landlord request).
+// - fetchImpl: the fetch the landlord side uses for the Berlin services (default: global fetch).
 export function createApp({
   env = process.env,
   documents = createDocumentStore(),
   createChatOrchestrator = defaultChatOrchestrator,
+  landlordStore,
+  fetchImpl,
 } = {}) {
   const mode = chatMode(env);
+  let store = landlordStore;
+  const landlordApi = createLandlordApi({
+    getStore: () => (store ??= createLandlordStore({ path: landlordDatabasePath(env) })),
+    fetchImpl,
+  });
   let orchestrator;
   const getOrchestrator = () => (orchestrator ??= createChatOrchestrator({ env, documents }));
 
@@ -372,6 +359,8 @@ export function createApp({
 
   async function route(request, response) {
     const url = new URL(request.url, `http://${request.headers.host ?? "localhost"}`);
+
+    if (await landlordApi.handle(request, response, url)) return;
 
     if (request.method === "POST" && url.pathname === "/api/v1/address-verifications") {
       await handleVerification(request, response);

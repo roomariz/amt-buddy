@@ -17,7 +17,7 @@ import { DEFAULT_TOOL_TIMEOUT_MS } from "./tool-wrapper.js";
 // wants a comma or line break right before the postal code. Chat addresses often have neither:
 // "Berliner Str. 155 10715" and "Berliner Str. 155, Berlin 10715" become "Berliner Straße 155, 10715";
 // "Berliner Straße 155 10715, Berlin" becomes "Berliner Straße 155, 10715 Berlin".
-function tidyChatAddress(address) {
+export function tidyChatAddress(address) {
   return String(address)
     .replace(/(s)tr\.(?=[\s,\d]|$)/giu, "$1traße")
     .replace(/(s)trasse(?=[\s,\d]|$)/giu, "$1traße")

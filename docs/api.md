@@ -236,3 +236,74 @@ The rule-based chatbot. It interprets German or English questions, classifies th
    - Statutory floor-area thresholds: Minimum **9 m² per person** and **6 m² per child up to age 6** for whole self-contained dwellings.
    - Descriptive density metrics: `occupantsPerRoom` and `roomsPerOccupant`.
    - *Legal notice*: The calculation is purely informational based on user-provided dwelling facts and does not constitute official inspection or legal advice.
+
+## Landlord
+
+The landlord side (page `/landlord`). A Landlord signs in with a name only; their state lives in SQLite (Node's built-in `node:sqlite`) at `LANDLORD_DB_PATH` (default `data/landlord.sqlite`, gitignored). Errors use the usual shape `{ "error": { "code", "message", "details"? } }`: `422 validation_error` with one `details` entry per field, `404 landlord_not_found` for an unknown `landlordId`.
+
+### `POST /api/v1/landlord/sessions`
+
+```json
+{ "name": "Erika Muster" }
+```
+
+→ `200 { "data": { "landlordId": "5b0c…", "name": "Erika Muster" } }`. The same name (trimmed, case-insensitive) always returns the same landlord; the first sign-in creates it. An empty name (or one over 100 characters) is a 422.
+
+### `PUT /api/v1/landlord/:landlordId/listing`
+
+Saves the landlord's one Listing (replacing an earlier one) and returns it with its Rent check.
+
+```json
+{ "address": "Wühlischstraße 30, 10245 Berlin", "livingAreaSqm": 50, "rooms": 2, "askingRent": 700, "buildingYear": 1905 }
+```
+
+- `address`: street, house number and postal code (`Wühlischstr. 30 10245` works too); verified against the official address register.
+- `livingAreaSqm` (at most 1000), `rooms` (at most 20), `askingRent` (monthly net cold rent in EUR, at most 100 000): numbers above 0.
+- `buildingYear` (optional, 1800 to five years ahead): replaces the block's predominant construction period in the Mietspiegel.
+
+The Rent check runs `evaluateMietspiegel` with the asking rent as contract rent and `rentedBefore: true` (a re-let, so the Mietpreisbremse applies; the new-build exemption and a previous rent are not considered).
+
+```json
+{
+  "data": {
+    "address": "Wühlischstraße 30, 10245 Berlin",
+    "canonicalAddress": { "street": "Wühlischstraße", "houseNumber": "30", "postalCode": "10245", "city": "Berlin", "district": "Friedrichshain-Kreuzberg", "locality": "Friedrichshain", "coordinates": { "longitude": 13.4576, "latitude": 52.5097 } },
+    "addressVerified": true,
+    "livingAreaSqm": 50,
+    "rooms": 2,
+    "askingRent": 700,
+    "buildingYear": null,
+    "residentialLocation": "gut",
+    "buildingAgePeriod": "1901-1910",
+    "rentCheck": {
+      "askingRent": 700,
+      "askingRentPerSqm": 14,
+      "range": { "lower": 420, "median": 490, "upper": 610 },
+      "rangePerSqm": { "lower": 8.4, "median": 9.8, "upper": 12.2 },
+      "position": "high",
+      "aboveCap": true,
+      "allowedRent": 539,
+      "differenceFromAllowed": 161,
+      "capPercent": 10,
+      "mietspiegelField": "C4",
+      "buildingAgeClass": "bis 1918",
+      "residentialLocation": "gut",
+      "legalBasis": "Mietpreisbremse (§§ 556d–556g BGB): …",
+      "source": { "name": "Berliner Mietspiegel 2026", "…": "…" }
+    },
+    "note": null,
+    "updatedAt": "2026-09-29T16:33:50.553Z"
+  }
+}
+```
+
+- `position`: `low` (below the Mietspiegel range), `typical` (within it) or `high` (above it).
+- `aboveCap`: the asking rent is above Mietspiegel median + 10 %; `allowedRent` is that cap and `differenceFromAllowed` the asking rent minus it.
+- When there is no Rent check, `rentCheck` is `null` and `note` says why (`{ "code", "message" }`); the Listing is still saved:
+  - `address_not_verified`: the register has no such address (`addressVerified: false`, `canonicalAddress: null`).
+  - `berlin_data_service_unavailable`: an official Berlin service failed; save the Listing again later.
+  - `rent_check_not_possible`: the Mietspiegel does not apply (e.g. no official Wohnlage).
+
+### `GET /api/v1/landlord/:landlordId/dashboard`
+
+→ `200 { "data": { "listing": { … } | null, "rentCheck": { … } | null } }`. Later landlord features add fields (pool statistics, ranking, Shortlist, …).

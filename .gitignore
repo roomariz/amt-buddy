@@ -2,3 +2,6 @@ node_modules/
 .env
 .env.*
 !.env.example
+# The landlord store (SQLite; LANDLORD_DB_PATH)
+data/*.sqlite
+data/*.sqlite-*

@@ -16,7 +16,8 @@ advice.
 
 ## Quick start
 
-You need [Node.js](https://nodejs.org/) 20.6 or newer.
+You need [Node.js](https://nodejs.org/) 22.5 or newer (the landlord page uses
+Node's built-in SQLite).
 
 ```sh
 npm install
@@ -50,6 +51,19 @@ What does "Wohnlage" mean in the Berlin Mietspiegel?
 ```
 
 The buttons under the welcome text send questions like these with one click.
+
+## For landlords
+
+Open <http://localhost:3000/landlord>. Sign in with just your name (no
+password), then enter your flat: address, living area, rooms, asking net cold
+rent and, if you know it, the building year. Amt Buddy verifies the address,
+looks up the Wohnlage and building age, and shows the Mietspiegel range for the
+flat with your asking rent on it. If the asking rent is above Mietspiegel + 10 %,
+it warns you and shows the rent the Mietpreisbremse would allow.
+
+Signing in again with the same name brings your flat back, also after a restart.
+The data is kept in `data/landlord.sqlite` (set `LANDLORD_DB_PATH` to use another
+file).
 
 ## Checking your lease (Mietvertrag)
 
@@ -135,5 +149,5 @@ More documentation:
   behind the AI chat. It covers the chat's HTTP/SSE endpoints, the `send()` event
   contract, how to write Tools, configuration and the LangSmith/PII warning.
 - [docs/api.md](docs/api.md): the plain JSON endpoints (address check, lease
-  reading, rule-based chat), with request and response examples.
+  reading, rule-based chat, the landlord side), with request and response examples.
 - [CONTEXT.md](CONTEXT.md): the project's vocabulary.
