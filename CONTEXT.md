@@ -1,6 +1,6 @@
 # Amt-Buddy
 
-Amt-Buddy helps Berlin tenants check a tenancy against official Berlin data and rules: address verification, Mietspiegel reference rent, and § 7 WoAufG Bln occupancy.
+Amt-Buddy helps Berlin tenants check a tenancy against official Berlin data and rules: address verification, Mietspiegel reference rent, and § 7 WoAufG Bln occupancy. It also helps a Berlin landlord check the asking rent of the flat they let (the Listing) against the Mietspiegel and the Mietpreisbremse.
 
 ## Language
 
@@ -79,3 +79,65 @@ _Avoid_: Rent limit, rent brake, Kappungsgrenze (that is the cap on rent increas
 **Grounded claim**:
 A number or Compliance verdict in an answer that can be traced to a Tool result of the current turn (or a missing-facts report from gating), a Tenancy fact, or the tenant's own message in that turn. Only Grounded claims may reach the user.
 _Avoid_: Verified claim, fact-checked
+
+### Landlord
+
+**Landlord**:
+The person letting one flat, identified by the name they sign in with (trimmed, case-insensitive; no password). Owns one Listing, their Selection criteria, Landlord preferences and a Shortlist.
+_Avoid_: Owner, user, account, Vermieter-Profil
+
+**Listing**:
+The flat the Landlord lets: address (becomes a Canonical address once verified), living area, rooms, asking net cold rent, optional building year, plus the official facts looked up for it (Wohnlage, building-age period) and its Rent check.
+_Avoid_: Offer, ad, property, Tenancy (that is the tenant's side)
+
+**Rent check**:
+The result of running the Mietspiegel / Rent cap calculation on the Listing with the asking rent as contract rent, on a flat rented before: the Mietspiegel range, where the asking rent sits in it (low / typical / high), and whether it exceeds Mietspiegel + 10 % with the rent that would be allowed. It is informational for the Landlord, not a Compliance verdict on a Tenancy.
+_Avoid_: Rent verdict, compliance check, valuation
+
+**Applicant**:
+A person (household) who applied for the flat; one file in the Applicant pool.
+_Avoid_: Candidate, tenant (until a lease is signed), lead
+
+**Applicant pool**:
+The set of applications, read from the synthetic Markdown files. Read-only for the app.
+_Avoid_: Applications database, inbox
+
+**Application document**:
+One document inside an application: SCHUFA-Auskunft, Income proof (payslips / employer confirmation / guarantor), Previous-landlord confirmation (Vormieterbescheinigung / Mietschuldenfreiheitsbescheinigung).
+_Avoid_: Attachment, upload, file
+
+**Document check**:
+The per-Applicant result of checking the Application documents: present / missing / expired / inconsistent, each with a reason.
+_Avoid_: Verification, KYC
+
+**Credibility score**:
+0–100, derived only from the Document check: how much of the declared data the documents support.
+_Avoid_: Trust score, rating
+
+**Applicant profile**:
+The anonymised, structured view of an Applicant that everything downstream uses: id, household size, net household income, employment type, SCHUFA status, move-in date, pets/smoking, Document check, Credibility score. It never contains protected characteristics. Name and contact details are kept beside it for display only and never reach the scorer or the model.
+_Avoid_: Applicant record, dossier
+
+**Selection criteria**:
+The Landlord's tunable weights per scoring criterion plus hard Requirements.
+_Avoid_: Filters, settings, preferences (those are Landlord preferences)
+
+**Requirement**:
+A hard filter within the Selection criteria (e.g. clean SCHUFA only). An Applicant who fails one is Excluded, with the reason.
+_Avoid_: Rule, must-have, filter
+
+**Match score**:
+0–100, the weighted score of an Applicant profile for this Listing under the current Selection criteria, with its per-criterion breakdown.
+_Avoid_: Rank, rating, fit
+
+**Recommendation**:
+One of the top 1–2 non-excluded Applicants, with reasons generated from their score breakdown.
+_Avoid_: Suggestion, pick, top match
+
+**Landlord preferences**:
+The long-term memory about a Landlord: saved Selection criteria plus free-text preference notes from the chat.
+_Avoid_: Memory, profile, settings
+
+**Shortlist**:
+The Applicants the Landlord selected, each with a status (`to_invite`, `invited`, `declined`) and an optional note.
+_Avoid_: Favourites, watchlist, selection

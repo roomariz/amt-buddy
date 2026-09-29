@@ -1212,3 +1212,155 @@ footer a { color: inherit; }
 @media (max-width: 480px) {
   .gpt-topbar .topbar-title { display: none; }
 }
+
+/* ==========================================
+   Landlord page (/landlord): same look as the chat
+   ========================================== */
+
+.landlord-main { width: 100vw; }
+
+.landlord-nav-link,
+.landlord-link-btn {
+  width: auto;
+  margin: 0;
+  padding: 4px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  color: #5d5d5d;
+  font: 500 0.85rem/1.2 inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.landlord-nav-link:hover,
+.landlord-link-btn:hover { background: #f0f0f0; color: #0d0d0d; }
+
+.topbar-actions { display: flex; align-items: center; gap: 8px; }
+
+.landlord-name { font-size: 0.85rem; color: #5d5d5d; }
+
+.landlord-column {
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 32px 16px 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.landlord-card {
+  border: 1px solid #e5e5e5;
+  border-radius: 16px;
+  padding: 24px;
+  background: #ffffff;
+}
+
+.landlord-card[hidden] { display: none; }
+
+.landlord-card h2 { margin: 0 0 8px; font-size: 1.25rem; }
+
+.landlord-intro,
+.landlord-hint { margin: 0 0 16px; color: #5d5d5d; font-size: 0.9rem; line-height: 1.45; }
+
+.landlord-hint { margin: 12px 0 0; font-size: 0.8rem; }
+
+.landlord-form { margin: 0; display: flex; flex-direction: column; gap: 14px; }
+
+.landlord-row { display: flex; gap: 14px; }
+
+.landlord-field {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.landlord-field input {
+  margin: 0;
+  border: 1px solid #d0d0d0;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font: 400 1rem/1.3 inherit;
+}
+
+.landlord-field input[aria-invalid="true"] { border-color: #b3261e; }
+
+.landlord-field-error,
+.landlord-error { margin: 0; color: #b3261e; font-size: 0.8rem; font-weight: 500; }
+
+.landlord-field-error[hidden],
+.landlord-error[hidden] { display: none; }
+
+.landlord-btn {
+  width: auto;
+  align-self: flex-start;
+  margin: 4px 0 0;
+  padding: 10px 18px;
+  border: 0;
+  border-radius: 999px;
+  background: #0d0d0d;
+  color: #ffffff;
+  font: 600 0.9rem/1.2 inherit;
+  cursor: pointer;
+}
+
+.landlord-btn:disabled { opacity: 0.5; cursor: default; }
+
+.landlord-facts { margin: 0 0 16px; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
+
+.landlord-fact { display: block; padding: 10px 12px; border-radius: 10px; background: #f7f7f7; }
+
+.landlord-fact dt,
+.rent-range-item dt { font-size: 0.75rem; color: #5d5d5d; }
+
+.landlord-fact dd,
+.rent-range-item dd { margin: 4px 0 0; font-weight: 600; }
+
+.landlord-note { margin: 0 0 12px; padding: 12px; border-radius: 10px; background: #fff4d6; color: #5c4400; }
+
+.rent-check-subtitle { margin: 8px 0 44px; font-size: 0.95rem; }
+
+.rent-bar { position: relative; height: 14px; margin: 0 8px 40px; border-radius: 999px; background: #ececec; }
+
+.rent-bar-range { position: absolute; top: 0; bottom: 0; border-radius: 999px; background: #bcd9c3; }
+
+.rent-bar-mark { position: absolute; top: -6px; bottom: -6px; width: 2px; margin-left: -1px; background: #5d5d5d; }
+
+.rent-bar-label {
+  position: absolute;
+  top: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font-size: 0.7rem;
+  color: #5d5d5d;
+}
+
+.rent-bar-mark.is-allowed { background: #b3261e; }
+
+.rent-bar-mark.is-allowed .rent-bar-label { color: #b3261e; }
+
+.rent-bar-mark.is-asking { top: -12px; bottom: -12px; width: 4px; margin-left: -2px; background: #0d0d0d; }
+
+.rent-bar-mark.is-asking .rent-bar-label { top: -22px; font-weight: 700; color: #0d0d0d; }
+
+.rent-range { margin: 0 0 12px; display: flex; gap: 10px; }
+
+.rent-range-item { flex: 1; padding: 10px 12px; border-radius: 10px; background: #f7f7f7; }
+
+.rent-position { margin: 12px 0 0; font-weight: 600; }
+
+.rent-warning { margin: 12px 0 0; padding: 12px; border-radius: 10px; background: #fae4df; color: #8b1f1f; font-weight: 600; }
+
+.rent-within-cap { margin: 12px 0 0; color: #1f5f2e; }
+
+@media (max-width: 560px) {
+  .landlord-row, .rent-range { flex-direction: column; }
+  .landlord-name { display: none; }
+}
