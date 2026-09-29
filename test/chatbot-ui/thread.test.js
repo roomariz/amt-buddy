@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { currentThreadId, startNewThread, THREAD_KEY } from "../../public/chat/thread.js";
+import { currentThreadId, startNewThread, storedThreadId, THREAD_KEY } from "../../public/chat/thread.js";
 
 function memoryStorage(initial = {}) {
   const items = new Map(Object.entries(initial));
@@ -47,4 +47,11 @@ test("without working storage the thread id still works for this page", () => {
   };
   assert.equal(currentThreadId(broken, ids("t-1")), "t-1");
   assert.equal(startNewThread(null, ids("t-2")), "t-2");
+});
+
+test("a stored thread id tells a reload from a first visit", () => {
+  assert.equal(storedThreadId(memoryStorage({ [THREAD_KEY]: "t-old" })), "t-old");
+  assert.equal(storedThreadId(memoryStorage()), null);
+  assert.equal(storedThreadId(memoryStorage({ [THREAD_KEY]: "x".repeat(201) })), null);
+  assert.equal(storedThreadId(null), null);
 });

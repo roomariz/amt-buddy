@@ -62,6 +62,23 @@ export async function fetchChatMode(fetchImpl) {
   }
 }
 
+const isPlainObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
+
+// The thread's Transcript and Tenancy, as the server remembers them. Any failure (network,
+// non-200, malformed body) gives the empty result, so the page opens on the start screen.
+export async function fetchThread({ fetchImpl, threadId, signal }) {
+  const empty = { transcript: [], tenancy: {} };
+  try {
+    const response = await fetchImpl(`/api/v1/orchestrator/threads/${encodeURIComponent(threadId)}`, { signal });
+    if (!response.ok) return empty;
+    const data = (await response.json())?.data;
+    if (!Array.isArray(data?.transcript) || !isPlainObject(data?.tenancy)) return empty;
+    return { transcript: data.transcript.filter(isPlainObject), tenancy: data.tenancy };
+  } catch {
+    return empty;
+  }
+}
+
 // Uploads a lease ({ file: base64, mimeType, fileName } or { text }) → { documentId }.
 // Throws an Error whose message is a friendly reason in the UI language.
 export async function uploadLease({ fetchImpl, payload, signal }) {

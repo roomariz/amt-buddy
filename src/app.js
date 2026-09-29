@@ -167,6 +167,8 @@ const SSE_HEARTBEAT_MS = 15_000;
 const CHAT_FAILED = "Amt-Buddy could not answer this message.";
 const MAX_ID_LENGTH = 200;
 const MAX_MESSAGE_LENGTH = 4_000;
+const THREAD_PATH = "/api/v1/orchestrator/threads/";
+const EMPTY_THREAD = { transcript: [], tenancy: {} };
 
 function sendError(response, status, code, message, details) {
   sendJson(response, status, { error: details ? { code, message, details } : { code, message } });
@@ -182,6 +184,12 @@ class ChatInputError extends Error {
 
 const isPlainObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
 
+// The rule for a threadId, shared by the chat and thread endpoints; null when it holds.
+function threadIdProblem(threadId) {
+  if (typeof threadId === "string" && threadId.trim() && threadId.length <= MAX_ID_LENGTH) return null;
+  return { field: "threadId", code: "required", message: "'threadId' must be a non-empty string." };
+}
+
 // Checks a chat turn's body; returns the validation problems (none: the turn can run).
 function chatTurnProblems(input) {
   if (!isPlainObject(input)) return [{ field: "body", code: "invalid_type", message: "Body must be a JSON object." }];
@@ -193,9 +201,8 @@ function chatTurnProblems(input) {
       problems.push({ field, code: "invalid_type", message: `'${field}' must be a string of at most ${max} characters.` });
     }
   };
-  if (typeof threadId !== "string" || !threadId.trim() || threadId.length > MAX_ID_LENGTH) {
-    problems.push({ field: "threadId", code: "required", message: "'threadId' must be a non-empty string." });
-  }
+  const threadProblem = threadIdProblem(threadId);
+  if (threadProblem) problems.push(threadProblem);
   optionalString("message", message, MAX_MESSAGE_LENGTH);
   optionalString("documentId", documentId, MAX_ID_LENGTH);
   if (confirm !== undefined && confirm !== null && !isPlainObject(confirm)) {
@@ -314,6 +321,25 @@ export function createApp({
     await streamEvents(response, events, abort);
   }
 
+  // GET /api/v1/orchestrator/threads/:threadId → the thread's Transcript and Tenancy. Never
+  // creates the Orchestrator: without one (rule_based mode, or no chat turn yet) nothing is
+  // remembered. Logs no content.
+  async function handleThread(response, encodedId) {
+    let threadId;
+    try {
+      threadId = decodeURIComponent(encodedId);
+    } catch {
+      threadId = "";
+    }
+    const problem = threadIdProblem(threadId);
+    if (problem) {
+      sendError(response, 422, "validation_error", problem.message, [problem]);
+      return;
+    }
+    const thread = mode === "orchestrator" && orchestrator ? await orchestrator.getThread(threadId) : EMPTY_THREAD;
+    sendJson(response, 200, { data: thread });
+  }
+
   async function* orchestratorTurn(turn, signal) {
     let chat;
     try {
@@ -374,6 +400,11 @@ export function createApp({
 
     if (request.method === "GET" && url.pathname === "/api/v1/orchestrator/status") {
       sendJson(response, 200, { data: { mode } });
+      return;
+    }
+
+    if (request.method === "GET" && url.pathname.startsWith(THREAD_PATH)) {
+      await handleThread(response, url.pathname.slice(THREAD_PATH.length));
       return;
     }
 

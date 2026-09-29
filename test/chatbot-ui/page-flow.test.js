@@ -8,7 +8,7 @@ import { createBerlinTools } from "../../src/orchestrator/berlin-tools.js";
 import { createOrchestrator } from "../../src/orchestrator/index.js";
 import { createFakeBerlinWfs } from "../helpers/fake-berlin-wfs.js";
 import { ScriptedChatModel } from "../orchestrator/helpers/scripted-model.js";
-import { fetchChatMode, runTurn, uploadLease, UPLOAD_TEXT } from "../../public/chat/api.js";
+import { fetchChatMode, fetchThread, runTurn, uploadLease, UPLOAD_TEXT } from "../../public/chat/api.js";
 import { confirmPayload } from "../../public/chat/tenancy.js";
 
 async function start({ env, script }) {
@@ -132,4 +132,185 @@ test("orchestrator mode: a lease with a low-confidence rent opens the review car
   assert.deepEqual(confirmed.tenancy.contractRent, { value: 780.5, source: "user" });
   assert.equal(confirmed.review, null, "nothing left to confirm");
   assert.match(confirmed.answer, /780,5 €/);
+});
+
+const ORCHESTRATOR_ENV = { OPENAI_MODEL: "scripted", OPENAI_API_KEY: "sk-test" };
+
+test("restore: after a question and answer, the thread holds both, the answer exactly as streamed", async (t) => {
+  const server = await start({
+    env: ORCHESTRATOR_ENV,
+    script: {
+      router: [{ intents: ["general"], language: "en" }],
+      supervisor: ["Tell me your address and I will check the Mietspiegel."],
+    },
+  });
+  t.after(server.close);
+
+  const turn = await runTurn({
+    fetchImpl: server.fetchImpl,
+    request: { threadId: "restore-1", message: "  Can you check my rent?  " },
+  });
+  assert.equal(turn.phase, "done");
+  assert.match(turn.answer, /legal advice/i, "the first answer carries the disclaimer");
+
+  const thread = await fetchThread({ fetchImpl: server.fetchImpl, threadId: "restore-1" });
+  assert.deepEqual(thread, {
+    transcript: [
+      { role: "user", text: "Can you check my rent?", document: false, confirm: null },
+      { role: "assistant", text: turn.answer },
+    ],
+    tenancy: {},
+  });
+});
+
+test("restore: Tool calls, Tool results and a rewritten draft never reach the Transcript", async (t) => {
+  const server = await start({
+    env: ORCHESTRATOR_ENV,
+    script: {
+      router: [{ intents: ["address"], language: "en" }],
+      supervisor: [
+        { toolCalls: [{ name: "record_tenancy_facts", args: { facts: [{ fact: "address", value: "Wühlischstraße 30, 10245 Berlin" }] } }] },
+        "Your rent of 1234 € is too high.",
+        "I noted your address. What is your contract rent?",
+      ],
+    },
+  });
+  t.after(server.close);
+
+  const turn = await runTurn({
+    fetchImpl: server.fetchImpl,
+    request: { threadId: "restore-2", message: "I live in Wühlischstraße 30, 10245 Berlin" },
+  });
+  assert.equal(turn.phase, "done");
+  assert.match(turn.answer, /^I noted your address/);
+
+  const { transcript, tenancy } = await fetchThread({ fetchImpl: server.fetchImpl, threadId: "restore-2" });
+  assert.deepEqual(transcript, [
+    { role: "user", text: "I live in Wühlischstraße 30, 10245 Berlin", document: false, confirm: null },
+    { role: "assistant", text: turn.answer },
+  ]);
+  assert.doesNotMatch(JSON.stringify(transcript), /1234/);
+  assert.deepEqual(tenancy.address, { value: "Wühlischstraße 30, 10245 Berlin", source: "user" });
+});
+
+test("restore: an out-of-scope message and its reply are both kept, and new turns append below", async (t) => {
+  const server = await start({
+    env: ORCHESTRATOR_ENV,
+    script: {
+      router: [
+        { intents: ["out_of_scope"], language: "en" },
+        { intents: ["general"], language: "en" },
+      ],
+      supervisor: ["Ask me about renting in Berlin."],
+    },
+  });
+  t.after(server.close);
+
+  const rejected = await runTurn({ fetchImpl: server.fetchImpl, request: { threadId: "restore-3", message: "A poem, please" } });
+  const next = await runTurn({ fetchImpl: server.fetchImpl, request: { threadId: "restore-3", message: "What can you do?" } });
+
+  const { transcript } = await fetchThread({ fetchImpl: server.fetchImpl, threadId: "restore-3" });
+  assert.deepEqual(
+    transcript.map(({ role, text }) => [role, text]),
+    [
+      ["user", "A poem, please"],
+      ["assistant", rejected.answer],
+      ["user", "What can you do?"],
+      ["assistant", next.answer],
+    ],
+  );
+  assert.match(rejected.answer, /I can only help with Berlin housing questions/);
+});
+
+test("restore: a turn that ended in an error keeps the user's message without an answer", async (t) => {
+  const server = await start({
+    env: ORCHESTRATOR_ENV,
+    // The Supervisor has no scripted reply: its model call fails.
+    script: { router: [{ intents: ["general"], language: "en" }] },
+  });
+  t.after(server.close);
+
+  const turn = await runTurn({ fetchImpl: server.fetchImpl, request: { threadId: "restore-4", message: "Hello?" } });
+  assert.equal(turn.phase, "error");
+
+  const { transcript } = await fetchThread({ fetchImpl: server.fetchImpl, threadId: "restore-4" });
+  assert.deepEqual(transcript, [{ role: "user", text: "Hello?", document: false, confirm: null }]);
+});
+
+test("restore: two threads never see each other's Transcript", async (t) => {
+  const server = await start({
+    env: ORCHESTRATOR_ENV,
+    script: {
+      router: [
+        { intents: ["general"], language: "en" },
+        { intents: ["general"], language: "en" },
+      ],
+      supervisor: ["Answer for A.", "Answer for B."],
+    },
+  });
+  t.after(server.close);
+
+  await runTurn({ fetchImpl: server.fetchImpl, request: { threadId: "thread-a", message: "Question A" } });
+  await runTurn({ fetchImpl: server.fetchImpl, request: { threadId: "thread-b", message: "Question B" } });
+
+  const a = await fetchThread({ fetchImpl: server.fetchImpl, threadId: "thread-a" });
+  const b = await fetchThread({ fetchImpl: server.fetchImpl, threadId: "thread-b" });
+  assert.deepEqual(a.transcript.map((entry) => entry.text.split("\n")[0]), ["Question A", "Answer for A."]);
+  assert.deepEqual(b.transcript.map((entry) => entry.text.split("\n")[0]), ["Question B", "Answer for B."]);
+});
+
+const EMPTY = { transcript: [], tenancy: {} };
+
+test("restore: an unknown thread, a server without a chat turn yet and rule_based mode give an empty thread", async (t) => {
+  let created = 0;
+  const fresh = createApp({
+    env: ORCHESTRATOR_ENV,
+    createChatOrchestrator: () => {
+      created += 1;
+      throw new Error("must not be created by a restore");
+    },
+  });
+  await new Promise((resolve) => fresh.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise((resolve) => fresh.close(resolve)));
+  const freshFetch = (url, init) => fetch(`http://127.0.0.1:${fresh.address().port}${url}`, init);
+  assert.deepEqual(await fetchThread({ fetchImpl: freshFetch, threadId: "never-sent" }), EMPTY);
+  assert.equal(created, 0, "the endpoint never creates the Orchestrator");
+
+  const ruleBased = await start({ env: {} });
+  t.after(ruleBased.close);
+  await runTurn({ fetchImpl: ruleBased.fetchImpl, request: { threadId: "rb-1", message: "Hallo" } });
+  assert.deepEqual(await fetchThread({ fetchImpl: ruleBased.fetchImpl, threadId: "rb-1" }), EMPTY);
+
+  const server = await start({
+    env: ORCHESTRATOR_ENV,
+    script: { router: [{ intents: ["general"], language: "en" }], supervisor: ["Hi."] },
+  });
+  t.after(server.close);
+  await runTurn({ fetchImpl: server.fetchImpl, request: { threadId: "known", message: "Hi" } });
+  assert.deepEqual(await fetchThread({ fetchImpl: server.fetchImpl, threadId: "unknown" }), EMPTY);
+});
+
+test("restore: an over-long or empty threadId is a validation error", async (t) => {
+  const server = await start({ env: ORCHESTRATOR_ENV });
+  t.after(server.close);
+
+  const tooLong = await server.fetchImpl(`/api/v1/orchestrator/threads/${"x".repeat(201)}`);
+  assert.equal(tooLong.status, 422);
+  assert.equal((await tooLong.json()).error.code, "validation_error");
+
+  const empty = await server.fetchImpl("/api/v1/orchestrator/threads/%20");
+  assert.equal(empty.status, 422);
+
+  assert.deepEqual(await fetchThread({ fetchImpl: server.fetchImpl, threadId: "x".repeat(201) }), EMPTY);
+});
+
+test("restore: a failed fetch gives an empty thread instead of throwing", async () => {
+  const failing = async () => {
+    throw new TypeError("Failed to fetch");
+  };
+  const serverError = async () => new Response("oops", { status: 500 });
+  const malformed = async () => Response.json({ data: { transcript: "nope", tenancy: {} } });
+  for (const fetchImpl of [failing, serverError, malformed]) {
+    assert.deepEqual(await fetchThread({ fetchImpl, threadId: "t" }), EMPTY);
+  }
 });

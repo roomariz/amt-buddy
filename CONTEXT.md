@@ -60,6 +60,12 @@ _Avoid_: Old rent, former rent
 Whether a flat never rented before was first used (first occupied) after 1 October 2014, a Tenancy fact the tenant states (yes/no). The first rental of such a new build is exempt from the Rent cap (§ 556f BGB). It is asked only when the building is not known to be from before 2014. It belongs to the flat, so a changed address clears it.
 _Avoid_: Neubau flag, built after 2014 (the building year is not the date of first use)
 
+### Conversation
+
+**Transcript**:
+The visible part of a conversation: the tenant's turns (message text, a lease upload, confirmed values) and Amt-Buddy's final answers, in order. It is what the chat page draws again after a reload. It is not the model's message history: it leaves out Tool calls, Tool results, internal markers and grounding drafts.
+_Avoid_: History, chat log, messages
+
 ### Answers
 
 **Compliance verdict**:

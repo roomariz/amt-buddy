@@ -21,11 +21,15 @@ function write(storage, id) {
   }
 }
 
+// The stored thread id, or null when there is none (or it is unusable): a reload has one.
+export function storedThreadId(storage) {
+  const stored = read(storage);
+  return typeof stored === "string" && stored.trim() && stored.length <= MAX_ID_LENGTH ? stored : null;
+}
+
 // The stored thread id, or a new one (stored) when there is none.
 export function currentThreadId(storage, makeId) {
-  const stored = read(storage);
-  if (typeof stored === "string" && stored.trim() && stored.length <= MAX_ID_LENGTH) return stored;
-  return startNewThread(storage, makeId);
+  return storedThreadId(storage) ?? startNewThread(storage, makeId);
 }
 
 // A new chat: a new thread id, stored in place of the old one.
