@@ -728,14 +728,23 @@ footer a { color: inherit; }
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
-  transition: transform 0.2s ease, width 0.2s ease;
+  overflow: hidden; /* clips the contents while the width animates to 0 */
+  transition: transform 0.2s ease, width 0.2s ease, visibility 0.2s;
   z-index: 100;
 }
 
+/* The contents keep their full width, so they slide out instead of wrapping (260px minus the border). */
+.gpt-sidebar > * {
+  min-width: 259px;
+}
+
+/* Hidden, not just 0 wide: nothing shows through and its links and buttons leave the tab order. */
 .gpt-sidebar.collapsed {
   transform: translateX(-100%);
   width: 0;
   margin-right: 0;
+  border-right: 0;
+  visibility: hidden;
 }
 
 .sidebar-top {
@@ -1520,6 +1529,11 @@ footer a { color: inherit; }
   overflow-y: hidden;
   font-family: inherit;
   color: #0d0d0d;
+}
+
+/* Beats the form page's global textarea:focus outline; the box shows focus (:focus-within). */
+.gpt-textarea:focus {
+  outline: none;
 }
 
 .gpt-btn-send {
