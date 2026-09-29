@@ -23,7 +23,7 @@ async function start({ store = createLandlordStore({ path: ":memory:" }), wfs = 
       headers: { "content-type": "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
-    return { status: response.status, body: await response.json() };
+    return { status: response.status, headers: response.headers, body: await response.json() };
   };
   return {
     base,
@@ -41,6 +41,95 @@ const WUEHLISCH_LISTING = { address: "Wühlischstraße 30, 10245 Berlin", living
 
 const signIn = async (server, name = "Erika Muster") =>
   (await server.post("/api/v1/landlord/sessions", { name })).body.data.landlordId;
+
+test("saving a weight merges the other criteria, normalises to 100 and returns the new ranking", async (t) => {
+  const server = await start();
+  t.after(server.close);
+  const id = await signIn(server);
+  const base = `/api/v1/landlord/${id}`;
+  await server.put(`${base}/listing`, WUEHLISCH_LISTING);
+  const before = (await server.get(`${base}/dashboard`)).body.data;
+  const { status, body } = await server.put(`${base}/criteria`, { weights: { affordability: 130 } });
+
+  assert.equal(status, 200);
+  assert.deepEqual(body.data.criteria.weights, { affordability: 65, schufa: 10, documents: 7.5, credibility: 7.5, employment: 7.5, previousLandlord: 2.5 });
+  assert.deepEqual(body.data.criteria.requirements, before.criteria.requirements);
+  assert.notDeepEqual(body.data.ranked, before.ranked);
+  assert.ok(body.data.ranked.every((entry) => entry.breakdown.affordability.weight === 65));
+  assert.deepEqual((await server.get(`${base}/dashboard`)).body.data, body.data);
+});
+
+test("invalid criteria return 422 without overwriting the saved criteria", async (t) => {
+  const server = await start();
+  t.after(server.close);
+  const id = await signIn(server);
+  const base = `/api/v1/landlord/${id}`;
+  const before = (await server.get(`${base}/dashboard`)).body.data.criteria;
+  const invalid = [
+    null, [], { weights: null }, { weights: [] }, { requirements: null },
+    { weights: { affordability: -1 } }, { weights: { schufa: "20" } },
+    { weights: { nationality: 10 } }, { requirements: { religion: true } }, { unexpected: true },
+    { weights: { affordability: 0, schufa: 0, documents: 0, credibility: 0, employment: 0, previousLandlord: 0 } },
+    { requirements: { noPets: "true" } }, { requirements: { occupancyCompliant: null } },
+    { requirements: { maxRentToIncome: 0 } }, { requirements: { maxRentToIncome: 1.1 } },
+    { requirements: { latestMoveIn: "2026-02-30" } }, { requirements: { latestMoveIn: "tomorrow" } },
+  ];
+  for (const input of invalid) {
+    const { status, body } = await server.put(`${base}/criteria`, input);
+    assert.equal(status, 422, JSON.stringify(input));
+    assert.equal(body.error.code, "validation_error");
+    assert.ok(body.error.details.length > 0);
+    assert.deepEqual((await server.get(`${base}/dashboard`)).body.data.criteria, before);
+  }
+  assert.equal((await server.put("/api/v1/landlord/unknown/criteria", {})).status, 404);
+});
+
+test("saved requirements merge, refresh stats and recommendations, and can be cleared", async (t) => {
+  const server = await start();
+  t.after(server.close);
+  const id = await signIn(server);
+  const base = `/api/v1/landlord/${id}`;
+  await server.put(`${base}/listing`, WUEHLISCH_LISTING);
+  const before = (await server.get(`${base}/dashboard`)).body.data;
+  await server.put(`${base}/criteria`, { requirements: { schufaCleanOnly: true } });
+  const changed = (await server.put(`${base}/criteria`, { requirements: { maxRentToIncome: 0.25, latestMoveIn: "2026-12-31" } })).body.data;
+  assert.equal(changed.criteria.requirements.schufaCleanOnly, true);
+  assert.equal(changed.stats.maxRentToIncome, 0.25);
+  assert.ok(changed.stats.canAfford < before.stats.canAfford);
+  assert.ok(changed.excluded.length > before.excluded.length);
+  assert.ok(changed.ranked.every(({ rentToIncome }) => rentToIncome <= 0.25));
+  assert.deepEqual(changed.recommendations.map(({ applicantId }) => applicantId), changed.ranked.slice(0, 2).map(({ applicantId }) => applicantId));
+  const reset = await server.put(`${base}/criteria`, before.criteria);
+  assert.deepEqual(reset.body.data, before);
+});
+
+test("criteria survive a restart and returning sign-in without changing another landlord's defaults", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "amt-buddy-criteria-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const path = join(directory, "landlord.sqlite");
+  const firstStore = createLandlordStore({ path });
+  const first = await start({ store: firstStore });
+  let id;
+  let saved;
+  try {
+    id = await signIn(first);
+    saved = (await first.put(`/api/v1/landlord/${id}/criteria`, {
+      weights: { affordability: 130 }, requirements: { noSmoking: true, noPets: true },
+    })).body.data.criteria;
+  } finally {
+    await first.close();
+    firstStore.close();
+  }
+  const secondStore = createLandlordStore({ path });
+  const second = await start({ store: secondStore });
+  t.after(async () => { await second.close(); secondStore.close(); });
+  assert.equal(await signIn(second, "ERIKA MUSTER"), id);
+  assert.deepEqual((await second.get(`/api/v1/landlord/${id}/dashboard`)).body.data.criteria, saved);
+  const otherId = await signIn(second, "Another landlord");
+  const other = (await second.get(`/api/v1/landlord/${otherId}/dashboard`)).body.data.criteria;
+  assert.equal(other.weights.affordability, 30);
+  assert.equal(other.requirements.noSmoking, false);
+});
 
 test("signing in with a new name creates a landlord", async (t) => {
   const server = await start();
@@ -345,6 +434,100 @@ test("the dashboard joins in the applicant's name for display, with the document
   const entry = ranked[0];
   assert.deepEqual(Object.keys(entry.breakdown), ["affordability", "schufa", "documents", "credibility", "employment", "previousLandlord"]);
   assert.equal(typeof entry.rentToIncome, "number");
+});
+
+test("applicant detail returns the anonymised profile, document issues, the same score as the dashboard, and contact", async (t) => {
+  const server = await start();
+  t.after(server.close);
+  const landlordId = await signIn(server);
+  await server.put(`/api/v1/landlord/${landlordId}/listing`, WUEHLISCH_LISTING);
+  const dashboard = (await server.get(`/api/v1/landlord/${landlordId}/dashboard`)).body.data;
+  const ranked = dashboard.ranked.find(({ applicantId }) => applicantId === "A-001");
+
+  const { status, body } = await server.get(`/api/v1/landlord/${landlordId}/applicants/A-001`);
+
+  assert.equal(status, 200);
+  assert.deepEqual(Object.keys(body.data), ["profile", "score", "rentToIncome", "contact"]);
+  assert.equal(body.data.profile.id, "A-001");
+  assert.equal(body.data.profile.householdSize, 2);
+  assert.equal(body.data.profile.netHouseholdIncome, 6070);
+  assert.equal(body.data.profile.employmentType, "permanent");
+  assert.equal(body.data.profile.schufaStatus, "negative");
+  assert.equal(body.data.profile.moveInDate, "2026-12-15");
+  assert.equal(body.data.profile.pets, false);
+  assert.equal(body.data.profile.smoking, true);
+  assert.deepEqual(Object.keys(body.data.profile.documentCheck), ["schufa", "incomeProof", "previousLandlord", "complete", "issues"]);
+  assert.equal(body.data.profile.credibilityScore, 100);
+  assert.deepEqual(body.data.score, {
+    applicantId: ranked.applicantId, rank: ranked.rank, matchScore: ranked.matchScore,
+    breakdown: ranked.breakdown, rentToIncome: ranked.rentToIncome,
+  });
+  assert.equal(body.data.rentToIncome, ranked.rentToIncome);
+  assert.deepEqual(body.data.contact, { name: "Julien Neumann", email: "julien.neumann1@example.org", phone: "+49 178 4053388" });
+});
+
+test("applicant detail reports document inconsistency and a requirement exclusion", async (t) => {
+  const server = await start();
+  t.after(server.close);
+  const landlordId = await signIn(server);
+  await server.put(`/api/v1/landlord/${landlordId}/listing`, WUEHLISCH_LISTING);
+
+  const excluded = (await server.get(`/api/v1/landlord/${landlordId}/dashboard`)).body.data.excluded[0];
+  const detail = (await server.get(`/api/v1/landlord/${landlordId}/applicants/${excluded.applicantId}`)).body.data;
+  assert.deepEqual(detail.score, { applicantId: excluded.applicantId, excludedBy: excluded.excludedBy, reasons: excluded.reasons });
+  assert.equal(typeof detail.rentToIncome, "number");
+
+  const directory = fileURLToPath(new URL("../fixtures/applicants/", import.meta.url));
+  const fixtures = await start({ env: { APPLICANT_POOL_DIR: directory, APPLICANT_POOL_TODAY: "2026-09-29" } });
+  t.after(fixtures.close);
+  const fixtureLandlordId = await signIn(fixtures);
+  const inconsistent = (await fixtures.get(`/api/v1/landlord/${fixtureLandlordId}/applicants/A-other-name`)).body.data;
+  assert.equal(inconsistent.profile.documentCheck.incomeProof.status, "inconsistent");
+  assert.ok(inconsistent.profile.documentCheck.issues.some(({ code }) => code === "name_mismatch"));
+  assert.ok(!JSON.stringify(inconsistent).includes("Jonas Schmidt"));
+  assert.ok(inconsistent.profile.credibilityScore < 100);
+  assert.equal(inconsistent.score, null); // no Listing yet
+  assert.equal(inconsistent.rentToIncome, null);
+});
+
+test("applicant detail never exposes protected source fields or extra contact fields", async (t) => {
+  const directory = fileURLToPath(new URL("../fixtures/applicants/", import.meta.url));
+  const server = await start({ env: { APPLICANT_POOL_DIR: directory, APPLICANT_POOL_TODAY: "2026-09-29" } });
+  t.after(server.close);
+  const landlordId = await signIn(server);
+  const { status, body } = await server.get(`/api/v1/landlord/${landlordId}/applicants/A-protected`);
+
+  assert.equal(status, 200);
+  assert.deepEqual(Object.keys(body.data.contact), ["name", "email", "phone"]);
+  assert.deepEqual(Object.keys(body.data.profile), [
+    "id", "householdSize", "household", "netHouseholdIncome", "employmentType", "schufaStatus", "moveInDate", "pets", "smoking", "documentCheck", "credibilityScore",
+  ]);
+  for (const value of ["Italian", "Catholic", "1988-04-12", "female", "a-protected.jpg", "expecting a second child", "Siemens AG", "Kastanienallee", "@lena.berlin"]) {
+    assert.ok(!JSON.stringify(body).includes(value), value);
+  }
+});
+
+test("applicant detail returns 404 for an unknown applicant or landlord", async (t) => {
+  const server = await start();
+  t.after(server.close);
+  const landlordId = await signIn(server);
+  const missing = await server.get(`/api/v1/landlord/${landlordId}/applicants/not-here`);
+  const unknownLandlord = await server.get("/api/v1/landlord/not-here/applicants/A-001");
+  assert.equal(missing.status, 404);
+  assert.equal(missing.body.error.code, "applicant_not_found");
+  assert.equal(unknownLandlord.status, 404);
+  assert.equal(unknownLandlord.body.error.code, "landlord_not_found");
+});
+
+test("applicant detail responses cannot be cached", async (t) => {
+  const server = await start();
+  t.after(server.close);
+  const landlordId = await signIn(server);
+
+  const response = await server.get(`/api/v1/landlord/${landlordId}/applicants/A-001`);
+
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("cache-control"), "no-store");
 });
 
 test("the dashboard has the pool stats and the Recommendations, with names joined in", async (t) => {

@@ -73,3 +73,22 @@ export async function removeShortlistEntry({ fetchImpl, landlordId, applicantId 
   if (status === 404 && body?.error?.code === "applicant_not_found") return { notFound: true };
   throw new Error(t("landlord.errors.failed"));
 }
+
+// Save changed Selection criteria → the refreshed dashboard, or validation problems.
+export async function saveCriteria({ fetchImpl, landlordId, request }) {
+  const { status, body } = await call(fetchImpl, landlordPath(landlordId, "criteria"), { method: "PUT", body: request });
+  if (status === 200 && body?.data) return { dashboard: body.data };
+  if (status === 404) return { signedOut: true };
+  if (status === 422 && Array.isArray(body?.error?.details)) {
+    return { problems: Object.fromEntries(body.error.details.map((detail) => [detail.field, detail.code])) };
+  }
+}
+
+// One Applicant profile for page display. An unknown applicant is distinct from a lost sign-in.
+export async function fetchApplicantProfile({ fetchImpl, landlordId, applicantId }) {
+  const { status, body } = await call(fetchImpl, landlordPath(landlordId, `applicants/${encodeURIComponent(applicantId)}`));
+  if (status === 200 && body?.data) return body.data;
+  if (status === 404 && body?.error?.code === "applicant_not_found") return { notFound: true };
+  if (status === 404 && body?.error?.code === "landlord_not_found") return { signedOut: true };
+  throw new Error(t("landlord.errors.failed"));
+}

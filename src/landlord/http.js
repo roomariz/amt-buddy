@@ -1,8 +1,10 @@
 import { readJson, sendError, sendJson } from "../http-json.js";
 import { streamEvents } from "../http-sse.js";
 import { buildListing, ListingInputError } from "./listing.js";
+import { getApplicantProfile } from "./applicant-profile.js";
 import { detectLanguage, landlordReply } from "./orchestrator/replies.js";
 import { DEFAULT_CRITERIA, rankApplicants } from "./scorer.js";
+import { CriteriaInputError, updateSelectionCriteria } from "./criteria.js";
 import { ShortlistInputError, UnknownApplicantError, updateShortlist } from "./shortlist.js";
 import { normalizeLandlordName } from "./store.js";
 
@@ -148,18 +150,18 @@ export function createLandlordApi({ getStore, getApplicantPool = () => EMPTY_POO
   }
 
   // GET /api/v1/landlord/:landlordId/dashboard → { listing, rentCheck, criteria, ranked, excluded,
-  // stats, recommendations, hint, shortlist, poolErrors }. Criteria are the defaults until they
-  // can be tuned.
+  // stats, recommendations, hint, shortlist, defaultCriteria, poolErrors }.
   async function dashboard(response, landlordId) {
     const listing = getStore().getListing(landlordId);
     const pool = await getApplicantPool();
-    const criteria = DEFAULT_CRITERIA;
+    const criteria = getStore().getCriteria(landlordId);
     const ranking = rankingFor(listing, pool, criteria);
     sendJson(response, 200, {
       data: {
         listing,
         rentCheck: listing?.rentCheck ?? null,
         criteria,
+        defaultCriteria: DEFAULT_CRITERIA,
         ...ranking,
         shortlist: shortlistFor(getStore().getShortlist(landlordId), pool, ranking),
         poolErrors: pool.errors,
@@ -193,6 +195,25 @@ export function createLandlordApi({ getStore, getApplicantPool = () => EMPTY_POO
   // DELETE /api/v1/landlord/:landlordId/shortlist/:applicantId → { applicantId, status: "removed", note: null }.
   async function deleteShortlistEntry(request, response, landlordId, applicantId) {
     await changeShortlist(response, landlordId, { applicantId, status: "remove" });
+  }
+
+  // GET /api/v1/landlord/:landlordId/applicants/:applicantId → profile and its current score,
+  // with contact details joined only for the UI. Unknown applicant → 404.
+  async function applicantDetail(response, landlordId, applicantId) {
+    response.setHeader("cache-control", "no-store");
+    const pool = await getApplicantPool();
+    const result = getApplicantProfile({
+      applicants: pool.applicants,
+      listing: getStore().getListing(landlordId),
+      applicantId,
+      criteria: getStore().getCriteria(landlordId),
+    });
+    if (!result) {
+      sendError(response, 404, "applicant_not_found", "No applicant with this id.");
+      return;
+    }
+    const { contact } = pool.applicants.find(({ id }) => id === applicantId);
+    sendJson(response, 200, { data: { ...result, contact } });
   }
 
   // PUT /api/v1/landlord/:landlordId/listing { address, livingAreaSqm, rooms, askingRent, buildingYear? }
@@ -243,6 +264,19 @@ export function createLandlordApi({ getStore, getApplicantPool = () => EMPTY_POO
     "GET dashboard": (request, response, landlordId) => dashboard(response, landlordId),
     "PUT listing": saveListing,
     "POST chat": chat,
+    "PUT criteria": async (request, response, landlordId) => {
+      const body = await readBody(request, response);
+      if (!body) return;
+      try {
+        updateSelectionCriteria({ store: getStore(), landlordId, input: body.input });
+      } catch (error) {
+        if (!(error instanceof CriteriaInputError)) throw error;
+        sendError(response, 422, "validation_error", error.message, error.details);
+        return;
+      }
+      await dashboard(response, landlordId);
+    },
+    "GET applicants": (request, response, landlordId, applicantId) => applicantDetail(response, landlordId, applicantId),
     "PUT shortlist": putShortlistEntry,
     "DELETE shortlist": deleteShortlistEntry,
   };
@@ -255,9 +289,10 @@ export function createLandlordApi({ getStore, getApplicantPool = () => EMPTY_POO
         await signIn(request, response);
         return true;
       }
-      const match = /^([^/]+)\/(dashboard|listing|chat|shortlist)(?:\/([^/]+))?$/.exec(path);
-      // Only the Shortlist's paths carry an applicant id.
-      const handler = match && (match[2] === "shortlist") === (match[3] !== undefined) && routes[`${request.method} ${match[2]}`];
+      const match = /^([^/]+)\/(dashboard|listing|chat|criteria|shortlist|applicants)(?:\/([^/]+))?$/.exec(path);
+      // The Shortlist's and the applicants' paths carry an applicant id; the others none.
+      const takesApplicant = match && (match[2] === "shortlist" || match[2] === "applicants");
+      const handler = match && takesApplicant === (match[3] !== undefined) && routes[`${request.method} ${match[2]}`];
       if (!handler) {
         sendError(response, 404, "not_found", "No such landlord endpoint.");
         return true;

@@ -7,7 +7,9 @@
  * table, the stored sign-in); this file only wires it to the DOM. Server text is always set as textContent.
  */
 
-import { fetchDashboard, removeShortlistEntry, saveListing, saveShortlistEntry, signIn } from "./landlord/api.js";
+import { fetchApplicantProfile, fetchDashboard, removeShortlistEntry, saveCriteria, saveListing, saveShortlistEntry, signIn } from "./landlord/api.js";
+import { applicantDetailView } from "./landlord/applicant-detail.js";
+import { criteriaFormValues, criteriaRequest, WEIGHT_FIELDS } from "./landlord/criteria.js";
 import { runLandlordTurn } from "./landlord/chat.js";
 import { renderMarkdown } from "./chat/markdown.js";
 import { listingFormValues, listingRequest, rentCheckView } from "./landlord/listing.js";
@@ -56,6 +58,17 @@ const shortlistSection = $("#shortlist");
 const shortlistError = $("#shortlist-error");
 const shortlistList = $("#shortlist-list");
 const shortlistEmpty = $("#shortlist-empty");
+const criteriaSection = $("#selection-criteria");
+const criteriaForm = $("#criteria-form");
+const criteriaControls = $("#criteria-controls");
+const criteriaError = $("#criteria-error");
+const criteriaStatus = $("#criteria-status");
+const resetCriteriaButton = $("#btn-reset-criteria");
+const applicantDetailSection = $("#applicant-detail");
+const applicantDetailTitle = $("#applicant-detail-title");
+const applicantDetailStatus = $("#applicant-detail-status");
+const applicantDetailBody = $("#applicant-detail-body");
+const applicantDetailClose = $("#applicant-detail-close");
 
 function localStore() {
   try {
@@ -70,6 +83,14 @@ let listing = null;
 let ranking = null; // { ranked, excluded, hint, poolErrors } from the dashboard
 let poolOverview = null; // { stats, recommendations } from the dashboard; stats is null without a Listing
 let shortlist = []; // the Shortlist from the dashboard
+let defaultCriteria = null;
+let criteriaStatusKey = null;
+let criteriaErrorKey = null;
+let selectedApplicantId = null;
+let applicantDetail = null;
+let applicantDetailError = null;
+let detailRequest = 0;
+let detailOpener = null;
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -98,6 +119,7 @@ function renderSignedIn() {
     rankingSection.hidden = true;
     poolOverviewSection.hidden = true;
     shortlistSection.hidden = true;
+    criteriaSection.hidden = true;
   }
 }
 
@@ -119,6 +141,117 @@ function fact(list, label, value) {
   row.append(el("dt", "", label), el("dd", "", value ?? t("landlord.unknown")));
   list.append(row);
 }
+
+function openButton(applicantId, name) {
+  const button = el("button", "applicant-open", name);
+  button.type = "button";
+  button.setAttribute("aria-label", t("landlord.detail.open", { name }));
+  button.addEventListener("click", () => openApplicant(applicantId, button));
+  return button;
+}
+
+function closeApplicantDetail() {
+  detailRequest += 1;
+  selectedApplicantId = null;
+  applicantDetail = null;
+  applicantDetailError = null;
+  detailOpener = null;
+  applicantDetailSection.hidden = true;
+  applicantDetailBody.replaceChildren();
+  applicantDetailTitle.textContent = "";
+  applicantDetailStatus.textContent = "";
+  applicantDetailStatus.hidden = true;
+}
+
+function renderApplicantDetail() {
+  applicantDetailSection.hidden = !selectedApplicantId;
+  if (!selectedApplicantId) return;
+  applicantDetailBody.replaceChildren();
+  applicantDetailTitle.textContent = applicantDetail?.contact.name ?? t("landlord.detail.title");
+  applicantDetailStatus.hidden = Boolean(applicantDetail);
+  applicantDetailStatus.textContent = applicantDetail ? "" : applicantDetailError ?? t("landlord.detail.loading");
+  if (!applicantDetail) return;
+
+  const view = applicantDetailView(applicantDetail);
+  const heading = (key) => applicantDetailBody.append(el("h3", "", t(`landlord.detail.${key}`)));
+  const facts = (items) => {
+    const list = el("dl", "applicant-detail-facts");
+    for (const { label, value } of items) fact(list, label, value);
+    applicantDetailBody.append(list);
+  };
+  facts(view.facts);
+
+  heading("documents");
+  const documents = el("ul", "applicant-detail-list");
+  for (const { label, status, reason } of view.documents) {
+    const item = el("li");
+    item.append(el("strong", "", `${label}: ${status}`));
+    if (reason) item.append(el("p", "", reason));
+    documents.append(item);
+  }
+  applicantDetailBody.append(documents);
+
+  heading("issues");
+  if (view.issues.length) {
+    const issues = el("ul", "applicant-detail-list");
+    for (const { label, message } of view.issues) issues.append(el("li", "", `${label}: ${message}`));
+    applicantDetailBody.append(issues);
+  } else applicantDetailBody.append(el("p", "landlord-hint", t("landlord.detail.noIssues")));
+
+  heading(view.exclusion ? "excluded" : "score");
+  if (view.exclusion) applicantDetailBody.append(el("p", "landlord-note", view.exclusion));
+  else if (view.matchScore === null) applicantDetailBody.append(el("p", "landlord-hint", t("landlord.detail.listingRequired")));
+  else {
+    applicantDetailBody.append(el("p", "applicant-detail-score", `${view.matchScore}/100`));
+    const breakdown = el("div", "applicant-detail-breakdown");
+    for (const { label, percent, weight } of view.breakdown) {
+      const row = el("div", "applicant-detail-breakdown-row");
+      const progress = el("progress");
+      progress.max = 100;
+      progress.value = percent;
+      progress.setAttribute("aria-label", `${label}: ${percent} %`);
+      row.append(el("span", "", label), progress, el("span", "", `${percent} % · ${t("landlord.detail.weight", { weight })}`));
+      breakdown.append(row);
+    }
+    applicantDetailBody.append(breakdown);
+  }
+
+  heading("contact");
+  facts([
+    { label: t("landlord.detail.email"), value: view.email },
+    { label: t("landlord.detail.phone"), value: view.phone },
+  ]);
+}
+
+async function openApplicant(applicantId, opener) {
+  if (!landlord) return;
+  const request = ++detailRequest;
+  detailOpener = opener;
+  selectedApplicantId = applicantId;
+  applicantDetail = null;
+  applicantDetailError = null;
+  renderApplicantDetail();
+  applicantDetailSection.scrollIntoView({ block: "start" });
+  applicantDetailTitle.focus();
+  try {
+    const result = await fetchApplicantProfile({ fetchImpl: fetch, landlordId: landlord.landlordId, applicantId });
+    if (request !== detailRequest) return;
+    if (result.signedOut) return signOut();
+    if (result.notFound) applicantDetailError = t("landlord.detail.unavailable");
+    else applicantDetail = result;
+  } catch (error) {
+    if (request !== detailRequest) return;
+    applicantDetailError = error.message;
+  }
+  renderApplicantDetail();
+}
+
+applicantDetailClose.addEventListener("click", () => {
+  const opener = detailOpener;
+  closeApplicantDetail();
+  if (opener?.isConnected) opener.focus();
+  else $("#ranking-title").focus();
+});
 
 function rangeBar(view, rentCheck) {
   const bar = el("div", "rent-bar");
@@ -210,8 +343,10 @@ function renderPoolOverview() {
     ...cards.map((card) => {
       const item = el("li", "recommendation-card");
       const head = el("div", "recommendation-head");
+      const name = openButton(card.applicantId, card.name);
+      name.classList.add("recommendation-name");
       head.append(
-        el("span", "recommendation-name", card.name),
+        name,
         el("span", "recommendation-score", t("landlord.poolOverview.score", { score: card.matchScore })),
       );
       item.append(
@@ -396,7 +531,7 @@ function renderRanking() {
         row.append(td);
       };
       cell(String(entry.rank));
-      cell(entry.name);
+      cell(openButton(entry.applicantId, entry.name));
       cell(formatNumber(entry.matchScore), "ranking-score");
       cell(breakdownCell(entry));
       cell(formatPercent(entry.rentToIncome));
@@ -411,7 +546,9 @@ function renderRanking() {
   excludedList.replaceChildren(
     ...ranking.excluded.map((entry) => {
       const item = el("li");
-      item.append(el("span", "excluded-name", entry.name), el("span", "", entry.reasons.map(exclusionText).join(" ")));
+      const name = openButton(entry.applicantId, entry.name);
+      name.classList.add("excluded-name");
+      item.append(name, el("span", "", entry.reasons.map(exclusionText).join(" ")));
       return item;
     }),
   );
@@ -423,12 +560,17 @@ rankingCompleteOnly.addEventListener("change", renderRanking);
 // --- actions -----------------------------------------------------------------------------------
 
 function signOut() {
+  closeApplicantDetail();
   forgetLandlord(localStore());
   landlord = null;
   listing = null;
   ranking = null;
   poolOverview = null;
   shortlist = [];
+  defaultCriteria = null;
+  criteriaForm.reset();
+  criteriaStatusKey = null;
+  clearCriteriaProblems();
   fillForm(listingFormValues(null));
   chatMessages.replaceChildren();
   showFieldProblems();
@@ -442,26 +584,99 @@ function signOut() {
 }
 
 async function loadDashboard() {
+  const landlordId = landlord.landlordId;
   try {
-    const dashboard = await fetchDashboard({ fetchImpl: fetch, landlordId: landlord.landlordId });
+    const dashboard = await fetchDashboard({ fetchImpl: fetch, landlordId });
+    if (landlord?.landlordId !== landlordId) return;
+    closeApplicantDetail();
     if (dashboard.signedOut) {
       signOut();
       return;
     }
-    listing = dashboard.listing;
-    const { ranked, excluded, hint, poolErrors, stats, recommendations } = dashboard;
-    ranking = { ranked, excluded, hint, poolErrors };
-    poolOverview = { stats, recommendations };
-    shortlist = dashboard.shortlist;
-    fillForm(listingFormValues(listing));
-    renderRentCheck();
-    renderPoolOverview();
-    renderShortlist();
-    renderRanking();
+    applyDashboard(dashboard);
+    fillForm(listingFormValues(dashboard.listing));
   } catch (error) {
     showError(listingError, error.message);
   }
 }
+
+function applyDashboard(dashboard) {
+  listing = dashboard.listing;
+  const { ranked, excluded, hint, poolErrors, stats, recommendations } = dashboard;
+  ranking = { ranked, excluded, hint, poolErrors };
+  poolOverview = { stats, recommendations };
+  shortlist = dashboard.shortlist;
+  defaultCriteria = dashboard.defaultCriteria;
+  for (const [key, value] of Object.entries(criteriaFormValues(dashboard.criteria))) {
+    const input = criteriaForm.elements[key];
+    if (input.type === "checkbox") input.checked = value;
+    else input.value = value;
+  }
+  criteriaSection.hidden = false;
+  renderCriteriaText();
+  renderRentCheck();
+  renderPoolOverview();
+  renderShortlist();
+  renderRanking();
+}
+
+function renderCriteriaText() {
+  for (const key of WEIGHT_FIELDS) {
+    $(`#criteria-value-${key}`).textContent = formatNumber(Number(criteriaForm.elements[key].value));
+  }
+  criteriaStatus.textContent = criteriaStatusKey ? t(criteriaStatusKey) : "";
+  showError(criteriaError, criteriaErrorKey ? t(criteriaErrorKey) : null);
+}
+
+function clearCriteriaProblems() {
+  criteriaErrorKey = null;
+  for (const input of criteriaForm.querySelectorAll("input")) input.removeAttribute("aria-invalid");
+  renderCriteriaText();
+}
+
+async function submitCriteria(request) {
+  if (!landlord || criteriaControls.disabled) return;
+  const landlordId = landlord.landlordId;
+  clearCriteriaProblems();
+  criteriaStatusKey = "landlord.criteria.saving";
+  criteriaControls.disabled = true;
+  renderCriteriaText();
+  try {
+    const result = await saveCriteria({ fetchImpl: fetch, landlordId, request });
+    if (landlord?.landlordId !== landlordId) return;
+    criteriaStatusKey = null;
+    if (result.signedOut) signOut();
+    else if (result.problems) {
+      criteriaErrorKey = Object.values(result.problems).includes("positive_total")
+        ? "landlord.criteria.positiveTotal" : "landlord.criteria.invalid";
+      for (const field of Object.keys(result.problems)) {
+        const keys = field === "weights" ? WEIGHT_FIELDS : [field.split(".").at(-1)];
+        for (const key of keys) criteriaForm.elements[key]?.setAttribute("aria-invalid", "true");
+      }
+    } else {
+      criteriaStatusKey = "landlord.criteria.saved";
+      applyDashboard(result.dashboard);
+    }
+  } catch {
+    if (landlord?.landlordId === landlordId) {
+      criteriaStatusKey = null;
+      criteriaErrorKey = "landlord.errors.failed";
+    }
+  } finally {
+    criteriaControls.disabled = false;
+    renderCriteriaText();
+  }
+}
+
+criteriaForm.addEventListener("input", () => {
+  criteriaStatusKey = null;
+  clearCriteriaProblems();
+});
+criteriaForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  submitCriteria(criteriaRequest(Object.fromEntries(new FormData(criteriaForm))));
+});
+resetCriteriaButton.addEventListener("click", () => submitCriteria(defaultCriteria));
 
 signInForm.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -560,11 +775,13 @@ chatInput.addEventListener("keydown", (event) => {
 signOutButton.addEventListener("click", signOut);
 
 onLanguageChange(() => {
+  renderCriteriaText();
   renderSignedIn();
   renderRentCheck();
   renderPoolOverview();
   renderShortlist();
   renderRanking();
+  renderApplicantDetail();
 });
 
 startI18n();
