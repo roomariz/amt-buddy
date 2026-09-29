@@ -10,7 +10,7 @@
 import { fetchApplicantProfile, fetchDashboard, removeShortlistEntry, saveCriteria, saveListing, saveShortlistEntry, signIn } from "./landlord/api.js";
 import { applicantDetailView } from "./landlord/applicant-detail.js";
 import { criteriaFormValues, criteriaRequest, WEIGHT_FIELDS } from "./landlord/criteria.js";
-import { runLandlordTurn } from "./landlord/chat.js";
+import { applicantNames, changedDashboard, runLandlordTurn, withApplicantNames } from "./landlord/chat.js";
 import { renderMarkdown } from "./chat/markdown.js";
 import { listingFormValues, listingRequest, rentCheckView } from "./landlord/listing.js";
 import { breakdownBars, documentFlags, exclusionText, formatMoney, formatNumber, formatPercent, rankingRows } from "./landlord/ranking.js";
@@ -83,6 +83,7 @@ let listing = null;
 let ranking = null; // { ranked, excluded, hint, poolErrors } from the dashboard
 let poolOverview = null; // { stats, recommendations } from the dashboard; stats is null without a Listing
 let shortlist = []; // the Shortlist from the dashboard
+let namesById = new Map(); // applicant id → name, from the dashboard, for the chat answers
 let defaultCriteria = null;
 let criteriaStatusKey = null;
 let criteriaErrorKey = null;
@@ -569,6 +570,7 @@ function signOut() {
   ranking = null;
   poolOverview = null;
   shortlist = [];
+  namesById = new Map();
   defaultCriteria = null;
   criteriaForm.reset();
   criteriaStatusKey = null;
@@ -608,6 +610,7 @@ function applyDashboard(dashboard) {
   ranking = { ranked, excluded, hint, poolErrors };
   poolOverview = { stats, recommendations };
   shortlist = dashboard.shortlist;
+  namesById = applicantNames(dashboard);
   defaultCriteria = dashboard.defaultCriteria;
   for (const [key, value] of Object.entries(criteriaFormValues(dashboard.criteria))) {
     const input = criteriaForm.elements[key];
@@ -731,12 +734,13 @@ function appendChatMessage(role, text) {
   return item;
 }
 
-// Draws the answer as it streams: markdown (escaped first by renderMarkdown), or the turn's error.
+// Draws the answer as it streams: markdown (escaped first by renderMarkdown) with the applicants'
+// names next to their ids, or the turn's error.
 function drawTurn(item, state) {
   item.classList.toggle("is-pending", state.phase === "streaming" && !state.answer);
   item.classList.toggle("is-error", state.phase === "error");
   if (state.phase === "error" && !state.answer) item.textContent = state.error;
-  else if (state.answer) item.innerHTML = renderMarkdown(state.answer);
+  else if (state.answer) item.innerHTML = renderMarkdown(withApplicantNames(state.answer, namesById));
 }
 
 chatForm.addEventListener("submit", async (event) => {
@@ -758,8 +762,9 @@ chatForm.addEventListener("submit", async (event) => {
     });
     drawTurn(answer, state);
     if (state.signedOut) signOut();
-    // After every turn the dashboard is fetched again, so it shows what the chat changed.
-    else if (state.phase === "done") await loadDashboard();
+    // A turn that changed the Selection criteria or the Shortlist: fetch the dashboard again, so it
+    // shows the new ranking and Shortlist.
+    else if (changedDashboard(state)) await loadDashboard();
   } finally {
     chatInput.disabled = false;
     chatSendButton.disabled = false;

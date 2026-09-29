@@ -17,7 +17,8 @@ import { CHAT_FAILED, streamEvents } from "./http-sse.js";
 import { APPLICANT_POOL_DIRECTORY, readApplicantPool } from "./landlord/applicant-pool.js";
 import { POOL_DATE } from "./landlord/applicant-pool-generator.js";
 import { createLandlordApi } from "./landlord/http.js";
-import { createLandlordOrchestrator, createLandlordStubTools } from "./landlord/orchestrator/index.js";
+import { createLandlordOrchestrator, createLandlordTools } from "./landlord/orchestrator/index.js";
+import { rankApplicants } from "./landlord/scorer.js";
 import { createLandlordStore, landlordDatabasePath } from "./landlord/store.js";
 
 const publicDirectory = fileURLToPath(new URL("../public/", import.meta.url));
@@ -146,13 +147,8 @@ function defaultChatOrchestrator({ env, documents }) {
   return createOrchestrator({ models: createOpenAIModels(env), tools: createBerlinTools({ documents }).tools });
 }
 
-// The Landlord Orchestrator runs on the stub Tools until the real landlord Tools exist.
-function defaultLandlordChat({ env, getContext }) {
-  return createLandlordOrchestrator({
-    model: createOpenAIModels(env).supervisor,
-    tools: createLandlordStubTools().tools,
-    getContext,
-  });
+function defaultLandlordChat({ env, tools, getContext }) {
+  return createLandlordOrchestrator({ model: createOpenAIModels(env).supervisor, tools, getContext });
 }
 
 // The Applicant pool the landlord side scores: APPLICANT_POOL_DIR (default: the committed pool in
@@ -260,9 +256,10 @@ async function* ruleBasedTurn({ message, documentId }, documents) {
 // - landlordStore: the landlord store (default: SQLite at landlordDatabasePath(env), opened on
 //   the first landlord request).
 // - fetchImpl: the fetch the landlord side uses for the Berlin services (default: global fetch).
-// - createLandlordChat({ env, getContext }): builds the Landlord Orchestrator, lazily on the first
-//   landlord chat turn and only when a model is configured (see chatMode); `getContext` loads a
-//   landlord's state for its system prompt (default: OpenAI model from env + the stub landlord Tools).
+// - createLandlordChat({ env, tools, getContext }): builds the Landlord Orchestrator, lazily on the
+//   first landlord chat turn and only when a model is configured (see chatMode); `tools` are the
+//   real landlord Tools on this server's store and Applicant pool, and `getContext` loads a
+//   landlord's state for its system prompt (default: OpenAI model from env).
 export function createApp({
   env = process.env,
   documents = createDocumentStore(),
@@ -277,13 +274,32 @@ export function createApp({
   // Read once at start; every dashboard request scores it again (cheap at this size).
   const applicantPool = loadApplicantPool(env);
   let landlordChat;
+  // What the Landlord Orchestrator's system prompt shows every turn: the Listing (with its Rent
+  // check) and the pool stats under the landlord's criteria (none without a Listing).
+  const landlordContext = async (landlordId) => {
+    const listing = getStore().getListing(landlordId);
+    if (!listing) return { listing: null };
+    const { applicants } = await applicantPool;
+    const { stats } = rankApplicants({
+      profiles: applicants.map(({ profile }) => profile),
+      listing,
+      criteria: getStore().getCriteria(landlordId),
+    });
+    return { listing, stats };
+  };
+  const createChat = () =>
+    createLandlordChat({
+      env,
+      tools: createLandlordTools({ getStore, getApplicantPool: () => applicantPool }).tools,
+      getContext: landlordContext,
+    });
   const landlordApi = createLandlordApi({
     getStore,
     getApplicantPool: () => applicantPool,
     fetchImpl,
     getChat: () =>
       mode === "orchestrator"
-        ? (landlordChat ??= createLandlordChat({ env, getContext: async (landlordId) => ({ listing: getStore().getListing(landlordId) }) }))
+        ? (landlordChat ??= createChat())
         : null,
   });
   let orchestrator;

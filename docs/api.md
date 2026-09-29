@@ -416,7 +416,7 @@ criteria }` for the later chat Tool integration.
 
 ### `POST /api/v1/landlord/:landlordId/chat`
 
-One turn of the Landlord Orchestrator (`src/landlord/orchestrator/`), a LangGraph graph of its own (`ingest → agent ⇄ tools → verifyGrounding → finalize`; the tenant Orchestrator is not involved). The conversation is kept in memory, one thread per landlord.
+One turn of the Landlord Orchestrator (`src/landlord/orchestrator/`), a LangGraph graph of its own (`ingest → agent ⇄ tools → verifyGrounding → finalize`; the tenant Orchestrator is not involved). The conversation is kept in memory, one thread per landlord. At the start of every turn the system prompt gets the landlord's Listing (with its Rent check) and the pool stats under their Selection criteria.
 
 ```json
 { "message": "Only applicants with a clean SCHUFA, please." }
@@ -424,10 +424,19 @@ One turn of the Landlord Orchestrator (`src/landlord/orchestrator/`), a LangGrap
 
 → `200 text/event-stream`, the same framing as the tenant chat (`event: <type>` + `data: <the event as JSON>`, `: keep-alive` comments):
 
-- `{ "type": "token", "text": "…" }`: the answer (Markdown), once it has passed the grounding check (ADR 0003): every number comes from a Tool result of this turn, the landlord's Listing or their own message; applicant ids (`A-007`) are not checked as figures.
-- `{ "type": "criteria" }` / `{ "type": "shortlist" }`: a Tool changed the Selection criteria / the Shortlist; the page reloads the dashboard after `done`.
+- `{ "type": "token", "text": "…" }`: the answer (Markdown), once it has passed the grounding check (ADR 0003): every number comes from a Tool result of this turn, the landlord's Listing, the pool stats or their own message; applicant ids (`A-007`) are not checked as figures. The model only knows applicant ids; the page shows each known applicant's name next to the id.
+- `{ "type": "criteria" }` / `{ "type": "shortlist" }`: a Tool changed the Selection criteria / the Shortlist (it is saved already); after a turn with one of them the page reloads the dashboard.
 - `{ "type": "done" }` or `{ "type": "error", "message" }`: exactly one ends every turn.
 
 Without `OPENAI_MODEL` and `OPENAI_API_KEY` the stream is a single `token` saying the AI chat is not configured (in German or English, following the message), then `done`. A body without a non-empty `message` of at most 4000 characters is a `422 validation_error`; an unknown landlord a `404 landlord_not_found`.
 
-The six landlord Tools have shared zod contracts in `src/landlord/orchestrator/tool-contracts.js` (`get_ranking`, `get_applicant_profile`, `update_selection_criteria`, `remember_preference`, `update_shortlist`, `get_rent_check`); the Orchestrator refuses to start if one is missing. A Tool gets the landlord as `config.configurable.landlordId` and must return applicant ids only, never names or protected characteristics. Until the real Tools exist, the server runs on the stub Tools (`createLandlordStubTools`), which return fixed data.
+The six landlord Tools have shared zod contracts in `src/landlord/orchestrator/tool-contracts.js` (`get_ranking`, `get_applicant_profile`, `update_selection_criteria`, `remember_preference`, `update_shortlist`, `get_rent_check`); the Orchestrator refuses to start if one is missing. A Tool gets the landlord as `config.configurable.landlordId` and must return applicant ids only, never names or protected characteristics. The server runs on the real Tools (`createLandlordTools({ getStore, getApplicantPool })`, `src/landlord/orchestrator/landlord-tools.js`), built on the dashboard's functions:
+
+- `get_ranking`: the top 10 ranked applicants (`applicantId`, `rank`, `matchScore`, `rentToIncome`, `breakdown`), `rankedCount`, the pool `stats`, `excludedByReason` (count per Requirement), the `criteria` and the `shortlist` as `{ applicantId, status }` (notes are left out: they are the landlord's free text). Without a Listing it is an input error asking for the Listing.
+- `get_applicant_profile`: the anonymised profile (names on other people's documents removed), `rank`, `matchScore`, `breakdown`, `rentToIncome`, `excludedBy` and `exclusionReasons`, and `shortlistStatus`.
+- `update_selection_criteria`: `updateSelectionCriteria`; returns `previous` and `criteria` (weights rounded to one decimal, so the chat can quote them) and the new `top` 3.
+- `update_shortlist`: `updateShortlist`, the same checks as the HTTP endpoint.
+- `get_rent_check`: the Listing's Rent check, or `null` with a `note` saying why.
+- `remember_preference` is still a stub (Landlord preferences are stored in #47).
+
+`createLandlordStubTools` (fixed data) remains for tests.

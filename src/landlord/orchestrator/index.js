@@ -8,6 +8,7 @@ import { assertLandlordToolsMatchContracts } from "./tool-contracts.js";
 
 export { LANDLORD_TOOL_CONTRACTS, LANDLORD_TOOL_NAMES } from "./tool-contracts.js";
 export { createLandlordStubTools } from "./stub-tools.js";
+export { createLandlordTools } from "./landlord-tools.js";
 
 const RECURSION_LIMIT = 25;
 
