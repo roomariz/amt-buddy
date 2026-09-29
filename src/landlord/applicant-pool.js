@@ -145,7 +145,8 @@ const failed = (document, status, code, reason, extra = {}) => ({
 // word boundaries and order so missing or different name parts still request clarification.
 // Only fold Latin diacritics: marks in other scripts can be distinct letters/vowels.
 const nameKey = (name) => String(name).normalize("NFD").replace(/(\p{Script=Latin})\p{M}+/gu, "$1")
-  .toLocaleLowerCase("de-DE").trim().replace(/^(?:(?:dr|prof)\.?\s+)+/u, "")
+  .toLocaleLowerCase("de-DE").replace(/[łđı]/gu, (letter) => ({ ł: "l", đ: "d", ı: "i" })[letter])
+  .trim().replace(/^(?:(?:dr|prof)\.?\s+)+/u, "")
   .replace(/[’‘]/gu, "'").replace(/\p{Pd}/gu, " ").replace(/\s+/gu, " ").trim();
 
 // A name discrepancy asks for clarification, without claiming the document belongs to

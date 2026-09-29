@@ -61,6 +61,11 @@ export function createLandlordStore({ path = ":memory:", now = () => new Date() 
   const db = new DatabaseSync(path);
   db.exec("PRAGMA foreign_keys = ON;");
   db.exec(SCHEMA);
+  // Apply the revised demo policy to requests created by the seven-day version.
+  // Keep the original start time; these simulated requests never sent a message.
+  db.exec(`UPDATE clarification_requests
+    SET deadline = strftime('%Y-%m-%dT%H:%M:%fZ', requested_at, '+24 hours')
+    WHERE deadline = strftime('%Y-%m-%dT%H:%M:%fZ', requested_at, '+168 hours')`);
 
   const selectByKey = db.prepare("SELECT id, name FROM landlords WHERE name_key = ?");
   const selectById = db.prepare("SELECT id, name FROM landlords WHERE id = ?");
@@ -90,7 +95,7 @@ export function createLandlordStore({ path = ":memory:", now = () => new Date() 
     getClarification,
     requestClarification(landlordId, applicantId) {
       const requestedAt = now();
-      const deadline = new Date(requestedAt.getTime() + 7 * 24 * 60 * 60 * 1000);
+      const deadline = new Date(requestedAt.getTime() + 24 * 60 * 60 * 1000);
       insertClarification.run(landlordId, applicantId, requestedAt.toISOString(), deadline.toISOString());
       return getClarification(landlordId, applicantId);
     },

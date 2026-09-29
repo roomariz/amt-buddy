@@ -190,6 +190,9 @@ test("the page can simulate a clarification and display copyable drafts in eithe
     for (const draft of view.drafts) {
       assert.ok(draft.text.includes(detail.contact.name));
       assert.ok(draft.text.includes(view.deadline));
+      assert.match(draft.text, lang === "en" ? /within 24 hours/ : /innerhalb von 24 Stunden/);
+      assert.match(draft.text, lang === "en" ? /what action you will take/ : /welche Schritte Sie unternehmen/);
+      assert.match(draft.text, lang === "en" ? /application can be considered/ : /Bewerbung berücksichtigt werden kann/);
       assert.doesNotMatch(draft.text, /landlord\.|Diego Rossi|mailto:|wa.me/);
     }
   }

@@ -404,14 +404,14 @@ The `clarification` field is also included by the applicant-detail GET. It is `n
   "documents": ["incomeProof"],
   "request": {
     "requestedAt": "2026-09-29T12:00:00.000Z",
-    "deadline": "2026-10-06T12:00:00.000Z",
+    "deadline": "2026-09-30T12:00:00.000Z",
     "simulated": true,
     "status": "pending"
   }
 }
 ```
 
-`request` is `null` before the simulation. A request persists per landlord and applicant in SQLite. The demo deadline is seven days (168 hours) from creation. At or after the deadline, status is `overdue`; the request stays open, with no automatic rejection or score reduction. Repeated POSTs return the original request without extending its deadline. The UI provides German/English email and WhatsApp drafts with this deadline and a copy button. No applicant response, proof upload, extension, or identity verification is implemented in this demo.
+`request` is `null` before the simulation. A request persists per landlord and applicant in SQLite. The demo deadline is 24 hours from creation. Previously saved seven-day simulated requests are migrated at startup to 24 hours from their original creation time; an older request may therefore already be overdue. At or after the deadline, status is `overdue`; the request stays open, with no automatic rejection or score reduction. Repeated POSTs return the original request without extending its deadline. The UI provides German/English email and WhatsApp drafts with this deadline and a copy button. Each draft asks the applicant to confirm document ownership, explain the name difference, and describe the action and timing for resolving it. If evidence is not yet available, the applicant is asked to respond within 24 hours with a plan to supply it. No applicant response, proof upload, extension, or identity verification is implemented in this demo.
 
 Unknown landlord/applicant → `404 landlord_not_found` / `404 applicant_not_found`; no name discrepancy → `409 clarification_not_needed`; any body other than an empty object → `422 validation_error`.
 

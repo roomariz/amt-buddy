@@ -580,7 +580,7 @@ test("the Applicant pool directory and its day are configurable", async (t) => {
   assert.ok(poolErrors.some(({ file }) => file === "malformed.md"));
 });
 
-test("a simulated name clarification persists with a seven-day deadline and does not change the ranking", async (t) => {
+test("a simulated name clarification persists with a 24-hour deadline and does not change the ranking", async (t) => {
   const server = await start({ env: { APPLICANT_POOL_DIR: fileURLToPath(new URL("../fixtures/applicants/", import.meta.url)) } });
   t.after(server.close);
   const id = await signIn(server);
@@ -594,7 +594,7 @@ test("a simulated name clarification persists with a seven-day deadline and does
   assert.deepEqual(clarification.documents, ["incomeProof"]);
   assert.equal(clarification.request.status, "pending");
   assert.equal(clarification.request.simulated, true);
-  assert.equal(Date.parse(clarification.request.deadline) - Date.parse(clarification.request.requestedAt), 7 * 24 * 60 * 60 * 1000);
+  assert.equal(Date.parse(clarification.request.deadline) - Date.parse(clarification.request.requestedAt), 24 * 60 * 60 * 1000);
   assert.deepEqual((await server.get(path)).body.data.clarification, clarification);
   assert.deepEqual((await server.post(`${path}/clarification`, {})).body.data.clarification, clarification, "retrying must not extend the deadline");
   assert.deepEqual((await server.get(`${base}/dashboard`)).body.data, before);
@@ -662,7 +662,7 @@ test("clarifications survive a restart, are landlord-specific, and becoming over
     id = await signIn(first);
     await first.put(`/api/v1/landlord/${id}/listing`, WUEHLISCH_LISTING);
     saved = (await first.post(`/api/v1/landlord/${id}/applicants/A-002/clarification`, {})).body.data.clarification;
-    assert.equal(saved.request.deadline, "2026-10-06T12:00:00.000Z");
+    assert.equal(saved.request.deadline, "2026-09-30T12:00:00.000Z");
     ranking = (await first.get(`/api/v1/landlord/${id}/dashboard`)).body.data;
   } finally {
     await first.close();
@@ -675,7 +675,7 @@ test("clarifications survive a restart, are landlord-specific, and becoming over
   assert.deepEqual((await second.get(applicantPath)).body.data.clarification, saved);
   const otherId = await signIn(second, "Another landlord");
   assert.equal((await second.get(`/api/v1/landlord/${otherId}/applicants/A-002`)).body.data.clarification.request, null);
-  today = "2026-10-06T12:00:00.000Z";
+  today = "2026-09-30T12:00:00.000Z";
   const overdue = (await second.get(applicantPath)).body.data.clarification;
   assert.equal(overdue.request.status, "overdue");
   assert.equal(overdue.request.deadline, saved.request.deadline);
@@ -715,4 +715,32 @@ test("name clarification does not hide expired reports, income discrepancies, or
   assert.equal(detail.profile.credibilityScore, 40);
   assert.equal(detail.profile.documentCheck.complete, false);
   assert.equal(detail.profile.documentCheck.previousLandlord.arrears, true);
+});
+
+test("saved seven-day demo requests adopt the 24-hour deadline from their original creation time", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "amt-buddy-legacy-clarification-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const path = join(directory, "landlord.sqlite");
+  // Fixture representing the previous version's database. All assertions use the HTTP API.
+  const { DatabaseSync } = await import("node:sqlite");
+  const legacy = new DatabaseSync(path);
+  legacy.exec(`
+    CREATE TABLE landlords (id TEXT PRIMARY KEY, name TEXT NOT NULL, name_key TEXT NOT NULL UNIQUE, created TEXT NOT NULL);
+    INSERT INTO landlords VALUES ('legacy', 'Legacy', 'legacy', '2026-09-29T12:00:00.000Z');
+    CREATE TABLE clarification_requests (
+      landlord_id TEXT NOT NULL REFERENCES landlords(id), applicant_id TEXT NOT NULL,
+      requested_at TEXT NOT NULL, deadline TEXT NOT NULL, PRIMARY KEY (landlord_id, applicant_id)
+    );
+    INSERT INTO clarification_requests VALUES ('legacy', 'A-002', '2026-09-29T12:00:00.123Z', '2026-10-06T12:00:00.123Z');
+  `);
+  legacy.close();
+  const store = createLandlordStore({ path, now: () => new Date("2026-10-01T12:00:00Z") });
+  const server = await start({ store });
+  t.after(async () => { await server.close(); store.close(); });
+  const applicantPath = "/api/v1/landlord/legacy/applicants/A-002";
+  const detail = (await server.get(applicantPath)).body.data;
+  assert.equal(detail.clarification.request.requestedAt, "2026-09-29T12:00:00.123Z");
+  assert.equal(detail.clarification.request.deadline, "2026-09-30T12:00:00.123Z");
+  assert.equal(detail.clarification.request.status, "overdue");
+  assert.deepEqual((await server.post(`${applicantPath}/clarification`, {})).body.data.clarification, detail.clarification);
 });
