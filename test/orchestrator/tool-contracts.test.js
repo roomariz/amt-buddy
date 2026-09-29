@@ -78,3 +78,18 @@ test("calculate_mietspiegel takes an optional 'rented before' and then adds a re
   assert.doesNotThrow(() => output.parse(result));
   assert.equal(result.rentCap.capMonthlyRent, 519.75);
 });
+
+test("calculate_mietspiegel takes an optional previous rent, which can become the rent cap", async () => {
+  const { schema, output } = TOOL_CONTRACTS.calculate_mietspiegel;
+  const base = { residentialLocation: "gut", buildingAgeOrYear: "1921 - 1930", livingAreaSqm: 50, contractRent: 780, rentedBefore: true };
+
+  assert.doesNotThrow(() => schema.parse(base), "the previous rent is optional");
+  assert.equal(schema.parse({ ...base, previousRent: 950.5 }).previousRent, 950.5);
+  assert.throws(() => schema.parse({ ...base, previousRent: 0 }), "a positive amount");
+
+  const { tools } = createStubTools();
+  const result = await assertToolsMatchContracts(tools).get("calculate_mietspiegel").invoke({ ...base, previousRent: 950 });
+  assert.doesNotThrow(() => output.parse(result));
+  assert.equal(result.rentCap.basis, "previous_rent");
+  assert.equal(result.rentCap.capMonthlyRent, 950);
+});

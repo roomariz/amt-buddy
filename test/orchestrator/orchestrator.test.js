@@ -1268,3 +1268,68 @@ test("a rent check asks whether the flat was rented before, and 'yes' gives a co
   assert.match(answer, /not legal advice/);
   assert.equal(models.supervisor.remaining, 0, "no grounding rewrite was needed");
 });
+
+test("the previous tenant's rent, given with 'yes', becomes the rent cap when it is higher than Mietspiegel + 10 %", async () => {
+  const { orchestrator, models, calls } = setup({
+    router: [
+      { intents: ["address", "mietspiegel"], language: "en" },
+      { intents: ["mietspiegel"], language: "en" },
+    ],
+    supervisor: [
+      {
+        toolCalls: [
+          recordFacts(FLAT_FACTS.filter(({ fact }) => fact !== "rentedBefore")),
+          ...askOfficialData.toolCalls,
+          ...askMietspiegel.toolCalls,
+        ],
+      },
+      "Was the flat rented out before you moved in? If you know it, what rent did the previous tenant pay?",
+      {
+        toolCalls: [
+          recordFacts([
+            { fact: "rentedBefore", value: "yes" },
+            { fact: "previousRent", value: "950" },
+          ]),
+          ...askMietspiegel.toolCalls,
+        ],
+      },
+      "Your Nettokaltmiete (net cold rent) of 780 € is above the Mietspiegel range of 410–555 €. " +
+        "Mietpreisbremse (rent cap): Mietspiegel + 10 % would be 519,75 €, but the previous tenant paid 950 € (Vormiete, § 556e BGB), " +
+        "so the cap is 950 € and your rent is 170 € below it. " +
+        "This assumes 780 € is the rent agreed at the start of the lease. Not checked: leases concluded before 1 June 2015, modernisation, Staffelmiete and Indexmiete.",
+    ],
+    subAgent: [
+      ...OFFICIAL_DATA_SCRIPT,
+      // The model passes a different previous rent than the tenant stated; the Tenancy is pinned instead.
+      { toolCalls: [{ name: "calculate_mietspiegel", args: { ...mietspiegelArgs(780), rentedBefore: true, previousRent: 400 } }] },
+      "Calculated; within the previous-rent cap.",
+    ],
+  });
+
+  const first = await collect(orchestrator.send({ threadId: "t71", message: "Berliner Str. 155, 50 m², 780 € cold. Too much?" }));
+
+  assert.deepEqual(JSON.parse(models.supervisor.calls[1].at(-1).content), {
+    status: "needs_facts",
+    checks: ["mietspiegel"],
+    missing: ["rentedBefore"],
+    unconfirmed: [],
+  }, "the previous rent is never reported as missing");
+  assert.equal(first.at(-1).type, "done");
+
+  const second = await collect(orchestrator.send({ threadId: "t71", message: "yes, the previous tenant paid 950" }));
+
+  assert.deepEqual((await orchestrator.getTenancy("t71")).previousRent, { value: 950, source: "user" });
+  assert.deepEqual(stepsOf(second), ["ComplianceAgent:started", "ComplianceAgent:finished"]);
+  assert.deepEqual(calls.at(-1), { name: "calculate_mietspiegel", args: { ...pinnedMietspiegelArgs(780), previousRent: 950 } });
+  const { rentCap } = lastMietspiegelReport(models);
+  assert.equal(rentCap.basis, "previous_rent");
+  assert.equal(rentCap.capMonthlyRent, 950);
+  assert.equal(rentCap.baseCapMonthlyRent, 519.75);
+  assert.equal(rentCap.conditional, false);
+  assert.equal(rentCap.status, "within_cap");
+  const answer = answerOf(second);
+  assert.match(answer, /the cap is 950 €/);
+  assert.match(answer, /519,75 €/);
+  assert.match(answer, /170 € below/);
+  assert.equal(models.supervisor.remaining, 0, "no grounding rewrite was needed");
+});

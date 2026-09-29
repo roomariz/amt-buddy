@@ -196,6 +196,29 @@ test("rented before without a previous rent: the cap is Mietspiegel + 10 %, cond
   assert.equal(rentCap.differenceFromCap, 260.25);
 });
 
+test("rented before with a higher previous rent: the previous rent is the cap, unconditionally", () => {
+  const { rentCap } = evaluateMietspiegel({ ...rentCapFlat, contractRent: 780, rentedBefore: true, previousRent: 950 });
+
+  assert.equal(rentCap.basis, "previous_rent");
+  assert.equal(rentCap.baseCapMonthlyRent, 519.75);
+  assert.equal(rentCap.capMonthlyRent, 950);
+  assert.equal(rentCap.conditional, false);
+  assert.equal(rentCap.status, "within_cap");
+  assert.equal(rentCap.differenceFromCap, -170);
+});
+
+test("rented before with a previous rent up to Mietspiegel + 10 %: the cap stays Mietspiegel + 10 %, unconditionally", () => {
+  for (const previousRent of [400, 519.75]) {
+    const { rentCap } = evaluateMietspiegel({ ...rentCapFlat, contractRent: 780, rentedBefore: true, previousRent });
+
+    assert.equal(rentCap.basis, "mietspiegel_plus_10", String(previousRent));
+    assert.equal(rentCap.capMonthlyRent, 519.75, String(previousRent));
+    assert.equal(rentCap.conditional, false, String(previousRent));
+    assert.equal(rentCap.status, "above_cap", String(previousRent));
+    assert.equal(rentCap.differenceFromCap, 260.25, String(previousRent));
+  }
+});
+
 test("never rented: the cap is Mietspiegel + 10 %, unconditionally", () => {
   const { rentCap } = evaluateMietspiegel({ ...rentCapFlat, contractRent: 500, rentedBefore: false });
 

@@ -303,18 +303,23 @@ export const RENT_CAP_NOT_CHECKED =
   "The contract rent is taken as the rent agreed at the start of the lease. Not checked: leases concluded before 1 June 2015 (Mietpreisbremse not yet in force in Berlin), " +
   "modernisation exceptions (§ 556e Abs. 2, § 556f Satz 2 BGB), rent increases in the last year of the previous lease, Staffelmiete (graduated rent) and Indexmiete (index-linked rent).";
 
-// The Rent cap (Mietpreisbremse) verdict for a contract rent: Mietspiegel + 10 %, based on
-// the Adjusted reference rent when there is one, otherwise the Mietspiegel median.
-// A flat rented before may have had a higher previous rent, so its verdict is conditional.
-function evaluateRentCap({ contractRent, referenceMonthlyRent, rentedBefore }) {
-  const capMonthlyRent = round(referenceMonthlyRent * (1 + RENT_CAP_PERCENT / 100));
+// The Rent cap (Mietpreisbremse) verdict for a contract rent: Mietspiegel + 10 % (the base cap),
+// based on the Adjusted reference rent when there is one, otherwise the Mietspiegel median.
+// A flat rented before keeps a higher previous rent (Vormiete, § 556e BGB) as its cap; while
+// the previous rent is unknown, the verdict is conditional.
+function evaluateRentCap({ contractRent, referenceMonthlyRent, rentedBefore, previousRent }) {
+  const baseCapMonthlyRent = round(referenceMonthlyRent * (1 + RENT_CAP_PERCENT / 100));
+  const previousAmount = rentedBefore ? positiveAmount(previousRent) : undefined;
+  const knownPreviousRent = previousAmount === undefined ? undefined : round(previousAmount);
+  const previousRentIsCap = knownPreviousRent !== undefined && knownPreviousRent > baseCapMonthlyRent;
+  const capMonthlyRent = previousRentIsCap ? knownPreviousRent : baseCapMonthlyRent;
   return {
-    basis: "mietspiegel_plus_10",
+    basis: previousRentIsCap ? "previous_rent" : "mietspiegel_plus_10",
     capPercent: RENT_CAP_PERCENT,
     referenceMonthlyRent,
-    baseCapMonthlyRent: capMonthlyRent,
+    baseCapMonthlyRent,
     capMonthlyRent,
-    conditional: rentedBefore,
+    conditional: rentedBefore && knownPreviousRent === undefined,
     status: contractRent <= capMonthlyRent ? "within_cap" : "above_cap",
     differenceFromCap: round(contractRent - capMonthlyRent),
     legalBasis: RENT_CAP_LEGAL_BASIS,
@@ -322,8 +327,17 @@ function evaluateRentCap({ contractRent, referenceMonthlyRent, rentedBefore }) {
   };
 }
 
+// A rent (contract or previous) is a positive monthly amount in EUR; anything else is undefined.
+function positiveAmount(value) {
+  if (value === undefined || value === null || String(value).trim() === "") return undefined;
+  const amount = Number(value);
+  return Number.isFinite(amount) && amount > 0 ? amount : undefined;
+}
+
 // `rentedBefore` (optional boolean): whether the flat was rented out before. With it and a
 // valid contract rent, the result adds a Rent cap (`rentCap`); without it, it is unchanged.
+// `previousRent` (optional, monthly net cold rent in EUR): the previous tenant's rent, used
+// only for a flat rented before.
 export function evaluateMietspiegel(options = {}) {
   const {
     residentialLocation,
@@ -332,6 +346,7 @@ export function evaluateMietspiegel(options = {}) {
     contractRent,
     featureGroups,
     rentedBefore,
+    previousRent,
   } = options;
 
   const loc = String(residentialLocation ?? "").trim().toLocaleLowerCase("de-DE");
@@ -400,33 +415,31 @@ export function evaluateMietspiegel(options = {}) {
   }
 
   let contractRentComparison = null;
-  if (contractRent !== undefined && contractRent !== null && String(contractRent).trim() !== "") {
-    const actualMonthly = Number(contractRent);
-    if (Number.isFinite(actualMonthly) && actualMonthly > 0) {
-      const actualPerSqm = round(actualMonthly / area);
-      let status = "within";
-      let difference = 0;
-      let summary = "The contractual rent is within the official Mietspiegel reference range.";
+  const actualMonthly = positiveAmount(contractRent);
+  if (actualMonthly !== undefined) {
+    const actualPerSqm = round(actualMonthly / area);
+    let status = "within";
+    let difference = 0;
+    let summary = "The contractual rent is within the official Mietspiegel reference range.";
 
-      if (actualMonthly < monthlyReferenceRent.lower) {
-        status = "below";
-        difference = round(actualMonthly - monthlyReferenceRent.lower);
-        summary = `The contractual rent is below the official Mietspiegel lower threshold by ${Math.abs(difference).toFixed(2)} EUR.`;
-      } else if (actualMonthly > monthlyReferenceRent.upper) {
-        status = "above";
-        difference = round(actualMonthly - monthlyReferenceRent.upper);
-        summary = `The contractual rent is above the official Mietspiegel upper threshold by ${difference.toFixed(2)} EUR.`;
-      }
-
-      contractRentComparison = {
-        actualMonthlyRent: round(actualMonthly),
-        actualRentPerSqm: actualPerSqm,
-        status,
-        differenceFromMedian: round(actualMonthly - monthlyReferenceRent.median),
-        differenceFromThreshold: difference,
-        summary,
-      };
+    if (actualMonthly < monthlyReferenceRent.lower) {
+      status = "below";
+      difference = round(actualMonthly - monthlyReferenceRent.lower);
+      summary = `The contractual rent is below the official Mietspiegel lower threshold by ${Math.abs(difference).toFixed(2)} EUR.`;
+    } else if (actualMonthly > monthlyReferenceRent.upper) {
+      status = "above";
+      difference = round(actualMonthly - monthlyReferenceRent.upper);
+      summary = `The contractual rent is above the official Mietspiegel upper threshold by ${difference.toFixed(2)} EUR.`;
     }
+
+    contractRentComparison = {
+      actualMonthlyRent: round(actualMonthly),
+      actualRentPerSqm: actualPerSqm,
+      status,
+      differenceFromMedian: round(actualMonthly - monthlyReferenceRent.median),
+      differenceFromThreshold: difference,
+      summary,
+    };
   }
 
   const rentCap =
@@ -435,6 +448,7 @@ export function evaluateMietspiegel(options = {}) {
           contractRent: contractRentComparison.actualMonthlyRent,
           referenceMonthlyRent: adjustedReferenceRent?.monthlyRent ?? monthlyReferenceRent.median,
           rentedBefore,
+          previousRent,
         })
       : undefined;
 
