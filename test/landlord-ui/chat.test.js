@@ -7,7 +7,15 @@ import { createApp } from "../../src/app.js";
 import { createLandlordOrchestrator, createLandlordStubTools } from "../../src/landlord/orchestrator/index.js";
 import { createLandlordStore } from "../../src/landlord/store.js";
 import { signIn } from "../../public/landlord/api.js";
-import { endLandlordTurn, initialLandlordTurn, reduceLandlordTurn, runLandlordTurn } from "../../public/landlord/chat.js";
+import {
+  applicantNames,
+  changedDashboard,
+  endLandlordTurn,
+  initialLandlordTurn,
+  reduceLandlordTurn,
+  runLandlordTurn,
+  withApplicantNames,
+} from "../../public/landlord/chat.js";
 import { setLanguage } from "../../public/i18n.js";
 import { TURN_TEXT } from "../../public/chat/turn.js";
 import { ScriptedChatModel } from "../orchestrator/helpers/scripted-model.js";
@@ -125,4 +133,25 @@ test("a server that cannot be reached is a lost connection", async () => {
   const state = await runLandlordTurn({ fetchImpl: down, landlordId: "l-1", message: "Hi" });
   assert.equal(state.phase, "error");
   assert.equal(state.error, TURN_TEXT.connectionLost);
+});
+
+test("the panel shows each applicant's name next to the id the model used", () => {
+  const names = applicantNames({
+    ranked: [{ applicantId: "A-007", name: "Olga Rossi" }],
+    excluded: [{ applicantId: "A-011", name: "Jonas Weber" }],
+    shortlist: [{ applicantId: "A-020", name: "Mia Chen" }, { applicantId: "A-099", name: null }],
+  });
+
+  assert.equal(
+    withApplicantNames("**A-007** ranks above A-011; A-020 and A-099 are shortlisted. A-0077 is no id we know.", names),
+    "**A-007 (Olga Rossi)** ranks above A-011 (Jonas Weber); A-020 (Mia Chen) and A-099 are shortlisted. A-0077 is no id we know.",
+  );
+  assert.equal(withApplicantNames("A-007", applicantNames(null)), "A-007", "no dashboard yet: ids only");
+});
+
+test("the dashboard is fetched again only after a turn that changed the criteria or the Shortlist", () => {
+  assert.equal(changedDashboard(run([{ type: "token", text: "A-007 leads." }, { type: "done" }])), false);
+  assert.equal(changedDashboard(run([{ type: "criteria" }, { type: "done" }])), true);
+  assert.equal(changedDashboard(run([{ type: "shortlist" }, { type: "done" }])), true);
+  assert.equal(changedDashboard(run([{ type: "shortlist" }, { type: "error" }])), true, "saved before the turn failed");
 });

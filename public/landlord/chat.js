@@ -85,3 +85,23 @@ export async function runLandlordTurn({ fetchImpl, landlordId, message, onChange
   commit(endLandlordTurn(state));
   return state;
 }
+
+// Whether the turn changed what the dashboard shows (the Selection criteria or the Shortlist), so
+// the page fetches it again. A change saved before the turn failed still counts.
+export function changedDashboard(state) {
+  return Boolean(state?.changed?.criteria || state?.changed?.shortlist);
+}
+
+// The applicants' names by id, from the dashboard (ranked, excluded and the Shortlist).
+export function applicantNames(dashboard) {
+  const names = new Map();
+  for (const list of [dashboard?.ranked, dashboard?.excluded, dashboard?.shortlist]) {
+    for (const { applicantId, name } of list ?? []) if (name) names.set(applicantId, name);
+  }
+  return names;
+}
+
+// The model only knows applicant ids ("A-007"): the panel adds the name after each id it knows.
+export function withApplicantNames(answer, names) {
+  return String(answer ?? "").replace(/\b[A-Z]-\d+\b/g, (id) => (names.has(id) ? `${id} (${names.get(id)})` : id));
+}
