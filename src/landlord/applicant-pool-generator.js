@@ -87,10 +87,10 @@ const FAMILY_PLANS = ["none stated", "planning children", "expecting a child", "
 const pad = (number, size = 2) => String(number).padStart(size, "0");
 const isoDay = (date) => `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}`;
 const addDays = (day, days) => isoDay(new Date(Date.parse(`${day}T00:00:00Z`) + days * 86_400_000));
-// "YYYY-MM" of the month `months` before `day`'s month.
-function monthBefore(day, months) {
+// "YYYY-MM" of the month `offset` months from `day`'s month (negative: earlier).
+function shiftMonth(day, offset) {
   const [year, month] = day.split("-").map(Number);
-  const date = new Date(Date.UTC(year, month - 1 - months, 1));
+  const date = new Date(Date.UTC(year, month - 1 + offset, 1));
   return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}`;
 }
 // 3790 → "3.790,00 EUR"
@@ -111,6 +111,7 @@ function weightedPick(random, weighted) {
   return weighted.at(-1)[0];
 }
 
+// The made-up facts of applicant number `index` (0-based) for its scenario, declared and documented.
 function applicantData(index, scenario, random) {
   const { int, pick, chance } = randomTools(random);
   const firstName = pick(FIRST_NAMES);
@@ -142,7 +143,7 @@ function applicantData(index, scenario, random) {
     netHouseholdIncome,
     employmentType,
     employer: pick(EMPLOYERS[employmentType]),
-    moveInDate: `${monthBefore(POOL_DATE, -int(1, 4))}-${pick(["01", "15"])}`,
+    moveInDate: `${shiftMonth(POOL_DATE, int(1, 4))}-${pick(["01", "15"])}`,
     pets: chance(0.2),
     smoking: chance(0.15),
     firstTimeRenter,
@@ -168,6 +169,7 @@ function applicantData(index, scenario, random) {
   };
 }
 
+// The declared data, including the protected fields the reader must drop.
 function frontMatter(a) {
   return [
     "---",
@@ -202,6 +204,7 @@ function frontMatter(a) {
 // The name printed on a document: the applicant's, or another person's on the chosen document.
 const nameOn = (a, document) => (a.otherName && a.otherNameDocument === document ? a.otherName : a.name);
 
+// The Application documents as text extracted from an upload, one `## Heading` section each.
 function schufaSection(a) {
   const score = a.schufaEntries.startsWith("negativ") ? "58,4 %" : a.schufaEntries.startsWith("geringfügig") ? "91,3 %" : "97,6 %";
   return [
@@ -223,7 +226,7 @@ function incomeProofSection(a) {
   }[a.employmentType] ?? "Gehaltsabrechnung";
   const slips = [3, 2, 1].map((monthsAgo, i) => {
     const net = Math.round(a.netHouseholdIncome * a.payslipFactor + (i - 1) * 15);
-    return [title, `Name: ${nameOn(a, "incomeProof")}`, `Arbeitgeber: ${a.employer}`, `Monat: ${monthBefore(POOL_DATE, monthsAgo)}`, `Netto: ${euro(net)}`].join("\n");
+    return [title, `Name: ${nameOn(a, "incomeProof")}`, `Arbeitgeber: ${a.employer}`, `Monat: ${shiftMonth(POOL_DATE, -monthsAgo)}`, `Netto: ${euro(net)}`].join("\n");
   });
   if (a.employmentType === "student_with_guarantor") {
     slips.push(`Bürgschaftserklärung\nBürge: ${a.lastName === "Müller" ? "Petra" : "Thomas"} ${a.lastName} (Elternteil)`);
@@ -238,11 +241,12 @@ function previousLandlordSection(a) {
     "",
     arrears ? "Vormieterbescheinigung" : "Mietschuldenfreiheitsbescheinigung",
     `Name: ${nameOn(a, "previousLandlord")}`,
-    `Mietzeitraum: ${a.tenancyStart} bis ${monthBefore(POOL_DATE, 0)}`,
+    `Mietzeitraum: ${a.tenancyStart} bis ${shiftMonth(POOL_DATE, 0)}`,
     `Mietrückstände: ${arrears ? `ja – ${a.arrearsMonths} Monatsmieten (${euro(a.arrearsMonths * a.rentAtPreviousFlat)}) offen` : "nein"}`,
   ].join("\n");
 }
 
+// The whole file: front matter, then the documents the scenario leaves in.
 function applicantFile(a) {
   const sections = [];
   if (a.scenario !== "missing_schufa") sections.push(schufaSection(a));

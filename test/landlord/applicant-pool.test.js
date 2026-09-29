@@ -74,6 +74,21 @@ test("a SCHUFA-Auskunft issued exactly 3 months before today is still current; a
   assert.equal(await statusOn(new Date("2026-11-15T12:00:00Z")), "present");
 });
 
+test("a SCHUFA-Auskunft dated after today cannot be right", async () => {
+  // The fixture's SCHUFA-Auskunft is issued on 2027-02-28.
+  const { profile } = (await readFixtures("2026-09-29")).byId("A-feb-schufa");
+
+  assert.equal(profile.documentCheck.schufa.status, "inconsistent");
+  assert.equal(profile.schufaStatus, "missing");
+  assert.deepEqual(issueCodes({ profile }), ["schufa_unreadable"]);
+});
+
+test("'today' must be given, as a day or a Date", async () => {
+  await assert.rejects(readApplicantPool(FIXTURES), TypeError);
+  await assert.rejects(readApplicantPool(FIXTURES, { today: "2026-02-30" }), TypeError);
+  await assert.rejects(readApplicantPool(FIXTURES, { today: new Date("nonsense") }), TypeError);
+});
+
 test("the 3 months end on the last day of a shorter month", async () => {
   // 3 months before 31 May is 28 February (there is no 31 February).
   const statusOn = async (today) => (await readFixtures(today)).byId("A-feb-schufa").profile.documentCheck.schufa.status;
@@ -157,8 +172,9 @@ test("a previous-landlord confirmation stating rent arrears is flagged", async (
   assert.equal(profile.documentCheck.previousLandlord.status, "present");
   assert.equal(profile.documentCheck.previousLandlord.arrears, true);
   assert.match(profile.documentCheck.previousLandlord.reason, /arrears/);
-  assert.equal(profile.documentCheck.complete, true, "the document is there; the arrears are a finding");
-  assert.equal(profile.credibilityScore, 100);
+  assert.equal(profile.documentCheck.complete, true, "the document is there and valid");
+  assert.deepEqual(issueCodes({ profile }), ["rent_arrears"]);
+  assert.equal(profile.credibilityScore, 85);
 });
 
 test("a payslip in another person's name makes the income proof inconsistent", async () => {
@@ -184,12 +200,14 @@ test("files that cannot be read as an application become errors, and the other f
 
   assert.deepEqual(
     errors.map((error) => error.file),
-    ["duplicate-id.md", "malformed.md", "no-front-matter.md", "no-household.md"],
+    ["duplicate-id.md", "impossible-date.md", "malformed.md", "no-front-matter.md", "no-household.md", "two-schufas.md"],
   );
   for (const error of errors) assert.equal(typeof error.reason, "string", error.file);
   assert.match(errors[0].reason, /A-complete/);
-  assert.match(errors[1].reason, /netHouseholdIncome 3800/);
-  assert.match(errors[3].reason, /household/);
+  assert.match(errors[1].reason, /moveInDate/, "there is no 30 February");
+  assert.match(errors[2].reason, /netHouseholdIncome 3800/);
+  assert.match(errors[4].reason, /household/);
+  assert.match(errors[5].reason, /SCHUFA-Auskunft/, "a document heading appears twice");
   assert.ok(byId("A-complete"));
   assert.equal(applicants.length, 17, "every other .md fixture is read; other files are ignored");
 });
@@ -221,10 +239,11 @@ test("protected and unknown front matter fields never reach the Applicant profil
 
 test("the pool summary counts the applicants per defect type and lists the unreadable files", async () => {
   const summary = summarizeApplicantPool(await readApplicantPool(FIXTURES, { today: TODAY }));
+  summary.errors = summary.errors.map((error) => error.file);
 
   assert.deepEqual(summary, {
     total: 17,
-    clean: 5,
+    clean: 4,
     defects: {
       first_time_renter: 1,
       income_mismatch: 1,
@@ -236,8 +255,8 @@ test("the pool summary counts the applicants per defect type and lists the unrea
       schufa_expired: 1,
       schufa_missing: 1,
       schufa_negative: 1,
-      schufa_unreadable: 1,
+      schufa_unreadable: 2, // A-unreadable-schufa, and A-feb-schufa (dated after today)
     },
-    errors: ["duplicate-id.md", "malformed.md", "no-front-matter.md", "no-household.md"],
+    errors: ["duplicate-id.md", "impossible-date.md", "malformed.md", "no-front-matter.md", "no-household.md", "two-schufas.md"],
   });
 });

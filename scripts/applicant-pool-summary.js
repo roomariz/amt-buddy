@@ -9,15 +9,14 @@ const { values, positionals } = parseArgs({ options: { today: { type: "string" }
 const directory = positionals[0] ?? APPLICANT_POOL_DIRECTORY;
 const today = values.today ?? POOL_DATE;
 
-const pool = await readApplicantPool(directory, { today });
-const summary = summarizeApplicantPool(pool);
+const summary = summarizeApplicantPool(await readApplicantPool(directory, { today }));
 const lines = [
   `Applicant pool: ${directory} (as of ${today})`,
   `Applicants: ${summary.total}`,
   `Complete and clean: ${summary.clean}`,
   "Per defect type:",
   ...Object.entries(summary.defects).map(([defect, count]) => `  ${defect}: ${count}`),
-  `Unreadable files: ${pool.errors.length === 0 ? "none" : pool.errors.length}`,
-  ...pool.errors.map((error) => `  ${error.file}: ${error.reason}`),
+  `Unreadable files: ${summary.errors.length === 0 ? "none" : summary.errors.length}`,
+  ...summary.errors.map((error) => `  ${error.file}: ${error.reason}`),
 ];
 console.log(lines.join("\n"));

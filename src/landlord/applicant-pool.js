@@ -17,6 +17,7 @@ export class ApplicantFileError extends Error {
 // `key: value` lines, maps nested by two-space indentation, and scalars: numbers, true/false,
 // null, "double-quoted" strings and plain strings. Anything else is an ApplicantFileError.
 
+// One front matter value: number, true/false, null, "quoted" or plain string.
 function parseScalar(raw) {
   const value = raw.trim();
   if (value === "true") return true;
@@ -70,6 +71,7 @@ function splitApplicantFile(text) {
     const heading = /^## (.+?)\s*$/.exec(line);
     if (heading) {
       current = heading[1];
+      if (Object.hasOwn(sections, current)) throw new ApplicantFileError(`The section '${current}' appears twice.`);
       sections[current] = [];
     } else if (current) {
       sections[current].push(line);
@@ -106,6 +108,7 @@ const CREDIBILITY_PENALTIES = {
   previous_landlord_missing: 15,
   previous_landlord_unreadable: 15,
   name_mismatch: 30,
+  rent_arrears: 15,
 };
 
 // How far the income proof's average net pay may be from the declared net household income.
@@ -115,7 +118,9 @@ const INCOME_TOLERANCE = 0.1;
 const SCHUFA_MAX_AGE_MONTHS = 3;
 
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
-const isIsoDay = (value) => typeof value === "string" && ISO_DAY.test(value) && !Number.isNaN(Date.parse(value));
+// A real calendar day written "YYYY-MM-DD" (not 30 February).
+const isIsoDay = (value) =>
+  typeof value === "string" && ISO_DAY.test(value) && new Date(`${value}T00:00:00Z`).toISOString().startsWith(value);
 
 // The day `months` calendar months before `day` ("YYYY-MM-DD"); past a shorter month's end it
 // is that month's last day (3 months before 31 May is 28 February).
@@ -146,11 +151,13 @@ function nameProblem(text, documentName, applicantName) {
   return other ? `The ${documentName} is in the name of ${other}, not ${applicantName}.` : null;
 }
 
+// The first word of a document value, lower-case ("Negativ – 2 Forderungen" → "negativ").
+const firstWord = (value) => value.split(/[\s–-]/)[0].toLowerCase();
+
 // The SCHUFA status from the report's `Einträge:` line ("keine", "geringfügig – …", "negativ – …"),
 // or null when it says something else.
 function schufaStatusOf(entries = "") {
-  const word = entries.split(/[\s–-]/)[0].toLowerCase();
-  return { keine: "clean", "geringfügig": "minor_entries", negativ: "negative" }[word] ?? null;
+  return { keine: "clean", "geringfügig": "minor_entries", negativ: "negative" }[firstWord(entries)] ?? null;
 }
 
 // → { schufaStatus, result, issues }. The status of a report that is missing, unreadable or in
@@ -162,6 +169,10 @@ function checkSchufa(text, applicantName, today) {
   const schufaStatus = schufaStatusOf(fieldValues(text, "Einträge")[0]);
   if (!isIsoDay(issuedOn) || !schufaStatus) {
     const reason = "The SCHUFA-Auskunft has no readable issue date (Ausstellungsdatum) or entries (Einträge).";
+    return withStatus("missing", failed("schufa", "inconsistent", "schufa_unreadable", reason));
+  }
+  if (issuedOn > today) {
+    const reason = `The SCHUFA-Auskunft is dated ${issuedOn}, after today.`;
     return withStatus("missing", failed("schufa", "inconsistent", "schufa_unreadable", reason));
   }
   const wrongName = nameProblem(text, "SCHUFA-Auskunft", applicantName);
@@ -193,8 +204,10 @@ function checkIncomeProof(text, applicantName, declaredIncome) {
   return passed();
 }
 
-// A first-time renter needs no confirmation. The confirmation's `Mietrückstände:` line says
-// whether rent arrears are open ("nein" / "ja – …"); arrears are a finding, not a document issue.
+// A first-time renter needs no confirmation (status "not_required"). The confirmation's
+// `Mietrückstände:` line says whether rent arrears are open ("nein" / "ja – …"): with arrears the
+// document is present and valid (`arrears: true`), but the Document check has a `rent_arrears` issue.
+// `arrears` is null whenever there is no usable confirmation.
 function checkPreviousLandlord(text, applicantName, firstTimeRenter) {
   const noArrears = { arrears: null };
   if (!text && firstTimeRenter) {
@@ -206,10 +219,11 @@ function checkPreviousLandlord(text, applicantName, firstTimeRenter) {
   }
   const wrongName = nameProblem(text, "previous-landlord confirmation", applicantName);
   if (wrongName) return failed("previousLandlord", "inconsistent", "name_mismatch", wrongName, noArrears);
-  const answer = (fieldValues(text, "Mietrückstände")[0] ?? "").split(/[\s–-]/)[0].toLowerCase();
+  const answer = firstWord(fieldValues(text, "Mietrückstände")[0] ?? "");
   if (answer === "nein") return passed({ arrears: false });
   if (answer === "ja") {
-    return { result: { status: "present", reason: "The previous landlord confirms rent arrears.", arrears: true }, issues: [] };
+    const reason = "The previous landlord confirms rent arrears.";
+    return { result: { status: "present", reason, arrears: true }, issues: [issue("previousLandlord", "rent_arrears", reason)] };
   }
   const reason = "The previous-landlord confirmation does not say whether rent arrears are open (Mietrückstände).";
   return failed("previousLandlord", "inconsistent", "previous_landlord_unreadable", reason, noArrears);
@@ -218,6 +232,7 @@ function checkPreviousLandlord(text, applicantName, firstTimeRenter) {
 // Document statuses that count towards a complete application.
 const COMPLETE_STATUSES = new Set(["present", "not_required"]);
 
+// The Document check of one application → { schufaStatus, documentCheck }.
 function documentCheckOf(declared, sections, today) {
   const { name } = declared;
   const schufa = checkSchufa(sections[DOCUMENT_HEADINGS.schufa], name, today);
@@ -272,6 +287,7 @@ const DECLARED_FIELDS = [
   ["firstTimeRenter", (d) => typeof d.firstTimeRenter === "boolean", "true or false"],
 ];
 
+// Throws an ApplicantFileError naming every declared field that is missing or wrong.
 function assertDeclaredData(declared) {
   const wrong = DECLARED_FIELDS.filter(([, isValid]) => !isValid(declared)).map(([field, , expected]) => `'${field}' must be ${expected}`);
   if (wrong.length > 0) throw new ApplicantFileError(`Front matter: ${wrong.join("; ")}.`);
@@ -279,6 +295,7 @@ function assertDeclaredData(declared) {
 
 // --- The Applicant --------------------------------------------------------------------------
 
+// One application → { id, contact, profile }.
 function toApplicant(declared, sections, today) {
   assertDeclaredData(declared);
   const { schufaStatus, documentCheck } = documentCheckOf(declared, sections, today);
@@ -306,11 +323,21 @@ function toApplicant(declared, sections, today) {
 // Reads every `.md` file of the Applicant pool directory, in file-name order.
 // - applicants: [{ id, contact: { name, email, phone }, profile }]: the Applicant profile is the
 //   anonymised view everything downstream uses; name and contact are beside it for display only.
+//   profile: { id, householdSize, household: { adults, children, childrenUpToSix },
+//     netHouseholdIncome, employmentType (EMPLOYMENT_TYPES), schufaStatus ("clean" |
+//     "minor_entries" | "negative" | "missing": also for a report that is unreadable, dated after
+//     today or in another person's name), moveInDate, pets, smoking, credibilityScore (0–100),
+//     documentCheck: { schufa, incomeProof, previousLandlord, complete, issues } }.
+//   Each document is { status: "present" | "missing" | "expired" | "inconsistent" | "not_required",
+//   reason }; previousLandlord also has `arrears` (true / false / null: no usable confirmation).
+//   `complete`: every document is present (or not required). issues: [{ document, code, message }].
 // - errors: [{ file, reason }]: files that could not be read as an application; the other
 //   files are still read.
-// `today` ("YYYY-MM-DD" or a Date) is the day the SCHUFA-Auskunft's age is measured against.
-export async function readApplicantPool(directory, { today = new Date() } = {}) {
-  const day = today instanceof Date ? today.toISOString().slice(0, 10) : today;
+// `today` (required; "YYYY-MM-DD", or a Date taken as its UTC day) is the day the SCHUFA-Auskunft's
+// age is measured against. The committed pool is dated relative to POOL_DATE
+// (applicant-pool-generator.js): read it with that day to see the pool as generated.
+export async function readApplicantPool(directory, { today } = {}) {
+  const day = today instanceof Date && !Number.isNaN(today.getTime()) ? today.toISOString().slice(0, 10) : today;
   if (!isIsoDay(day)) throw new TypeError(`'today' must be a Date or a "YYYY-MM-DD" day, got ${today}.`);
   const files = (await readdir(directory)).filter((file) => file.endsWith(".md")).sort();
   const applicants = [];
@@ -334,13 +361,13 @@ export async function readApplicantPool(directory, { today = new Date() } = {}) 
 // A household of at least this many people is too large for a typical flat.
 export const LARGE_HOUSEHOLD_SIZE = 5;
 
-// The defect types of one Applicant: the Document check's issue codes plus the findings that are
-// not document problems (negative SCHUFA, rent arrears, first-time renter, a large household).
+// The defect types of one Applicant: the Document check's issue codes plus the traits the pool
+// deliberately mixes in that are not document problems (negative SCHUFA, first-time renter, a
+// household of LARGE_HOUSEHOLD_SIZE or more).
 function defectsOf({ profile }) {
   const { documentCheck } = profile;
   const defects = new Set(documentCheck.issues.map((issue) => issue.code));
   if (profile.schufaStatus === "negative") defects.add("schufa_negative");
-  if (documentCheck.previousLandlord.arrears === true) defects.add("rent_arrears");
   if (documentCheck.previousLandlord.status === "not_required") defects.add("first_time_renter");
   if (profile.householdSize >= LARGE_HOUSEHOLD_SIZE) defects.add("large_household");
   return defects;
@@ -348,7 +375,7 @@ function defectsOf({ profile }) {
 
 // summarizeApplicantPool({ applicants, errors }) → { total, clean, defects, errors }: the number
 // of applicants, how many have no defect, how many have each defect type (sorted by type), and
-// the files that could not be read.
+// the files that could not be read ([{ file, reason }]).
 export function summarizeApplicantPool({ applicants, errors }) {
   const defects = {};
   let clean = 0;
@@ -358,5 +385,5 @@ export function summarizeApplicantPool({ applicants, errors }) {
     for (const defect of found) defects[defect] = (defects[defect] ?? 0) + 1;
   }
   const sorted = Object.fromEntries(Object.entries(defects).sort(([a], [b]) => a.localeCompare(b)));
-  return { total: applicants.length, clean, defects: sorted, errors: errors.map((error) => error.file) };
+  return { total: applicants.length, clean, defects: sorted, errors };
 }
