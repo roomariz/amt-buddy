@@ -107,7 +107,7 @@ One document inside an application: SCHUFA-Auskunft, Income proof (payslips / em
 _Avoid_: Attachment, upload, file
 
 **Document check**:
-The per-Applicant result of checking the Application documents: present / missing / expired / inconsistent, each with a reason.
+The per-Applicant result of checking the Application documents: present / missing / expired / inconsistent (or not required: a first-time renter has no Previous-landlord confirmation), each with a reason, plus the list of issues found (including rent arrears confirmed by the previous landlord).
 _Avoid_: Verification, KYC
 
 **Credibility score**:
@@ -115,7 +115,7 @@ _Avoid_: Verification, KYC
 _Avoid_: Trust score, rating
 
 **Applicant profile**:
-The anonymised, structured view of an Applicant that everything downstream uses: id, household size, net household income, employment type, SCHUFA status, move-in date, pets/smoking, Document check, Credibility score. It never contains protected characteristics. Name and contact details are kept beside it for display only and never reach the scorer or the model.
+The anonymised, structured view of an Applicant that everything downstream uses: id, household size (with adults, children and children up to six, as § 7 WoAufG Bln needs them), net household income, employment type, SCHUFA status, move-in date, pets/smoking, Document check, Credibility score. It never contains protected characteristics. Name and contact details are kept beside it for display only and never reach the scorer or the model.
 _Avoid_: Applicant record, dossier
 
 **Selection criteria**:
