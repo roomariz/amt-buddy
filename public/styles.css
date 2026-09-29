@@ -1689,7 +1689,8 @@ footer a { color: inherit; }
 .lc-tip { flex: none; display: flex; align-items: baseline; gap: 8px; padding: 8px 16px 12px; font-size: 0.82rem; line-height: 1.4; color: var(--lc-muted); }
 .lc-tip-label { flex: none; font-weight: 700; color: var(--lc-text); }
 .lc-tip-label::before { content: "💡 " / ""; }
-.lc-tip-body { min-width: 0; }
+/* Room for two lines, so a rotating tip that wraps doesn't move the prompt. */
+.lc-tip-body { min-width: 0; min-height: calc(2 * 1.4em); }
 .lc-body .lc-tip-text {
   display: inline;
   width: auto;
