@@ -11,8 +11,8 @@
 import { fetchChatMode, fetchThread, MODE_LABEL, runTurn, uploadLease, UPLOAD_TEXT } from "./chat/api.js";
 import { onLanguageChange, startI18n, t } from "./i18n.js";
 import { renderMarkdown } from "./chat/markdown.js";
-import { restoredBubbles } from "./chat/restore.js";
-import { confirmPayload, inputModeFor } from "./chat/tenancy.js";
+import { restoredChat } from "./chat/restore.js";
+import { confirmedValuesText, confirmPayload, inputModeFor } from "./chat/tenancy.js";
 import { currentThreadId, startNewThread, storedThreadId } from "./chat/thread.js";
 import { announcements } from "./chat/turn.js";
 
@@ -122,20 +122,21 @@ function setStagedFile(file) {
 
 // --- messages ----------------------------------------------------------------------------------
 
-function appendUserMessage(text, file = null) {
+// A user bubble: the lease chip (`chip`: { name, size? }; a restored upload has no size), the
+// message text and the confirmed values, each only when given.
+function appendUserMessage(text, chip = null, confirmed = null) {
   showChatView();
   const row = el("div", "chat-msg-row user-row");
   const bubble = el("div", "user-bubble");
-  if (file) {
-    const chip = el("div", "user-file-chip");
-    chip.append(
-      el("span", "chip-icon", "📄"),
-      el("span", "chip-name", file.name),
-      el("span", "chip-size", `(${fileSizeLabel(file)})`),
-    );
-    bubble.append(chip);
+  if (chip) {
+    const chipNode = el("div", "user-file-chip");
+    chipNode.append(el("span", "chip-icon", "📄"), el("span", "chip-name", chip.name));
+    if (chip.size) chipNode.append(el("span", "chip-size", `(${chip.size})`));
+    bubble.append(chipNode);
   }
-  if (text) bubble.append(el("div", "user-msg-text", text));
+  for (const line of [text, confirmed]) {
+    if (line) bubble.append(el("div", "user-msg-text", line));
+  }
   row.append(bubble);
   chatStream.append(row);
   scrollToBottom();
@@ -199,6 +200,7 @@ function appendRestoredAnswer(markdown) {
   view.steps.remove(); // an empty, labelled list would still be read out
   view.working.hidden = true;
   view.content.innerHTML = renderMarkdown(markdown);
+  return view;
 }
 
 // --- review card (Unconfirmed facts) ---------------------------------------------------------
@@ -244,11 +246,7 @@ function renderReviewCard(view, review) {
     const confirm = confirmPayload(review.fields, inputs);
     if (Object.keys(confirm).length === 0) return;
     setFormDisabled(form, true);
-    const summary = review.fields
-      .filter((field) => field.name in confirm)
-      .map((field) => `${field.label}: ${confirm[field.name]}${field.unit ? ` ${field.unit}` : ""}`)
-      .join(", ");
-    sendTurn({ confirm }, { text: t("chat.confirmedValues", { summary }) }, null, form);
+    sendTurn({ confirm }, { text: confirmedValuesText(confirm) }, null, form);
   });
 
   openReviewCard = form;
@@ -275,7 +273,7 @@ async function sendTurn(request, shown, file = null, reviewForm = null) {
   const controller = new AbortController();
   activeTurn = controller;
   const turnThread = threadId;
-  appendUserMessage(shown.text, file);
+  appendUserMessage(shown.text, file && { name: file.name, size: fileSizeLabel(file) });
   const view = appendBotTurn();
   let reviewShown = false;
 
@@ -371,21 +369,29 @@ function resetToNewChat() {
   chatUserInput.focus();
 }
 
-// After a reload: draws the thread's Transcript again, or leaves the start screen when the server
-// has nothing for it. Input waits for it, so a new message never lands above the restored ones.
-// Restored messages are not announced in the live region.
+// After a reload: draws the thread's Transcript again, with the review card under the last answer
+// while Unconfirmed facts remain, or leaves the start screen when the server has nothing for it.
+// Input waits for it, so a new message never lands above the restored ones. Restored messages are
+// not announced in the live region.
 async function restoreConversation(id) {
   setBusy(true);
-  const { transcript } = await fetchThread({ fetchImpl: fetch, threadId: id });
+  const thread = await fetchThread({ fetchImpl: fetch, threadId: id });
   // "New chat" was clicked meanwhile: that conversation is gone, and input is free already.
   if (threadId !== id) return;
-  for (const bubble of restoredBubbles(transcript)) {
-    if (bubble.kind === "user") appendUserMessage(bubble.text);
-    else appendRestoredAnswer(bubble.markdown);
+  const { bubbles, review } = restoredChat(thread);
+  let lastAnswer = null;
+  for (const bubble of bubbles) {
+    if (bubble.kind === "user") {
+      appendUserMessage(bubble.text, bubble.leaseChip && { name: bubble.leaseChip }, bubble.confirmed);
+    } else {
+      lastAnswer = appendRestoredAnswer(bubble.markdown);
+    }
   }
   scrollToBottom();
   setBusy(false);
-  chatUserInput.focus();
+  // A restored card works like a live one: submitting it sends `confirm` on this thread.
+  if (review && lastAnswer) renderReviewCard(lastAnswer, review);
+  else chatUserInput.focus();
 }
 
 function renderChatMode() {

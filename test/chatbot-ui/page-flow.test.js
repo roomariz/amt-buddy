@@ -314,3 +314,91 @@ test("restore: a failed fetch gives an empty thread instead of throwing", async 
     assert.deepEqual(await fetchThread({ fetchImpl, threadId: "t" }), EMPTY);
   }
 });
+
+// A lease upload read by Lease Analysis whose contract rent comes out Unconfirmed, then two more answers.
+const LEASE_SCRIPT = {
+  supervisor: [
+    { toolCalls: [{ name: "ask_lease_analysis_agent", args: { request: "Read the lease" } }] },
+    "Your lease states a contract rent of 30000 €. Is that right?",
+    "Thanks, I will use a contract rent of 780.5 €.",
+  ],
+  subAgent: [
+    { toolCalls: [{ name: "extract_lease_data", args: { documentId: "lease" } }] },
+    "Extracted the lease; the contract rent has confidence 0.5.",
+  ],
+};
+
+async function uploadTestLease(server) {
+  const { documentId } = await uploadLease({
+    fetchImpl: server.fetchImpl,
+    payload: { file: base64(LEASE), mimeType: "text/plain", fileName: "mietvertrag.txt" },
+  });
+  return documentId;
+}
+
+test("restore: a lease-only upload and a confirm-only turn are recorded without the internal markers", async (t) => {
+  const server = await start({
+    env: ORCHESTRATOR_ENV,
+    script: { router: [{ intents: ["document"], language: "en" }], ...LEASE_SCRIPT },
+  });
+  t.after(server.close);
+
+  const read = await runTurn({
+    fetchImpl: server.fetchImpl,
+    request: { threadId: "restore-lease", documentId: await uploadTestLease(server) },
+  });
+  assert.equal(read.phase, "done");
+
+  const afterUpload = await fetchThread({ fetchImpl: server.fetchImpl, threadId: "restore-lease" });
+  assert.deepEqual(afterUpload.transcript, [
+    { role: "user", text: "", document: true, confirm: null },
+    { role: "assistant", text: read.answer },
+  ]);
+  assert.deepEqual(afterUpload.tenancy.contractRent, { value: 30000, source: "lease", confidence: 0.5 });
+
+  const confirmed = await runTurn({
+    fetchImpl: server.fetchImpl,
+    request: { threadId: "restore-lease", confirm: { contractRent: "780,50" } },
+  });
+  assert.equal(confirmed.phase, "done");
+
+  const afterConfirm = await fetchThread({ fetchImpl: server.fetchImpl, threadId: "restore-lease" });
+  assert.deepEqual(afterConfirm.transcript.slice(2), [
+    { role: "user", text: "", document: false, confirm: { contractRent: "780,50" } },
+    { role: "assistant", text: confirmed.answer },
+  ]);
+  assert.doesNotMatch(JSON.stringify(afterConfirm.transcript), /\[The user uploaded|\[Confirmed Tenancy facts\]/);
+  assert.deepEqual(afterConfirm.tenancy.contractRent, { value: 780.5, source: "user" });
+});
+
+test("restore: an upload or a confirm sent with a message keeps the message text", async (t) => {
+  const server = await start({
+    env: ORCHESTRATOR_ENV,
+    script: {
+      router: [
+        { intents: ["document"], language: "en" },
+        { intents: ["general"], language: "en" },
+      ],
+      ...LEASE_SCRIPT,
+    },
+  });
+  t.after(server.close);
+
+  await runTurn({
+    fetchImpl: server.fetchImpl,
+    request: { threadId: "restore-lease-msg", message: " Here is my lease ", documentId: await uploadTestLease(server) },
+  });
+  await runTurn({
+    fetchImpl: server.fetchImpl,
+    request: { threadId: "restore-lease-msg", message: "It is lower", confirm: { contractRent: "780,50" } },
+  });
+
+  const { transcript } = await fetchThread({ fetchImpl: server.fetchImpl, threadId: "restore-lease-msg" });
+  assert.deepEqual(
+    transcript.filter((entry) => entry.role === "user"),
+    [
+      { role: "user", text: "Here is my lease", document: true, confirm: null },
+      { role: "user", text: "It is lower", document: false, confirm: { contractRent: "780,50" } },
+    ],
+  );
+});
