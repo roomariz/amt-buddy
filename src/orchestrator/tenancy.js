@@ -8,10 +8,11 @@ export const FEATURE_GROUP_RATINGS = Object.fromEntries(FEATURE_GROUPS.map((grou
 export const RATING_FACTS = Object.values(FEATURE_GROUP_RATINGS);
 
 // Previous-rental facts for the Rent cap (Mietpreisbremse): whether the flat was rented
-// out before (yes/no) and the previous tenant's monthly net cold rent (Vormiete). Stated by
-// the tenant; they belong to the flat, like the Feature group ratings.
-export const PREVIOUS_RENTAL_FACTS = ["rentedBefore", "previousRent"];
-const BOOLEAN_FACTS = new Set(["rentedBefore"]);
+// out before (yes/no), the previous tenant's monthly net cold rent (Vormiete) and whether
+// the flat was first used after 1 October 2014 (yes/no). Stated by the tenant; they belong
+// to the flat, like the Feature group ratings.
+export const PREVIOUS_RENTAL_FACTS = ["rentedBefore", "previousRent", "firstUsedAfter2014"];
+const BOOLEAN_FACTS = new Set(["rentedBefore", "firstUsedAfter2014"]);
 const BOOLEAN_WORDS = { yes: true, ja: true, true: true, no: false, nein: false, false: false };
 
 // Facts that describe the flat and go when the flat changes.

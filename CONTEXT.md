@@ -56,6 +56,10 @@ _Avoid_: Previous tenancy, occupied before
 The monthly net cold rent the previous tenant paid for a flat rented before (§ 556e BGB), a Tenancy fact the tenant states. If it is higher than Mietspiegel + 10 %, it becomes the Rent cap. It is optional: without it the Rent cap verdict is conditional. It belongs to the flat, so a changed address clears it.
 _Avoid_: Old rent, former rent
 
+**First used after 2014**:
+Whether a flat never rented before was first used (first occupied) after 1 October 2014, a Tenancy fact the tenant states (yes/no). The first rental of such a new build is exempt from the Rent cap (§ 556f BGB). It is asked only when the building is not known to be from before 2014. It belongs to the flat, so a changed address clears it.
+_Avoid_: New building, Neubau flag
+
 ### Answers
 
 **Compliance verdict**:
@@ -63,7 +67,7 @@ A conclusion about whether the Tenancy meets a Berlin rule: its contract rent re
 _Avoid_: Result, finding, judgement
 
 **Rent cap (Mietpreisbremse)**:
-The Compliance verdict on the contract rent under §§ 556d–556g BGB: at the start of a lease the rent may be at most the local reference rent + 10 %. The reference rent is the Adjusted reference rent when all five Feature group ratings are known, otherwise the Mietspiegel median. For a flat rented before, a higher Previous rent (Vormiete) becomes the cap; while the previous rent is unknown, the verdict is conditional, because a higher previous rent could justify a higher rent. It assumes the contract rent is the rent agreed at the start of the lease and sits next to the unchanged range comparison.
+The Compliance verdict on the contract rent under §§ 556d–556g BGB: at the start of a lease the rent may be at most the local reference rent + 10 %. The reference rent is the Adjusted reference rent when all five Feature group ratings are known, otherwise the Mietspiegel median. For a flat rented before, a higher Previous rent (Vormiete) becomes the cap; while the previous rent is unknown, the verdict is conditional, because a higher previous rent could justify a higher rent. The first rental of a flat never rented before and First used after 2014 is exempt: there is no cap. It assumes the contract rent is the rent agreed at the start of the lease and sits next to the unchanged range comparison.
 _Avoid_: Rent limit, rent brake, Kappungsgrenze (that is the cap on rent increases)
 
 **Grounded claim**:

@@ -1333,3 +1333,148 @@ test("the previous tenant's rent, given with 'yes', becomes the rent cap when it
   assert.match(answer, /170 € below/);
   assert.equal(models.supervisor.remaining, 0, "no grounding rewrite was needed");
 });
+
+// FLAT_FACTS for a flat never rented before.
+const NEVER_RENTED_FACTS = [...FLAT_FACTS.filter(({ fact }) => fact !== "rentedBefore"), { fact: "rentedBefore", value: "no" }];
+
+test("'never rented' in a building from 1921 - 1930 gives a verdict without asking the new-build question", async () => {
+  const { orchestrator, models, calls } = setup({
+    router: [
+      { intents: ["address", "mietspiegel"], language: "en" },
+      { intents: ["mietspiegel"], language: "en" },
+    ],
+    supervisor: [
+      {
+        toolCalls: [
+          recordFacts(FLAT_FACTS.filter(({ fact }) => fact !== "rentedBefore")),
+          ...askOfficialData.toolCalls,
+          ...askMietspiegel.toolCalls,
+        ],
+      },
+      "Was the flat rented out before you moved in?",
+      { toolCalls: [recordFacts([{ fact: "rentedBefore", value: "no" }]), ...askMietspiegel.toolCalls] },
+      "Your Nettokaltmiete (net cold rent) of 780 € is above the Mietspiegel range of 410–555 €. " +
+        "Mietpreisbremse (rent cap): the cap is Mietspiegel + 10 %, i.e. 519,75 €, and your rent is 260,25 € above it. " +
+        "This assumes 780 € is the rent agreed at the start of the lease. Not checked: leases concluded before 1 June 2015, modernisation, Staffelmiete and Indexmiete.",
+    ],
+    subAgent: [...OFFICIAL_DATA_SCRIPT, mietspiegelCall(780), "Calculated; above the rent cap."],
+  });
+
+  await collect(orchestrator.send({ threadId: "t72", message: "Berliner Str. 155, 50 m², 780 € cold. Too much?" }));
+  const second = await collect(orchestrator.send({ threadId: "t72", message: "no, I am the first tenant" }));
+
+  assert.deepEqual(stepsOf(second), ["ComplianceAgent:started", "ComplianceAgent:finished"], "no needs_facts for the new-build question");
+  assert.deepEqual(calls.at(-1), { name: "calculate_mietspiegel", args: { ...mietspiegelArgs(780), rentedBefore: false } });
+  const { rentCap } = lastMietspiegelReport(models);
+  assert.equal(rentCap.basis, "mietspiegel_plus_10");
+  assert.equal(rentCap.status, "above_cap");
+  assert.match(answerOf(second), /519,75 €/);
+  assert.equal(models.supervisor.remaining, 0, "no grounding rewrite was needed");
+});
+
+test("'never rented' in a building from 2016 asks whether the flat was first used after 2014, and 'yes' gives the exempt verdict", async () => {
+  const { orchestrator, models, calls } = setup({
+    router: [
+      { intents: ["address", "mietspiegel"], language: "en" },
+      { intents: ["mietspiegel"], language: "en" },
+    ],
+    supervisor: [
+      {
+        toolCalls: [
+          recordFacts([...NEVER_RENTED_FACTS, { fact: "buildingYear", value: 2016 }]),
+          ...askOfficialData.toolCalls,
+          ...askMietspiegel.toolCalls,
+        ],
+      },
+      "Is your flat a new build, first used (first occupied) only recently?",
+      { toolCalls: [recordFacts([{ fact: "firstUsedAfter2014", value: "yes" }]), ...askMietspiegel.toolCalls] },
+      "Your Nettokaltmiete (net cold rent) of 780 € is within the Mietspiegel range of 590–845 €. " +
+        "Mietpreisbremse (rent cap): the flat is rented for the first time and was first used after 1 October 2014, " +
+        "so the Mietpreisbremse does not apply (§ 556f BGB) and there is no rent cap. " +
+        "This assumes 780 € is the rent agreed at the start of the lease. Not checked: leases concluded before 1 June 2015, modernisation, Staffelmiete and Indexmiete.",
+    ],
+    subAgent: [
+      ...OFFICIAL_DATA_SCRIPT,
+      // The model passes the opposite of what the tenant said; the Tenancy is pinned instead.
+      {
+        toolCalls: [
+          { name: "calculate_mietspiegel", args: { ...mietspiegelArgs(780), rentedBefore: false, firstUsedAfter2014: false } },
+        ],
+      },
+      "Calculated; exempt from the rent cap.",
+    ],
+  });
+
+  const first = await collect(orchestrator.send({ threadId: "t73", message: "Berliner Str. 155, built 2016, 50 m², 780 €, never rented. Too much?" }));
+
+  assert.deepEqual(stepsOf(first), ["OfficialDataAgent:started", "OfficialDataAgent:finished", "ComplianceAgent:needs_facts"]);
+  assert.deepEqual(JSON.parse(models.supervisor.calls[1].at(-1).content), {
+    status: "needs_facts",
+    checks: ["mietspiegel"],
+    missing: ["firstUsedAfter2014"],
+    unconfirmed: [],
+  });
+  assert.equal(calls.some((c) => c.name === "calculate_mietspiegel"), false, "no Mietspiegel call yet");
+
+  const second = await collect(orchestrator.send({ threadId: "t73", message: "yes" }));
+
+  assert.deepEqual((await orchestrator.getTenancy("t73")).firstUsedAfter2014, { value: true, source: "user" });
+  assert.deepEqual(stepsOf(second), ["ComplianceAgent:started", "ComplianceAgent:finished"]);
+  assert.deepEqual(calls.at(-1), {
+    name: "calculate_mietspiegel",
+    args: { ...mietspiegelArgs(780), buildingAgeOrYear: 2016, rentedBefore: false, firstUsedAfter2014: true },
+  });
+  const { rentCap } = lastMietspiegelReport(models);
+  assert.equal(rentCap.basis, "exempt_new_build");
+  assert.equal(rentCap.status, "exempt");
+  assert.equal(rentCap.capMonthlyRent, null);
+  const answer = answerOf(second);
+  assert.match(answer, /does not apply/);
+  assert.match(answer, /1 October 2014/);
+  assert.match(answer, /not legal advice/);
+  assert.equal(models.supervisor.remaining, 0, "no grounding rewrite was needed");
+});
+
+test("'never rented' in a building with an open-ended or unknown period asks whether the flat was first used after 2014", async () => {
+  const cases = [
+    { period: "nach 1945", missing: ["firstUsedAfter2014"] },
+    { period: "ab 2010", missing: ["firstUsedAfter2014"] },
+    { period: null, missing: ["buildingYear", "firstUsedAfter2014"] },
+  ];
+  for (const [index, { period, missing }] of cases.entries()) {
+    const { orchestrator, models, calls } = setup({
+      router: [{ intents: ["address", "mietspiegel"], language: "en" }],
+      supervisor: [
+        { toolCalls: [recordFacts(NEVER_RENTED_FACTS), ...askOfficialData.toolCalls, ...askMietspiegel.toolCalls] },
+        "Is your flat a new build, first used (first occupied) only recently?",
+      ],
+      subAgent: OFFICIAL_DATA_SCRIPT,
+      toolOverrides: { lookup_building_age: () => ({ predominantConstructionPeriod: period }) },
+    });
+
+    const events = await collect(orchestrator.send({ threadId: `t74-${index}`, message: "Berliner Str. 155, 50 m², 780 €, never rented" }));
+
+    assert.equal(stepsOf(events).at(-1), "ComplianceAgent:needs_facts", String(period));
+    assert.deepEqual(JSON.parse(models.supervisor.calls[1].at(-1).content).missing, missing, String(period));
+    assert.equal(calls.some((c) => c.name === "calculate_mietspiegel"), false, String(period));
+  }
+});
+
+test("'never rented' in a building known to be from before 2014 does not ask the new-build question", async () => {
+  for (const [index, period] of ["1991 - 2002", "bis 1918", "2013"].entries()) {
+    const { orchestrator, calls } = setup({
+      router: [{ intents: ["address", "mietspiegel"], language: "en" }],
+      supervisor: [
+        { toolCalls: [recordFacts(NEVER_RENTED_FACTS), ...askOfficialData.toolCalls, ...askMietspiegel.toolCalls] },
+        "I checked your rent against the Mietspiegel.",
+      ],
+      subAgent: [...OFFICIAL_DATA_SCRIPT, mietspiegelCall(780), "Calculated."],
+      toolOverrides: { lookup_building_age: () => ({ predominantConstructionPeriod: period }) },
+    });
+
+    const events = await collect(orchestrator.send({ threadId: `t75-${index}`, message: "Berliner Str. 155, 50 m², 780 €, never rented" }));
+
+    assert.equal(stepsOf(events).at(-1), "ComplianceAgent:finished", period);
+    assert.equal(calls.at(-1).name, "calculate_mietspiegel", period);
+  }
+});

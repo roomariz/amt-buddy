@@ -229,6 +229,33 @@ test("never rented: the cap is Mietspiegel + 10 %, unconditionally", () => {
   assert.equal(rentCap.differenceFromCap, -19.75);
 });
 
+test("never rented and first used after 1 October 2014: the first rental is exempt from the cap", () => {
+  const { rentCap } = evaluateMietspiegel({ ...rentCapFlat, contractRent: 780, rentedBefore: false, firstUsedAfter2014: true });
+
+  assert.equal(rentCap.basis, "exempt_new_build");
+  assert.equal(rentCap.baseCapMonthlyRent, 519.75);
+  assert.equal(rentCap.capMonthlyRent, null);
+  assert.equal(rentCap.conditional, false);
+  assert.equal(rentCap.status, "exempt");
+  assert.equal(rentCap.differenceFromCap, 0);
+});
+
+test("never rented and not first used after 2014: the cap is Mietspiegel + 10 %", () => {
+  const { rentCap } = evaluateMietspiegel({ ...rentCapFlat, contractRent: 780, rentedBefore: false, firstUsedAfter2014: false });
+
+  assert.equal(rentCap.basis, "mietspiegel_plus_10");
+  assert.equal(rentCap.capMonthlyRent, 519.75);
+  assert.equal(rentCap.status, "above_cap");
+  assert.equal(rentCap.differenceFromCap, 260.25);
+});
+
+test("a flat rented before is never exempt as a new build", () => {
+  const { rentCap } = evaluateMietspiegel({ ...rentCapFlat, contractRent: 780, rentedBefore: true, firstUsedAfter2014: true });
+
+  assert.equal(rentCap.basis, "mietspiegel_plus_10");
+  assert.equal(rentCap.status, "above_cap");
+});
+
 test("a contract rent equal to the cap is within the cap", () => {
   const { rentCap } = evaluateMietspiegel({ ...rentCapFlat, contractRent: 519.75, rentedBefore: true });
 

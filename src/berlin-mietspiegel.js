@@ -306,9 +306,24 @@ export const RENT_CAP_NOT_CHECKED =
 // The Rent cap (Mietpreisbremse) verdict for a contract rent: Mietspiegel + 10 % (the base cap),
 // based on the Adjusted reference rent when there is one, otherwise the Mietspiegel median.
 // A flat rented before keeps a higher previous rent (Vormiete, § 556e BGB) as its cap; while
-// the previous rent is unknown, the verdict is conditional.
-function evaluateRentCap({ contractRent, referenceMonthlyRent, rentedBefore, previousRent }) {
+// the previous rent is unknown, the verdict is conditional. The first rental of a flat first
+// used after 1 October 2014 is exempt (§ 556f BGB): it has no cap.
+function evaluateRentCap({ contractRent, referenceMonthlyRent, rentedBefore, previousRent, firstUsedAfter2014 }) {
   const baseCapMonthlyRent = round(referenceMonthlyRent * (1 + RENT_CAP_PERCENT / 100));
+  if (!rentedBefore && firstUsedAfter2014 === true) {
+    return {
+      basis: "exempt_new_build",
+      capPercent: RENT_CAP_PERCENT,
+      referenceMonthlyRent,
+      baseCapMonthlyRent,
+      capMonthlyRent: null,
+      conditional: false,
+      status: "exempt",
+      differenceFromCap: 0,
+      legalBasis: RENT_CAP_LEGAL_BASIS,
+      notChecked: RENT_CAP_NOT_CHECKED,
+    };
+  }
   const previousAmount = rentedBefore ? positiveAmount(previousRent) : undefined;
   const knownPreviousRent = previousAmount === undefined ? undefined : round(previousAmount);
   const previousRentIsCap = knownPreviousRent !== undefined && knownPreviousRent > baseCapMonthlyRent;
@@ -338,6 +353,8 @@ function positiveAmount(value) {
 // valid contract rent, the result adds a Rent cap (`rentCap`); without it, it is unchanged.
 // `previousRent` (optional, monthly net cold rent in EUR): the previous tenant's rent, used
 // only for a flat rented before.
+// `firstUsedAfter2014` (optional boolean): whether the flat was first used after 1 October 2014;
+// a flat never rented and first used after that date is exempt from the Rent cap.
 export function evaluateMietspiegel(options = {}) {
   const {
     residentialLocation,
@@ -347,6 +364,7 @@ export function evaluateMietspiegel(options = {}) {
     featureGroups,
     rentedBefore,
     previousRent,
+    firstUsedAfter2014,
   } = options;
 
   const loc = String(residentialLocation ?? "").trim().toLocaleLowerCase("de-DE");
@@ -449,6 +467,7 @@ export function evaluateMietspiegel(options = {}) {
           referenceMonthlyRent: adjustedReferenceRent?.monthlyRent ?? monthlyReferenceRent.median,
           rentedBefore,
           previousRent,
+          firstUsedAfter2014,
         })
       : undefined;
 

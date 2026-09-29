@@ -93,3 +93,18 @@ test("calculate_mietspiegel takes an optional previous rent, which can become th
   assert.equal(result.rentCap.basis, "previous_rent");
   assert.equal(result.rentCap.capMonthlyRent, 950);
 });
+
+test("calculate_mietspiegel takes an optional 'first used after 2014', which exempts a flat never rented", async () => {
+  const { schema, output } = TOOL_CONTRACTS.calculate_mietspiegel;
+  const base = { residentialLocation: "gut", buildingAgeOrYear: 2016, livingAreaSqm: 50, contractRent: 780, rentedBefore: false };
+
+  assert.doesNotThrow(() => schema.parse(base), "'first used after 2014' is optional");
+  assert.equal(schema.parse({ ...base, firstUsedAfter2014: true }).firstUsedAfter2014, true);
+  assert.throws(() => schema.parse({ ...base, firstUsedAfter2014: "yes" }), "a boolean, not text");
+
+  const { tools } = createStubTools();
+  const result = await assertToolsMatchContracts(tools).get("calculate_mietspiegel").invoke({ ...base, firstUsedAfter2014: true });
+  assert.doesNotThrow(() => output.parse(result));
+  assert.equal(result.rentCap.status, "exempt");
+  assert.equal(result.rentCap.capMonthlyRent, null);
+});
