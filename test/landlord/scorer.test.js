@@ -272,3 +272,222 @@ test("excluded applicants are listed by id, and the scorer does not change its i
   assert.deepEqual(excluded.map(({ applicantId }) => applicantId), ["A-1", "A-2"]);
   assert.deepEqual(profiles, copy);
 });
+
+// --- Pool stats -------------------------------------------------------------------------------
+
+// A Listing of 60 m² at 1000 € whose Rent check puts the Mietspiegel median at 800 €.
+const WITH_RENT_CHECK = { ...LISTING, rentCheck: { range: { lower: 700, median: 800, upper: 950 } } };
+
+// Rent-to-income at 1000 €: A-1 25 %, A-2 33.3 %, A-3 40 %, A-4 20 %, A-5 50 %; at the median
+// (800 €): A-3 32 %, A-5 40 %.
+const POOL = [
+  profile("A-1"),
+  profile("A-2", { netHouseholdIncome: 3000, schufaStatus: "minor_entries" }),
+  profile("A-3", { netHouseholdIncome: 2500, documentCheck: { complete: false, schufa: { status: "expired", reason: "Too old." } } }),
+  profile("A-4", { netHouseholdIncome: 5000, pets: true, schufaStatus: "negative" }),
+  profile("A-5", { netHouseholdIncome: 2000, documentCheck: { complete: false } }),
+];
+
+test("stats count the whole pool: total, complete documents, can afford, clean SCHUFA, excluded", () => {
+  const { stats } = rankApplicants({ profiles: POOL, listing: WITH_RENT_CHECK, criteria: { requirements: { noPets: true } } });
+
+  assert.equal(stats.total, 5);
+  assert.equal(stats.completeDocuments, 3); // A-1, A-2, A-4
+  assert.equal(stats.canAfford, 3); // at most 1/3: A-1, A-2 (exactly 1/3), A-4
+  assert.equal(stats.cleanSchufa, 3); // A-1, A-3, A-5
+  assert.equal(stats.excluded, 1); // A-4 has pets
+});
+
+test("stats: can afford at the Mietspiegel median shows how far a lower rent widens the pool", () => {
+  const { stats } = rankApplicants({ profiles: POOL, listing: WITH_RENT_CHECK });
+
+  assert.equal(stats.medianRent, 800);
+  assert.equal(stats.canAfford, 3);
+  assert.equal(stats.canAffordAtMedian, 4); // + A-3 (32 %); A-5 stays at 40 %
+});
+
+test("stats: 'can afford' follows the maxRentToIncome Requirement when it is set", () => {
+  const { stats } = rankApplicants({ profiles: POOL, listing: WITH_RENT_CHECK, criteria: { requirements: { maxRentToIncome: 0.25 } } });
+
+  assert.equal(stats.maxRentToIncome, 0.25);
+  assert.equal(stats.canAfford, 2); // A-1 (exactly 25 %), A-4
+  assert.equal(stats.canAffordAtMedian, 2); // at 800 €: A-1 20 %, A-4 16 %; A-2 26.7 %
+});
+
+test("stats: without a Rent check 'can afford at median' is unavailable (null), not zero", () => {
+  const { stats } = rankApplicants({ profiles: POOL, listing: LISTING });
+
+  assert.equal(stats.canAffordAtMedian, null);
+  assert.equal(stats.medianRent, null);
+  assert.equal(stats.maxRentToIncome, 1 / 3);
+  assert.equal(rankApplicants({ profiles: POOL, listing: { ...LISTING, rentCheck: null } }).stats.canAffordAtMedian, null);
+});
+
+test("stats of an empty pool are all zero", () => {
+  const { stats } = rankApplicants({ profiles: [], listing: WITH_RENT_CHECK });
+  assert.deepEqual(
+    [stats.total, stats.completeDocuments, stats.canAfford, stats.canAffordAtMedian, stats.cleanSchufa, stats.excluded],
+    [0, 0, 0, 0, 0, 0],
+  );
+});
+
+// --- Recommendations ------------------------------------------------------------------------
+
+const recommendedIds = (result) => result.recommendations.map(({ applicantId }) => applicantId);
+
+test("Recommendations are the top two ranked applicants, never an excluded one", () => {
+  const profiles = [
+    profile("A-3", { netHouseholdIncome: 3000 }),
+    profile("A-1", { pets: true }), // the best score, but excluded
+    profile("A-2"),
+    profile("A-4", { schufaStatus: "negative" }),
+  ];
+  const result = rankApplicants({ profiles, listing: LISTING, criteria: { requirements: { noPets: true } } });
+
+  assert.deepEqual(recommendedIds(result), ["A-2", "A-3"]);
+  assert.deepEqual(result.recommendations.map(({ rank, matchScore }) => [rank, matchScore]), [[1, 100], [2, 83.3]]);
+});
+
+test("fewer Recommendations when fewer applicants qualify", () => {
+  const one = rankApplicants({ profiles: [profile("A-1"), profile("A-2", { pets: true })], listing: LISTING, criteria: { requirements: { noPets: true } } });
+  assert.deepEqual(recommendedIds(one), ["A-1"]);
+
+  const none = rankApplicants({ profiles: [profile("A-2", { pets: true })], listing: LISTING, criteria: { requirements: { noPets: true } } });
+  assert.deepEqual(none.recommendations, []);
+});
+
+const recommendationOf = (applicant) => rankApplicants({ profiles: [applicant], listing: LISTING }).recommendations[0];
+
+test("reasons name the three strongest subscores (ties by weight), in German and English", () => {
+  const recommendation = recommendationOf(profile("A-1"));
+
+  assert.deepEqual(recommendation.strengths, ["affordability", "schufa", "documents"]);
+  assert.equal(recommendation.weakness, null);
+  assert.equal(
+    recommendation.reason.en,
+    "You may like this applicant for their low rent burden (25 % of net household income), clean SCHUFA and complete documents.",
+  );
+  assert.equal(
+    recommendation.reason.de,
+    "Dieser Bewerber könnte Ihnen gefallen: geringe Mietbelastung (25 % des Haushaltsnettoeinkommens), saubere SCHUFA und vollständige Unterlagen.",
+  );
+});
+
+test("reasons mention a notable weakness: the lowest subscore below 0.6, ties by weight", () => {
+  // Subscores: affordability 1, documents 1, employment 1, credibility 0.95; SCHUFA 0.5 (weight
+  // 20) and previous landlord 0.5 (weight 5).
+  const recommendation = recommendationOf(
+    profile("A-1", {
+      netHouseholdIncome: 5000,
+      credibilityScore: 95,
+      employmentType: "civil_servant",
+      schufaStatus: "minor_entries",
+      documentCheck: { previousLandlord: { status: "not_required", reason: "First-time renter.", arrears: null } },
+    }),
+  );
+
+  assert.deepEqual(recommendation.strengths, ["affordability", "documents", "employment"]);
+  assert.equal(recommendation.weakness, "schufa");
+  assert.equal(
+    recommendation.reason.en,
+    "You may like this applicant for their low rent burden (20 % of net household income), complete documents and civil-servant status. To note: minor SCHUFA entries.",
+  );
+  assert.equal(
+    recommendation.reason.de,
+    "Dieser Bewerber könnte Ihnen gefallen: geringe Mietbelastung (20 % des Haushaltsnettoeinkommens), vollständige Unterlagen und Beamtenstatus. Zu beachten: kleinere SCHUFA-Einträge.",
+  );
+});
+
+test("reasons use the applicant's own values, with decimals in each language's style", () => {
+  // Rent-to-income 31.25 %: affordability 0.58 is the weakness; credibility 0.88 is not among the top three.
+  const recommendation = recommendationOf(profile("A-1", { netHouseholdIncome: 3200, credibilityScore: 88 }));
+
+  assert.deepEqual(recommendation.strengths, ["schufa", "documents", "employment"]);
+  assert.equal(recommendation.weakness, "affordability");
+  assert.equal(
+    recommendation.reason.en,
+    "You may like this applicant for their clean SCHUFA, complete documents and permanent job. To note: rent burden of 31.3 % of net household income.",
+  );
+  assert.equal(
+    recommendation.reason.de,
+    "Dieser Bewerber könnte Ihnen gefallen: saubere SCHUFA, vollständige Unterlagen und unbefristete Stelle. Zu beachten: Mietbelastung von 31,3 % des Haushaltsnettoeinkommens.",
+  );
+});
+
+test("reasons with only two strengths, and only strengths of 0.75 or more", () => {
+  // Affordability 0 and SCHUFA 0 (weights 30 and 20), documents 0.67, credibility 0.9, employment
+  // 0.3, previous landlord 1.
+  const recommendation = recommendationOf(
+    profile("A-1", {
+      netHouseholdIncome: 2500,
+      credibilityScore: 90,
+      employmentType: "other",
+      schufaStatus: "missing",
+      documentCheck: { complete: false, schufa: { status: "missing", reason: "No SCHUFA-Auskunft." } },
+    }),
+  );
+
+  assert.deepEqual(recommendation.strengths, ["previousLandlord", "credibility"]);
+  assert.equal(recommendation.weakness, "affordability");
+  assert.equal(
+    recommendation.reason.en,
+    "You may like this applicant for their previous-landlord confirmation without arrears and high credibility (90/100). To note: rent burden of 40 % of net household income.",
+  );
+  assert.equal(
+    recommendation.reason.de,
+    "Dieser Bewerber könnte Ihnen gefallen: Vorvermieterbescheinigung ohne Mietrückstände und hohe Glaubwürdigkeit (90/100). Zu beachten: Mietbelastung von 40 % des Haushaltsnettoeinkommens.",
+  );
+});
+
+test("without a strong subscore the reason falls back to the Match score", () => {
+  // Affordability 0, SCHUFA 0, documents 0, credibility 0.5, employment 0.5, previous landlord 0.3:
+  // 7.5 + 7.5 + 1.5 = 16.5.
+  const missing = { status: "missing", reason: "None." };
+  const recommendation = recommendationOf(
+    profile("A-1", {
+      netHouseholdIncome: 2000,
+      credibilityScore: 50,
+      employmentType: "student_with_guarantor",
+      schufaStatus: "negative",
+      documentCheck: { complete: false, schufa: missing, incomeProof: missing, previousLandlord: { ...missing, arrears: null } },
+    }),
+  );
+
+  assert.deepEqual(recommendation.strengths, []);
+  assert.equal(recommendation.weakness, "affordability");
+  assert.equal(
+    recommendation.reason.en,
+    "You may like this applicant for their overall Match score of 16.5. To note: rent burden of 50 % of net household income.",
+  );
+  assert.equal(
+    recommendation.reason.de,
+    "Dieser Bewerber könnte Ihnen gefallen: Gesamt-Match-Score von 16,5. Zu beachten: Mietbelastung von 50 % des Haushaltsnettoeinkommens.",
+  );
+});
+
+test("each criterion's weakness has its own wording in both languages", () => {
+  const cases = [
+    [{ schufaStatus: "negative" }, "negative SCHUFA entries", "negative SCHUFA-Einträge"],
+    [{ schufaStatus: "missing" }, "no usable SCHUFA-Auskunft", "keine verwertbare SCHUFA-Auskunft"],
+    [
+      { documentCheck: { complete: false, schufa: { status: "expired", reason: "Too old." }, incomeProof: { status: "missing", reason: "None." } } },
+      "incomplete documents",
+      "unvollständige Unterlagen",
+    ],
+    [{ credibilityScore: 40 }, "low credibility (40/100)", "geringe Glaubwürdigkeit (40/100)"],
+    [{ employmentType: "student_with_guarantor" }, "studies with a guarantor", "Studium mit Bürgschaft"],
+    [{ employmentType: "other" }, "no permanent employment", "keine feste Anstellung"],
+    [{ documentCheck: { previousLandlord: { status: "missing", reason: "None.", arrears: null } } }, "no previous-landlord confirmation", "keine Vorvermieterbescheinigung"],
+    [{ documentCheck: { previousLandlord: { status: "present", reason: "Arrears.", arrears: true } } }, "rent arrears with the previous landlord", "Mietrückstände beim Vorvermieter"],
+    [
+      { documentCheck: { previousLandlord: { status: "not_required", reason: "First-time renter.", arrears: null } }, credibilityScore: 90 },
+      "first flat, no previous landlord",
+      "erste Wohnung, kein Vorvermieter",
+    ],
+  ];
+  for (const [overrides, en, de] of cases) {
+    const { reason } = recommendationOf(profile("A-1", overrides));
+    assert.ok(reason.en.endsWith(` To note: ${en}.`), reason.en);
+    assert.ok(reason.de.endsWith(` Zu beachten: ${de}.`), reason.de);
+  }
+});

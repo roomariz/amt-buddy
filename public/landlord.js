@@ -1,6 +1,6 @@
 /**
  * Amt-Buddy /landlord page: sign in with a name, enter the Listing, see its Rent check and the
- * ranked applicants, and chat with the Landlord Orchestrator.
+ * pool stats, the Recommendations and the ranked applicants, and chat with the Landlord Orchestrator.
  *
  * The logic lives in ./landlord/ (server calls, the form and range-bar view model, the ranking
  * table, the stored sign-in); this file only wires it to the DOM. Server text is always set as textContent.
@@ -11,6 +11,7 @@ import { runLandlordTurn } from "./landlord/chat.js";
 import { renderMarkdown } from "./chat/markdown.js";
 import { listingFormValues, listingRequest, rentCheckView } from "./landlord/listing.js";
 import { breakdownBars, documentFlags, exclusionText, formatNumber, formatPercent, rankingRows } from "./landlord/ranking.js";
+import { poolSummary, recommendationCards, statTiles } from "./landlord/offering.js";
 import { forgetLandlord, rememberLandlord, storedLandlord } from "./landlord/session.js";
 import { getLanguage, onLanguageChange, startI18n, t } from "./i18n.js";
 
@@ -44,6 +45,11 @@ const rankingEmpty = $("#ranking-empty");
 const rankingPoolErrors = $("#ranking-pool-errors");
 const excludedBlock = $("#excluded");
 const excludedList = $("#excluded-list");
+const offeringSection = $("#offering");
+const offeringSummary = $("#offering-summary");
+const offeringTiles = $("#offering-tiles");
+const recommendationList = $("#recommendation-cards");
+const recommendationsEmpty = $("#recommendations-empty");
 
 function localStore() {
   try {
@@ -56,6 +62,7 @@ function localStore() {
 let landlord = storedLandlord(localStore());
 let listing = null;
 let ranking = null; // { ranked, excluded, hint, poolErrors } from the dashboard
+let offering = null; // { stats, recommendations } from the dashboard; stats is null without a Listing
 
 const money = (amount) =>
   new Intl.NumberFormat(getLanguage() === "en" ? "en-GB" : "de-DE", { style: "currency", currency: "EUR" }).format(amount);
@@ -85,6 +92,7 @@ function renderSignedIn() {
   if (!signedIn) {
     rentCheckSection.hidden = true;
     rankingSection.hidden = true;
+    offeringSection.hidden = true;
   }
 }
 
@@ -178,6 +186,36 @@ function renderRentCheck() {
   }
 }
 
+// --- the initial offering: pool stats and Recommendations ----------------------------------------
+
+function renderOffering() {
+  offeringSection.hidden = !offering?.stats;
+  if (!offering?.stats) return;
+  offeringSummary.textContent = poolSummary(offering.stats);
+  offeringTiles.replaceChildren(
+    ...statTiles(offering.stats).map((tile) => {
+      const item = el("li", `offering-tile${tile.available ? "" : " is-unavailable"}`);
+      item.append(el("span", "offering-tile-value", tile.value), el("span", "offering-tile-label", tile.label));
+      if (tile.detail) item.append(el("span", "offering-tile-detail", tile.detail));
+      return item;
+    }),
+  );
+  const cards = recommendationCards(offering.recommendations);
+  recommendationList.replaceChildren(
+    ...cards.map((card) => {
+      const item = el("li", "recommendation-card");
+      const head = el("div", "recommendation-head");
+      head.append(
+        el("span", "recommendation-name", card.name),
+        el("span", "recommendation-score", t("landlord.offering.score", { score: card.matchScore })),
+      );
+      item.append(head, el("span", "recommendation-rank", t("landlord.offering.rank", { rank: card.rank })), el("p", "recommendation-reason", card.reason));
+      return item;
+    }),
+  );
+  recommendationsEmpty.hidden = cards.length > 0;
+}
+
 // --- the ranked applicants -----------------------------------------------------------------------
 
 function breakdownCell(entry) {
@@ -261,12 +299,14 @@ function signOut() {
   landlord = null;
   listing = null;
   ranking = null;
+  offering = null;
   fillForm(listingFormValues(null));
   chatMessages.replaceChildren();
   showFieldProblems();
   showError(listingError, null);
   renderSignedIn();
   renderRentCheck();
+  renderOffering();
   renderRanking();
   signInName.focus();
 }
@@ -279,10 +319,12 @@ async function loadDashboard() {
       return;
     }
     listing = dashboard.listing;
-    const { ranked, excluded, hint, poolErrors } = dashboard;
+    const { ranked, excluded, hint, poolErrors, stats, recommendations } = dashboard;
     ranking = { ranked, excluded, hint, poolErrors };
+    offering = { stats, recommendations };
     fillForm(listingFormValues(listing));
     renderRentCheck();
+    renderOffering();
     renderRanking();
   } catch (error) {
     showError(listingError, error.message);
@@ -388,6 +430,7 @@ signOutButton.addEventListener("click", signOut);
 onLanguageChange(() => {
   renderSignedIn();
   renderRentCheck();
+  renderOffering();
   renderRanking();
 });
 

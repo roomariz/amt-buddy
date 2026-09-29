@@ -98,6 +98,16 @@
             </p>
           </section>
 
+          <!-- The initial offering: pool summary, stat tiles and Recommendations; drawn by landlord.js -->
+          <section id="offering" class="landlord-card" aria-labelledby="offering-title" aria-live="polite" hidden>
+            <h2 id="offering-title" data-i18n="landlord.offering.title">Ihre Bewerber auf einen Blick</h2>
+            <p id="offering-summary" class="offering-summary"></p>
+            <ul id="offering-tiles" class="offering-tiles"></ul>
+            <h3 class="ranking-subtitle" data-i18n="landlord.offering.recommendationsTitle">Empfehlungen</h3>
+            <ul id="recommendation-cards" class="recommendation-cards"></ul>
+            <p id="recommendations-empty" class="landlord-hint" hidden data-i18n="landlord.offering.recommendationsEmpty">Kein Bewerber erfüllt alle Ihre Anforderungen.</p>
+          </section>
+
           <!-- The ranked applicants and the Excluded section; drawn by landlord.js -->
           <section id="ranking" class="landlord-card" aria-labelledby="ranking-title" hidden>
             <h2 id="ranking-title" data-i18n="landlord.ranking.title">Bewerber-Ranking</h2>

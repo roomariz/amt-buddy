@@ -63,17 +63,30 @@ const documentFlagsOf = ({ schufa, incomeProof, previousLandlord, complete }) =>
   complete,
 });
 
-// The ranking of the pool for the Listing (none without a Listing), with each applicant's name
-// and document flags joined in for display. The scorer sees the anonymised profiles only.
+// The ranking of the pool for the Listing, its stats and Recommendations (none without a
+// Listing), with each applicant's name (and, in the ranking, document flags) joined in for
+// display. The scorer sees the anonymised profiles only.
 function rankingFor(listing, { applicants }, criteria) {
-  if (!listing) return { ranked: [], excluded: [], hint: LISTING_REQUIRED };
-  const { ranked, excluded } = rankApplicants({ profiles: applicants.map(({ profile }) => profile), listing, criteria });
+  if (!listing) return { ranked: [], excluded: [], stats: null, recommendations: [], hint: LISTING_REQUIRED };
+  const { ranked, excluded, stats, recommendations } = rankApplicants({
+    profiles: applicants.map(({ profile }) => profile),
+    listing,
+    criteria,
+  });
   const applicantsById = new Map(applicants.map((applicant) => [applicant.id, applicant]));
-  const forDisplay = (entry) => {
-    const { contact, profile } = applicantsById.get(entry.applicantId);
-    return { ...entry, name: contact.name, documents: documentFlagsOf(profile.documentCheck) };
+  const nameOf = (applicantId) => applicantsById.get(applicantId).contact.name;
+  const forDisplay = (entry) => ({
+    ...entry,
+    name: nameOf(entry.applicantId),
+    documents: documentFlagsOf(applicantsById.get(entry.applicantId).profile.documentCheck),
+  });
+  return {
+    ranked: ranked.map(forDisplay),
+    excluded: excluded.map(forDisplay),
+    stats,
+    recommendations: recommendations.map((entry) => ({ ...entry, name: nameOf(entry.applicantId) })),
+    hint: null,
   };
-  return { ranked: ranked.map(forDisplay), excluded: excluded.map(forDisplay), hint: null };
 }
 
 function decodeId(encoded) {
@@ -117,7 +130,7 @@ export function createLandlordApi({ getStore, getApplicantPool = () => EMPTY_POO
   }
 
   // GET /api/v1/landlord/:landlordId/dashboard → { listing, rentCheck, criteria, ranked, excluded,
-  // hint, poolErrors }. Criteria are the defaults until they can be tuned.
+  // stats, recommendations, hint, poolErrors }. Criteria are the defaults until they can be tuned.
   async function dashboard(response, landlordId) {
     const listing = getStore().getListing(landlordId);
     const pool = await getApplicantPool();

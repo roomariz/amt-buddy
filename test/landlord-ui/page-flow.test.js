@@ -9,6 +9,7 @@ import { createFakeBerlinWfs } from "../helpers/fake-berlin-wfs.js";
 import { fetchDashboard, saveListing, signIn } from "../../public/landlord/api.js";
 import { listingRequest } from "../../public/landlord/listing.js";
 import { rankingRows } from "../../public/landlord/ranking.js";
+import { poolSummary, recommendationCards, statTiles } from "../../public/landlord/offering.js";
 
 async function start() {
   const app = createApp({
@@ -58,6 +59,23 @@ test("after saving the Listing the dashboard ranks the pool, and the table can f
   assert.ok(after.ranked.every(({ name }) => typeof name === "string" && name));
   const complete = rankingRows(after.ranked, { completeOnly: true });
   assert.ok(complete.length > 0 && complete.length < after.ranked.length);
+});
+
+test("with a Listing saved, the page opens with the pool summary, the stat tiles and the Recommendation cards", async (t) => {
+  const { fetchImpl, close } = await start();
+  t.after(close);
+  const { landlordId } = await signIn({ fetchImpl, name: "Erika" });
+  await saveListing({ fetchImpl, landlordId, request: listingRequest(FORM) });
+
+  const dashboard = await fetchDashboard({ fetchImpl, landlordId });
+
+  assert.match(poolSummary(dashboard.stats), /^Sie haben 40 Bewerber, \d+ können sich diese Miete leisten\.$/);
+  const tiles = statTiles(dashboard.stats);
+  assert.equal(tiles.length, 6);
+  assert.ok(tiles.every(({ available }) => available));
+  const cards = recommendationCards(dashboard.recommendations);
+  assert.deepEqual(cards.map(({ applicantId }) => applicantId), dashboard.ranked.slice(0, 2).map(({ applicantId }) => applicantId));
+  assert.ok(cards.every(({ name, reason }) => name && reason.startsWith("Dieser Bewerber könnte Ihnen gefallen: ")));
 });
 
 test("form fields the server rejects come back as problems by field", async (t) => {
