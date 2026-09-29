@@ -346,6 +346,52 @@ test("the dashboard joins in the applicant's name for display, with the document
   assert.equal(typeof entry.rentToIncome, "number");
 });
 
+test("the dashboard has the pool stats and the Recommendations, with names joined in", async (t) => {
+  const server = await start();
+  t.after(server.close);
+  const landlordId = await signIn(server);
+  await server.put(`/api/v1/landlord/${landlordId}/listing`, WUEHLISCH_LISTING);
+
+  const { stats, recommendations, ranked } = (await server.get(`/api/v1/landlord/${landlordId}/dashboard`)).body.data;
+
+  // The committed pool: 40 applicants, 4 households too large for 50 m².
+  assert.equal(stats.total, 40);
+  assert.equal(stats.excluded, 4);
+  assert.equal(stats.maxRentToIncome, 1 / 3);
+  // The Rent check's median for this flat is 490 €, below the asking 700 €: more can afford it.
+  assert.equal(stats.medianRent, 490);
+  assert.ok(stats.canAffordAtMedian > stats.canAfford, JSON.stringify(stats));
+  for (const count of ["completeDocuments", "canAfford", "canAffordAtMedian", "cleanSchufa"]) {
+    assert.ok(Number.isInteger(stats[count]) && stats[count] >= 0 && stats[count] <= stats.total, count);
+  }
+
+  assert.deepEqual(recommendations.map(({ applicantId }) => applicantId), ranked.slice(0, 2).map(({ applicantId }) => applicantId));
+  for (const recommendation of recommendations) {
+    assert.equal(recommendation.name, ranked.find(({ applicantId }) => applicantId === recommendation.applicantId).name);
+    assert.equal(recommendation.email, undefined);
+    assert.match(recommendation.reason.en, /^You may like this applicant for their /);
+    assert.match(recommendation.reason.de, /^Dieser Bewerber könnte Ihnen gefallen: /);
+  }
+});
+
+test("without a Listing there are no stats and no Recommendations; without a Rent check the median count is unavailable", async (t) => {
+  const server = await start();
+  t.after(server.close);
+  const landlordId = await signIn(server);
+
+  const before = (await server.get(`/api/v1/landlord/${landlordId}/dashboard`)).body.data;
+  await server.put(`/api/v1/landlord/${landlordId}/listing`, { ...WUEHLISCH_LISTING, address: "Wühlischstraße 999, 10245 Berlin" });
+  const after = (await server.get(`/api/v1/landlord/${landlordId}/dashboard`)).body.data;
+
+  assert.equal(before.stats, null);
+  assert.deepEqual(before.recommendations, []);
+  assert.equal(after.rentCheck, null);
+  assert.equal(after.stats.total, 40);
+  assert.equal(after.stats.canAffordAtMedian, null);
+  assert.equal(after.stats.medianRent, null);
+  assert.equal(after.recommendations.length, 2);
+});
+
 test("the Applicant pool directory and its day are configurable", async (t) => {
   const directory = fileURLToPath(new URL("../fixtures/applicants/", import.meta.url));
   const server = await start({ env: { APPLICANT_POOL_DIR: directory, APPLICANT_POOL_TODAY: "2026-09-29" } });

@@ -1420,3 +1420,19 @@ footer a { color: inherit; }
 .excluded-list li { padding: 8px 12px; border-radius: 10px; background: #f7f7f7; }
 .excluded-name { font-weight: 600; margin-right: 8px; }
 #ranking-body[hidden], #excluded[hidden], #ranking-empty[hidden], #ranking-hint[hidden], #ranking-pool-errors[hidden] { display: none; }
+
+/* The pool overview: pool summary, stat tiles and Recommendation cards */
+.pool-summary { margin: 0 0 12px; font-size: 1.05rem; font-weight: 600; }
+.pool-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; margin: 0; padding: 0; list-style: none; }
+.pool-tile { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border: 1px solid #ececec; border-radius: 10px; background: #fafafa; }
+.pool-tile-value { font-size: 1.5rem; font-weight: 700; line-height: 1.1; }
+.pool-tile-label { font-size: 0.8rem; color: #3d3d3d; }
+.pool-tile-detail { font-size: 0.72rem; color: #5d5d5d; line-height: 1.35; }
+.pool-tile.is-unavailable .pool-tile-value { color: #9a9a9a; }
+.recommendation-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; margin: 0; padding: 0; list-style: none; }
+.recommendation-card { padding: 12px 14px; border: 1px solid #cfe3d4; border-radius: 12px; background: #f3f9f4; }
+.recommendation-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.recommendation-name { font-weight: 700; }
+.recommendation-score { font-size: 0.85rem; font-weight: 600; color: #1f5f2e; }
+.recommendation-rank { font-size: 0.75rem; color: #5d5d5d; }
+.recommendation-reason { margin: 6px 0 0; font-size: 0.9rem; line-height: 1.45; }
