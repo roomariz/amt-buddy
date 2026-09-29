@@ -151,8 +151,8 @@ test("a criterion tip names the criterion by its label", () => {
   const tip = inLanguage("en", () => landlordTips(firstVisit())).find(({ id }) => id === "criterion:employment");
   assert.deepEqual(tip, {
     id: "criterion:employment",
-    text: "Say 'Employment matters more to me' when Employment matters more or less to you.",
-    example: "Employment matters more to me",
+    text: "Say 'give Employment more importance' to give Employment more or less importance.",
+    example: "give Employment more importance",
   });
 });
 

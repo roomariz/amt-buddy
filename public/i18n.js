@@ -385,8 +385,8 @@ const de = {
       noSizeExample: "65 m², 2 Zimmer",
       noRentCheck: "Nennen Sie die Adresse mit Postleitzahl (zum Beispiel „{example}“), dann vergleiche ich Ihre Miete mit dem Berliner Mietspiegel.",
       noRentCheckExample: "Wühlischstraße 30, 10245 Berlin",
-      criterion: "Sagen Sie „{example}“, wenn Ihnen {criterion} mehr oder weniger wichtig ist.",
-      criterionExample: "{criterion} ist mir wichtiger",
+      criterion: "Sagen Sie „{example}“, um {criterion} mehr oder weniger Gewicht zu geben.",
+      criterionExample: "Gib {criterion} mehr Gewicht",
       requirement: "Sagen Sie „{example}“, um alle anderen auszuschließen.",
       requirementExample: {
         schufaCleanOnly: "Nur Bewerber mit sauberer SCHUFA",
@@ -782,8 +782,8 @@ const en = {
       noSizeExample: "65 m², 2 rooms",
       noRentCheck: "Tell me the address with postal code (e.g. '{example}') to compare your rent with the Berlin Mietspiegel.",
       noRentCheckExample: "Wühlischstraße 30, 10245 Berlin",
-      criterion: "Say '{example}' when {criterion} matters more or less to you.",
-      criterionExample: "{criterion} matters more to me",
+      criterion: "Say '{example}' to give {criterion} more or less importance.",
+      criterionExample: "give {criterion} more importance",
       requirement: "Say '{example}' to exclude everyone else.",
       requirementExample: {
         schufaCleanOnly: "only applicants with a clean SCHUFA",
