@@ -113,8 +113,13 @@ test("figures from the Listing and from the landlord's own message are grounded;
 test("a preference that changes the Selection criteria emits a criteria event", async () => {
   const { orchestrator, calls } = setup({
     script: [
-      { toolCalls: [{ name: "update_selection_criteria", args: { weights: { employment: 30 }, requirements: { schufaCleanOnly: true } } }] },
-      "Ich habe die Gewichtung der Beschäftigung von 15 auf 30 erhöht und nur saubere SCHUFA zugelassen.",
+      {
+        toolCalls: [
+          { name: "adjust_selection_criteria", args: { changes: [{ criterion: "employment", factor: 1.3 }] } },
+          { name: "update_selection_criteria", args: { requirements: { schufaCleanOnly: true } } },
+        ],
+      },
+      "Ich habe die Beschäftigung stärker gewichtet und nur saubere SCHUFA zugelassen.",
     ],
   });
 
@@ -122,8 +127,11 @@ test("a preference that changes the Selection criteria emits a criteria event", 
     orchestrator.send({ landlordId: "l-1", message: "Stabiles Einkommen ist mir am wichtigsten, und nur saubere SCHUFA." }),
   );
 
-  assert.deepEqual(typesOf(events), ["criteria", "token", "done"]);
-  assert.deepEqual(calls.map(({ name, landlordId }) => ({ name, landlordId })), [{ name: "update_selection_criteria", landlordId: "l-1" }]);
+  assert.deepEqual(typesOf(events), ["criteria", "criteria", "token", "done"]);
+  assert.deepEqual(calls.map(({ name, landlordId }) => ({ name, landlordId })), [
+    { name: "adjust_selection_criteria", landlordId: "l-1" },
+    { name: "update_selection_criteria", landlordId: "l-1" },
+  ]);
 });
 
 test("a Shortlist change emits a shortlist event", async () => {
@@ -138,6 +146,20 @@ test("a Shortlist change emits a shortlist event", async () => {
 
   assert.deepEqual(typesOf(events), ["shortlist", "token", "done"]);
   assert.equal(answerOf(events), "A-004 is on your Shortlist, to invite.", "the applicant id is not an ungrounded figure");
+});
+
+test("saving flat details emits a flat event", async () => {
+  const { orchestrator, calls } = setup({
+    script: [
+      { toolCalls: [{ name: "update_flat_details", args: { askingRent: 1100, livingAreaSqm: 65, rooms: 2 } }] },
+      "I saved the rent of 1100 €, 65 m² and 2 rooms.",
+    ],
+  });
+
+  const events = await collect(orchestrator.send({ landlordId: "l-1", message: "The rent is 1100 €, 65 m², 2 rooms." }));
+
+  assert.deepEqual(typesOf(events), ["flat", "token", "done"]);
+  assert.deepEqual(calls.map(({ name, args }) => ({ name, args })), [{ name: "update_flat_details", args: { askingRent: 1100, livingAreaSqm: 65, rooms: 2 } }]);
 });
 
 test("a Tool call that fails emits no change event and the model learns the error", async () => {

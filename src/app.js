@@ -274,7 +274,7 @@ export function createApp({
   // Read once at start; every dashboard request scores it again (cheap at this size).
   const applicantPool = loadApplicantPool(env);
   let landlordChat;
-  const landlordState = { getStore, getApplicantPool: () => applicantPool };
+  const landlordState = { getStore, getApplicantPool: () => applicantPool, fetchImpl };
   const createChat = () =>
     createLandlordChat({
       env,

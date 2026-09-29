@@ -6,7 +6,8 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { createApp } from "../../src/app.js";
-import { APPLICANT_POOL_DIRECTORY } from "../../src/landlord/applicant-pool.js";
+import { APPLICANT_POOL_DIRECTORY, readApplicantPool } from "../../src/landlord/applicant-pool.js";
+import { POOL_DATE } from "../../src/landlord/applicant-pool-generator.js";
 import { createLandlordOrchestrator } from "../../src/landlord/orchestrator/index.js";
 import { createLandlordStore } from "../../src/landlord/store.js";
 import { createFakeBerlinWfs } from "../helpers/fake-berlin-wfs.js";
@@ -17,8 +18,9 @@ const LISTING = { address: "Wühlischstraße 30, 10245 Berlin", livingAreaSqm: 6
 
 // `setScript` sets the model's script once the Listing is saved, so answers can quote the real
 // figures the Tools will return. `store` lets two apps share one landlord store (a server restart:
-// the chat thread is gone, the store is not); `name` is the landlord who signs in.
-async function start({ store = createLandlordStore({ path: ":memory:" }), name = "Erika Muster" } = {}) {
+// the chat thread is gone, the store is not); `name` is the landlord who signs in; `listing` is
+// saved through the classic page's PUT listing first (null: none).
+async function start({ store = createLandlordStore({ path: ":memory:" }), name = "Erika Muster", listing = LISTING } = {}) {
   let model;
   let script = [];
   const app = createApp({
@@ -38,11 +40,12 @@ async function start({ store = createLandlordStore({ path: ":memory:" }), name =
     return response;
   };
   const { landlordId } = (await (await request("POST", "/api/v1/landlord/sessions", { name })).json()).data;
-  await request("PUT", `/api/v1/landlord/${landlordId}/listing`, LISTING);
+  if (listing) await request("PUT", `/api/v1/landlord/${landlordId}/listing`, listing);
   const dashboard = async () => (await (await request("GET", `/api/v1/landlord/${landlordId}/dashboard`)).json()).data;
   const applicant = async (applicantId) => (await (await request("GET", `/api/v1/landlord/${landlordId}/applicants/${applicantId}`)).json()).data;
   return {
     landlordId,
+    store,
     dashboard,
     applicant,
     get model() {
@@ -70,20 +73,84 @@ test("a stated preference changes the saved Selection criteria, emits criteria a
   const server = await start();
   t.after(server.close);
   server.setScript([
-    { toolCalls: [{ name: "update_selection_criteria", args: { weights: { employment: 30, affordability: 40 } } }] },
-    // 30 + 20 + 15 + 15 + 40 + 5 = 125: employment 30/125 = 24 %, affordability 40/125 = 32 %.
-    "I raised employment from 15 % to 24 % and affordability from 30 % to 32 %.",
+    {
+      toolCalls: [
+        { name: "adjust_selection_criteria", args: { changes: [{ criterion: "employment", factor: 2 }, { criterion: "affordability", factor: 1.5 }] } },
+      ],
+    },
+    // Employment 15 → 30, affordability 30 → 45; the other four (55) fill the remaining 25.
+    "I raised employment from 15 % to 30 % and affordability from 30 % to 45 %.",
   ]);
 
   const events = await server.chat("Stable income matters most to me.");
 
   assert.deepEqual(typesOf(events), ["criteria", "token", "done"]);
-  assert.equal(answerOf(events), "I raised employment from 15 % to 24 % and affordability from 30 % to 32 %.");
+  assert.equal(answerOf(events), "I raised employment from 15 % to 30 % and affordability from 30 % to 45 %.");
   assert.equal(server.model.calls.length, 2, "grounded: no rewrite");
   const { criteria, ranked } = await server.dashboard();
-  assert.equal(criteria.weights.employment, 24);
-  assert.equal(criteria.weights.affordability, 32);
-  assert.equal(ranked[0].breakdown.employment.weight, 24);
+  assert.equal(criteria.weights.employment, 30);
+  assert.equal(criteria.weights.affordability, 45);
+  assert.equal(ranked[0].breakdown.employment.weight, 30);
+});
+
+test("a vague request ('SCHUFA matters more') becomes adjust_selection_criteria × 1.3: saved, criteria event, answer grounded", async (t) => {
+  const server = await start();
+  t.after(server.close);
+  server.setScript([
+    { toolCalls: [{ name: "adjust_selection_criteria", args: { changes: [{ criterion: "schufa", factor: 1.3 }] } }] },
+    "I read that as SCHUFA: it now counts 26 % instead of 20 %; affordability 27.8 %.",
+  ]);
+
+  const events = await server.chat("A clean credit history matters more to me.");
+
+  assert.deepEqual(typesOf(events), ["criteria", "token", "done"]);
+  assert.equal(server.model.calls.length, 2, "grounded: no rewrite");
+  const result = JSON.parse(server.model.calls[1].at(-1).content);
+  assert.deepEqual(result.applied, [{ criterion: "schufa", from: 20, requested: 26, to: 26, capped: false }]);
+  assert.equal(server.store.getCriteria(server.landlordId).weights.affordability, 27.75);
+  assert.match(server.model.calls[0][0].content, /adjust_selection_criteria/);
+});
+
+test("flat facts in a message are saved with update_flat_details (flat event); all four give the Listing and its Rent check", async (t) => {
+  const server = await start({ listing: null });
+  t.after(server.close);
+  server.setScript([
+    { toolCalls: [{ name: "update_flat_details", args: { askingRent: 700, livingAreaSqm: 50, rooms: 2 } }] },
+    "Saved: 700 €, 50 m², 2 rooms. Tell me the address with its postal code for the Rent check.",
+    { toolCalls: [{ name: "update_flat_details", args: { address: "Wühlischstraße 30, 10245 Berlin" } }] },
+    "The Berliner Mietspiegel allows at most 539 € for your flat.",
+  ]);
+
+  const first = await server.chat("The rent is 700 €, 50 m², 2 rooms.");
+
+  assert.deepEqual(typesOf(first), ["flat", "token", "done"]);
+  assert.deepEqual(server.store.getFlatDetails(server.landlordId), { address: null, livingAreaSqm: 50, rooms: 2, askingRent: 700, buildingYear: null });
+  assert.equal((await server.dashboard()).listing, null);
+
+  const second = await server.chat("Wühlischstraße 30, 10245 Berlin");
+
+  assert.deepEqual(typesOf(second), ["flat", "token", "done"]);
+  assert.equal(answerOf(second), "The Berliner Mietspiegel allows at most 539 € for your flat.");
+  const { listing, rentCheck, ranked } = await server.dashboard();
+  assert.equal(listing.address, "Wühlischstraße 30, 10245 Berlin");
+  assert.equal(rentCheck.allowedRent, 539);
+  assert.ok(ranked.length > 0, "the classic dashboard ranks for the Listing the chat built");
+});
+
+test("without a Listing the ranking Tool ranks anyway and says what is inactive; the prompt carries the flat details", async (t) => {
+  const server = await start({ listing: null });
+  t.after(server.close);
+  server.setScript([{ toolCalls: [{ name: "get_ranking", args: {} }] }, "Here is the ranking."]);
+
+  await server.chat("Who is the best applicant?");
+
+  const ranking = JSON.parse(server.model.calls[1].at(-1).content);
+  assert.equal(ranking.rankedCount, 40);
+  assert.deepEqual(ranking.inactive.map(({ criterion, requirement }) => criterion ?? requirement), ["affordability", "occupancyCompliant"]);
+  const system = server.model.calls[0][0].content;
+  assert.match(system, /"askingRent":null/);
+  assert.match(system, /Not counted yet/);
+  assert.match(system, /update_flat_details/);
 });
 
 test("'Only clean SCHUFA' switches on that Requirement: the dashboard excludes the others", async (t) => {
@@ -235,7 +302,9 @@ test("no applicant name, contact detail or protected field appears in any messag
       toolCalls: [
         { name: "get_ranking", args: {} },
         { name: "get_rent_check", args: {} },
-        { name: "update_selection_criteria", args: { weights: { employment: 30 } } },
+        { name: "update_selection_criteria", args: { requirements: { noPets: true } } },
+        { name: "adjust_selection_criteria", args: { changes: [{ criterion: "employment", factor: 2 }] } },
+        { name: "update_flat_details", args: { askingRent: 950 } },
         { name: "update_shortlist", args: { applicantId: ids[0], status: "to_invite" } },
         ...ids.map((applicantId) => ({ name: "get_applicant_profile", args: { applicantId } })),
       ],
@@ -250,6 +319,33 @@ test("no applicant name, contact detail or protected field appears in any messag
   const sent = JSON.stringify(server.model.calls);
   const { plain, quoted } = identifyingValues();
   assert.ok(plain.length > 100 && quoted.length > 20, "the pool's identifying values were found");
+  for (const value of [...plain, ...quoted, "Erika Muster"]) assert.ok(!sent.includes(value), `${value} reached the model`);
+  assert.doesNotMatch(sent, /\\"(contact|email|phone|nationality|religion|dateOfBirth|gender|photo|familyPlans)\\":/);
+});
+
+test("before a Listing too, no applicant name, contact detail or protected field reaches the model", async (t) => {
+  const server = await start({ listing: null });
+  t.after(server.close);
+  const ids = (await readApplicantPool(APPLICANT_POOL_DIRECTORY, { today: POOL_DATE })).applicants.map(({ id }) => id);
+  server.setScript([
+    {
+      toolCalls: [
+        { name: "get_ranking", args: {} },
+        { name: "get_rent_check", args: {} },
+        { name: "adjust_selection_criteria", args: { changes: [{ criterion: "affordability", factor: 1.3 }] } },
+        { name: "update_selection_criteria", args: { requirements: { schufaCleanOnly: true } } },
+        { name: "update_flat_details", args: { askingRent: 950, rooms: 2 } },
+        ...ids.map((applicantId) => ({ name: "get_applicant_profile", args: { applicantId } })),
+      ],
+    },
+    "Done.",
+  ]);
+
+  await server.chat("Show me everything about every applicant.");
+
+  assert.equal(ids.length, 40);
+  const sent = JSON.stringify(server.model.calls);
+  const { plain, quoted } = identifyingValues();
   for (const value of [...plain, ...quoted, "Erika Muster"]) assert.ok(!sent.includes(value), `${value} reached the model`);
   assert.doesNotMatch(sent, /\\"(contact|email|phone|nationality|religion|dateOfBirth|gender|photo|familyPlans)\\":/);
 });

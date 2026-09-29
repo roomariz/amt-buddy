@@ -3,9 +3,12 @@ import { SystemMessage } from "@langchain/core/messages";
 const LANGUAGE_NAMES = { de: "German", en: "English" };
 
 // The landlord's state as the system prompt shows it; each part only when there is one.
-function describeContext({ listing, preferences, stats } = {}) {
+function describeContext({ listing, flat, missing = [], inactive = [], preferences, stats } = {}) {
   const parts = [];
-  parts.push(listing ? `The landlord's Listing (with its Rent check):\n${JSON.stringify(listing)}` : "The landlord has not saved a Listing yet.");
+  if (listing) parts.push(`The landlord's Listing (with its Rent check):\n${JSON.stringify(listing)}`);
+  else if (flat) parts.push(`The landlord has no Listing yet. The flat details so far (null: not given yet):\n${JSON.stringify(flat)}\nStill missing for the Listing and its Rent check: ${missing.join(", ")}.`);
+  else parts.push("The landlord has not saved a Listing yet.");
+  if (inactive.length > 0) parts.push(`Not counted yet, because a flat fact is missing:\n${JSON.stringify(inactive)}`);
   if (stats) parts.push(`Applicant pool statistics:\n${JSON.stringify(stats)}`);
   if (preferences) parts.push(`Landlord preferences remembered from earlier conversations:\n${JSON.stringify(preferences)}`);
   return parts.join("\n\n");
@@ -21,7 +24,10 @@ You never score or calculate anything yourself: the ranking, the Match scores an
 Rules:
 - Applicants are known to you by their id only (e.g. "A-007"); refer to them by that id. You never see names or contact details; the landlord's page shows the names.
 - Never rank, select, exclude or comment on applicants by protected characteristics under the AGG (Allgemeines Gleichbehandlungsgesetz): ethnic origin or nationality, gender, religion or belief, disability, age, sexual identity, family plans or appearance. If the landlord asks for that, refuse politely, explain that the AGG forbids discriminating against housing applicants on these grounds, and offer the lawful criteria instead (affordability, SCHUFA, documents, credibility, employment, previous-landlord confirmation, pets, smoking, move-in date, household size).
-- When the landlord says what matters to them, change the Selection criteria with update_selection_criteria (weights and/or Requirements) and tell them what changed, with the old and new values from the result. Remember lasting free-text preferences with remember_preference, once each (not the ones already remembered below).
+- When the landlord says how much something matters, change the weights with adjust_selection_criteria, never by other means: a factor per criterion ("30 % more" = 1.3, "double" = 2, "halve" = 0.5, "ignore" = 0) or a target share ("make SCHUFA 40 %"). Read vague requests as "matters more" ≈ 1.3, "much more" ≈ 1.5, "less" ≈ 0.7, and say which criterion you chose (e.g. "stable income" → employment, and affordability if they mean the income level). Tell them the old and new shares from the result ("criteria" and "applied"). When a share was capped, say that no criterion can count more than 50 %.
+- Switch Requirements (hard filters) on or off with update_selection_criteria. Remember lasting free-text preferences with remember_preference, once each (not the ones already remembered below).
+- Quote the saved shares (the criteria's weights). A criterion or Requirement listed as inactive ("Not counted yet" below, or "inactive" in a result) does not count until the flat fact it waits for is known: say so. A change to it is still saved; then offer to take the missing fact: the asking rent first, then the address with postal code and the size and rooms, so the rent can also be compared with the Berliner Mietspiegel.
+- Save every fact about the flat the landlord mentions (address, living area, rooms, asking rent, building year) with update_flat_details, right away. An address needs street, house number and postal code: if the postal code is missing, ask for it. Ask only for what is still missing and matters for what the landlord wants.
 - The Landlord preferences below (the saved Selection criteria and the remembered notes) come from earlier conversations: take them into account, refer back to them when they matter, and do not ask the landlord to repeat them.
 - Add, change or remove Shortlist entries with update_shortlist when the landlord asks.
 - For questions about the ranking or an applicant, use get_ranking or get_applicant_profile; for the rent and the Mietspiegel, use get_rent_check.

@@ -134,20 +134,39 @@ export const LANDLORD_STUB_HANDLERS = {
     stats: { total: 42, completeDocuments: 19, canAfford: 27, canAffordAtMedian: 33, cleanSchufa: 24, excluded: 5 },
     ranked: RANKED,
     excludedByReason: { occupancyCompliant: 5 },
+    inactive: [],
   }),
   get_applicant_profile: ({ applicantId }) => {
     const profile = PROFILES[applicantId];
     if (!profile) throw inputError(`There is no applicant with the id ${applicantId}.`);
     const ranked = RANKED.find((entry) => entry.applicantId === applicantId);
-    return { profile, matchScore: ranked.matchScore, breakdown: ranked.breakdown, excludedBy: null };
+    return { profile, matchScore: ranked.matchScore, breakdown: ranked.breakdown, excludedBy: null, inactive: [] };
   },
-  update_selection_criteria: ({ weights = {}, requirements = {} }) => ({
+  update_selection_criteria: ({ requirements = {} }) => ({
+    previous: DEFAULT_CRITERIA,
+    criteria: { ...DEFAULT_CRITERIA, requirements: { ...DEFAULT_CRITERIA.requirements, ...requirements } },
+    top: RANKED,
+    inactive: [],
+  }),
+  // Fixed: employment 15 → 30 %, the others scaled to fill the remaining 70 %.
+  adjust_selection_criteria: () => ({
     previous: DEFAULT_CRITERIA,
     criteria: {
-      weights: { ...DEFAULT_CRITERIA.weights, ...weights },
-      requirements: { ...DEFAULT_CRITERIA.requirements, ...requirements },
+      ...DEFAULT_CRITERIA,
+      weights: { affordability: 24.7, schufa: 16.5, documents: 12.4, credibility: 12.4, employment: 30, previousLandlord: 4.1 },
     },
+    applied: [{ criterion: "employment", from: 15, requested: 30, to: 30, capped: false }],
     top: RANKED,
+    inactive: [],
+  }),
+  update_flat_details: (details) => ({
+    flat: { address: null, livingAreaSqm: null, rooms: null, askingRent: null, buildingYear: null, ...details },
+    missing: ["address"],
+    rentCheck: null,
+    note: "The Rent check needs the flat's address; still missing: address.",
+    stats: { total: 42, completeDocuments: 19, canAfford: 27, canAffordAtMedian: null, cleanSchufa: 24, excluded: 5 },
+    top: RANKED,
+    inactive: [],
   }),
   remember_preference: ({ note }) => ({ noteId: "note-1", note }),
   update_shortlist: ({ applicantId, status, note }) => ({

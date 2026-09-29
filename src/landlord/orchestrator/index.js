@@ -17,7 +17,7 @@ const RECURSION_LIMIT = 25;
 // - tools: LangChain tools implementing every contract in LANDLORD_TOOL_CONTRACTS; each call gets
 //   the landlord as config.configurable.landlordId.
 // - getContext(landlordId): the landlord's state the system prompt shows every turn
-//   ({ listing?, preferences?, stats? }); its figures count as grounded.
+//   ({ listing?, flat?, missing?, inactive?, preferences?, stats? }); its figures count as grounded.
 // - checkpointer: the conversation memory, one thread per landlord (default: in memory).
 // - log: receives one PII-free audit entry per Tool call (default: JSON lines on stdout).
 export function createLandlordOrchestrator({
@@ -32,7 +32,7 @@ export function createLandlordOrchestrator({
   const graph = buildLandlordGraph({ model, tools: toolsByName, getContext, log, toolTimeoutMs }).compile({ checkpointer });
 
   // One landlord turn. Yields { type: "token", text } | { type: "criteria" } | { type: "shortlist" }
-  // | { type: "notes" } (a Landlord preference was remembered)
+  // | { type: "notes" } (a Landlord preference was remembered) | { type: "flat" } (flat details saved)
   // | { type: "done" } | { type: "error", message }; exactly one terminal event (done or error)
   // ends every turn. `signal` (an AbortSignal) cancels the run; the turn then ends with `error`.
   async function* send({ landlordId, message, signal } = {}) {

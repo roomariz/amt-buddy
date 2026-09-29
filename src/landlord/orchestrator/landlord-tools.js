@@ -1,21 +1,26 @@
 import { tool } from "@langchain/core/tools";
 
 import { getApplicantProfile } from "../applicant-profile.js";
-import { CriteriaInputError, updateSelectionCriteria } from "../criteria.js";
+import { adjustSelectionCriteria, CriteriaInputError, updateSelectionCriteria } from "../criteria.js";
+import { flatToRank, missingForListing, updateFlatDetails } from "../flat-details.js";
+import { ListingInputError } from "../listing.js";
 import { rankApplicants } from "../scorer.js";
 import { ShortlistInputError, updateShortlist } from "../shortlist.js";
 import { LANDLORD_TOOL_CONTRACTS } from "./tool-contracts.js";
 
-// The real landlord Tools, built on the dashboard's functions (scorer, criteria, applicant
-// profile, Shortlist). Every result names applicants by id only: the Applicant profile is the
-// anonymised one, and neither names, contact details nor Shortlist notes are passed on.
+// The real landlord Tools, built on the dashboard's functions (scorer, criteria, flat details,
+// applicant profile, Shortlist). Every result names applicants by id only: the Applicant profile
+// is the anonymised one, and neither names, contact details nor Shortlist notes are passed on.
+// The applicants are ranked for the flat details, a Listing or not: what a missing fact switches
+// off is reported as `inactive` (see rankApplicants).
 
-// How many ranked applicants get_ranking shows, and update_selection_criteria's "new top".
+// How many ranked applicants get_ranking shows, and the criteria and flat Tools' "new top".
 const RANKING_LIMIT = 10;
 const TOP_LIMIT = 3;
 
-const LISTING_REQUIRED =
-  "The landlord has not saved a Listing yet: the applicants are ranked for its rent and size. Ask them to save it on the page first.";
+// Why there is no Rent check while flat facts are missing.
+const rentCheckNeeds = (missing) =>
+  `The Rent check needs the flat's address (street, house number and postal code), living area, rooms and asking rent; still missing: ${missing.join(", ")}. Ask the landlord for them and save them with update_flat_details.`;
 
 class LandlordToolInputError extends Error {
   constructor(message) {
@@ -25,25 +30,48 @@ class LandlordToolInputError extends Error {
   }
 }
 
+const oneDecimal = (value) => Math.round(value * 10) / 10;
+
 // Weights to one decimal, so the chat can quote them ("from 15 % to 26.1 %") and stay grounded.
 const roundedCriteria = ({ weights, requirements }) => ({
-  weights: Object.fromEntries(Object.entries(weights).map(([criterion, weight]) => [criterion, Math.round(weight * 10) / 10])),
+  weights: Object.fromEntries(Object.entries(weights).map(([criterion, weight]) => [criterion, oneDecimal(weight)])),
   requirements,
 });
 
 // A ranked applicant as the model sees it.
 const rankedEntry = ({ applicantId, rank, matchScore, rentToIncome, breakdown }) => ({ applicantId, rank, matchScore, rentToIncome, breakdown });
 
-// The pool ranked for the Listing under the criteria (rankApplicants on the anonymised profiles).
-const rankPool = ({ applicants, listing, criteria }) =>
-  rankApplicants({ profiles: applicants.map(({ profile }) => profile), listing, criteria });
+// The pool ranked for the flat under the criteria (rankApplicants on the anonymised profiles).
+const rankPool = ({ applicants, flat, criteria }) =>
+  rankApplicants({ profiles: applicants.map(({ profile }) => profile), listing: flat, criteria });
 
-// A dashboard function's input error (CriteriaInputError, ShortlistInputError) as a Tool input
-// error, with its details in the message the model reads.
-function asToolInputError(error) {
+// A dashboard function's input error (CriteriaInputError, ShortlistInputError, ListingInputError)
+// as a Tool input error, with its details in the message the model reads; `addendum` follows them.
+function asToolInputError(error, addendum = "") {
   const details = (error.details ?? []).map(({ field, message }) => `${field}: ${message}`).join("; ");
-  return new LandlordToolInputError(details && details !== error.message ? `${error.message} ${details}` : error.message);
+  const message = details && details !== error.message ? `${error.message} ${details}` : error.message;
+  return new LandlordToolInputError(addendum ? `${message} ${addendum}` : message);
 }
+
+// A criteria change's result: the old and new criteria to one decimal, the new top 3 and what is
+// inactive.
+function criteriaResult({ previous, criteria }, state) {
+  const { ranked, inactive } = rankPool(state);
+  return {
+    previous: roundedCriteria(previous),
+    criteria: roundedCriteria(criteria),
+    top: ranked.slice(0, TOP_LIMIT).map(rankedEntry),
+    inactive,
+  };
+}
+
+// The Listing's official facts as the model sees them (no coordinates).
+const listingFacts = ({ addressVerified, canonicalAddress, residentialLocation, buildingAgePeriod }) => ({
+  addressVerified,
+  canonicalAddress: canonicalAddress && (({ coordinates, ...address }) => address)(canonicalAddress),
+  residentialLocation,
+  buildingAgePeriod,
+});
 
 function countBy(entries, key) {
   const counts = {};
@@ -51,22 +79,22 @@ function countBy(entries, key) {
   return counts;
 }
 
-// createLandlordTools({ getStore, getApplicantPool }) → { tools }
+// createLandlordTools({ getStore, getApplicantPool, fetchImpl }) → { tools }
 // - getStore(): the landlord store (see createLandlordStore).
 // - getApplicantPool(): the Applicant pool ({ applicants, errors }), or a promise of it.
+// - fetchImpl: the fetch for the Berlin services update_flat_details uses (default: global fetch).
 // Each Tool reads the landlord from config.configurable.landlordId.
-export function createLandlordTools({ getStore, getApplicantPool }) {
+export function createLandlordTools({ getStore, getApplicantPool, fetchImpl }) {
   async function landlordState(landlordId) {
     const store = getStore();
     const { applicants } = await getApplicantPool();
-    return { store, applicants, listing: store.getListing(landlordId), criteria: store.getCriteria(landlordId) };
+    return { store, applicants, flat: flatToRank(store, landlordId), criteria: store.getCriteria(landlordId) };
   }
 
   const handlers = {
     async get_ranking(args, landlordId) {
       const state = await landlordState(landlordId);
-      if (!state.listing) throw new LandlordToolInputError(LISTING_REQUIRED);
-      const { ranked, excluded, stats } = rankPool(state);
+      const { ranked, excluded, stats, inactive } = rankPool(state);
       return {
         criteria: roundedCriteria(state.criteria),
         stats,
@@ -75,12 +103,14 @@ export function createLandlordTools({ getStore, getApplicantPool }) {
         excludedByReason: countBy(excluded, "excludedBy"),
         // The Shortlist by id and status; notes are the landlord's free text and may name people.
         shortlist: state.store.getShortlist(landlordId).map(({ applicantId, status }) => ({ applicantId, status })),
+        inactive,
       };
     },
 
     async get_applicant_profile({ applicantId }, landlordId) {
-      const { store, applicants, listing, criteria } = await landlordState(landlordId);
-      const found = getApplicantProfile({ applicants, listing, applicantId, criteria });
+      const state = await landlordState(landlordId);
+      const { store, applicants, flat, criteria } = state;
+      const found = getApplicantProfile({ applicants, listing: flat, applicantId, criteria });
       if (!found) throw new LandlordToolInputError(`There is no applicant '${applicantId}' in the Applicant pool.`);
       const { profile, score, rentToIncome } = found;
       const shortlisted = store.getShortlist(landlordId).find((entry) => entry.applicantId === applicantId);
@@ -93,21 +123,61 @@ export function createLandlordTools({ getStore, getApplicantPool }) {
         excludedBy: score?.excludedBy ?? null,
         exclusionReasons: score?.reasons ?? [],
         shortlistStatus: shortlisted?.status ?? null,
-        ...(!listing && { note: LISTING_REQUIRED }),
+        inactive: rankPool(state).inactive,
       };
     },
 
-    async update_selection_criteria({ weights, requirements }, landlordId) {
-      const store = getStore();
+    // Requirements only: the contract has no weights, so the model changes them only through
+    // adjust_selection_criteria and its limits.
+    async update_selection_criteria({ requirements }, landlordId) {
       let updated;
       try {
-        updated = updateSelectionCriteria({ store, landlordId, input: { weights, requirements } });
+        updated = updateSelectionCriteria({ store: getStore(), landlordId, input: { requirements } });
       } catch (error) {
         throw error instanceof CriteriaInputError ? asToolInputError(error) : error;
       }
+      return criteriaResult(updated, await landlordState(landlordId));
+    },
+
+    async adjust_selection_criteria({ changes }, landlordId) {
+      let adjusted;
+      try {
+        adjusted = adjustSelectionCriteria({ store: getStore(), landlordId, changes });
+      } catch (error) {
+        throw error instanceof CriteriaInputError ? asToolInputError(error) : error;
+      }
+      const applied = adjusted.applied.map(({ criterion, from, requested, to, capped }) => ({
+        criterion,
+        from: oneDecimal(from),
+        requested: oneDecimal(requested),
+        to: oneDecimal(to),
+        capped,
+      }));
+      const { previous, criteria, top, inactive } = criteriaResult(adjusted, await landlordState(landlordId));
+      return { previous, criteria, applied, top, inactive };
+    },
+
+    async update_flat_details(input, landlordId) {
+      let updated;
+      try {
+        updated = await updateFlatDetails({ store: getStore(), landlordId, input, fetchImpl });
+      } catch (error) {
+        if (!(error instanceof ListingInputError)) throw error;
+        throw asToolInputError(error, "Nothing was saved: call again without that value to save the others.");
+      }
+      const { flat, missing, listing } = updated;
       const state = await landlordState(landlordId);
-      const top = state.listing ? rankPool(state).ranked.slice(0, TOP_LIMIT).map(rankedEntry) : [];
-      return { previous: roundedCriteria(updated.previous), criteria: roundedCriteria(updated.criteria), top };
+      const { ranked, stats, inactive } = rankPool(state);
+      return {
+        flat,
+        missing,
+        listing: listing && listingFacts(listing),
+        rentCheck: listing?.rentCheck ?? null,
+        note: listing ? (listing.rentCheck ? null : (listing.note?.message ?? null)) : rentCheckNeeds(missing),
+        stats,
+        top: ranked.slice(0, TOP_LIMIT).map(rankedEntry),
+        inactive,
+      };
     },
 
     async remember_preference({ note }, landlordId) {
@@ -131,8 +201,12 @@ export function createLandlordTools({ getStore, getApplicantPool }) {
     },
 
     async get_rent_check(args, landlordId) {
-      const listing = getStore().getListing(landlordId);
-      if (!listing) return { rentCheck: null, note: LISTING_REQUIRED };
+      const store = getStore();
+      const listing = store.getListing(landlordId);
+      if (!listing) {
+        const missing = missingForListing(store.getFlatDetails(landlordId));
+        return { rentCheck: null, note: rentCheckNeeds(missing), missing };
+      }
       return { rentCheck: listing.rentCheck ?? null, note: listing.rentCheck ? null : (listing.note?.message ?? null) };
     },
   };
@@ -153,8 +227,8 @@ export function createLandlordTools({ getStore, getApplicantPool }) {
 // createLandlordContext({ getStore, getApplicantPool }) → getContext(landlordId) for the Landlord
 // Orchestrator: what its system prompt shows every turn, loaded from the store so it outlives the
 // chat thread (the long-term memory): the Landlord preferences (saved Selection criteria and the
-// remembered notes), the Listing (with its Rent check) and the pool stats under those criteria (no
-// stats without a Listing).
+// remembered notes), the Listing (with its Rent check; null before one is built), the flat details
+// with what the Listing still needs, and the pool stats and inactive items under those criteria.
 export function createLandlordContext({ getStore, getApplicantPool }) {
   return async (landlordId) => {
     const store = getStore();
@@ -163,9 +237,9 @@ export function createLandlordContext({ getStore, getApplicantPool }) {
       criteria: roundedCriteria(criteria),
       notes: store.listNotes(landlordId).map(({ note, created }) => ({ note, created: created.slice(0, 10) })),
     };
-    const listing = store.getListing(landlordId);
-    if (!listing) return { listing: null, preferences };
+    const flat = store.getFlatDetails(landlordId);
     const { applicants } = await getApplicantPool();
-    return { listing, preferences, stats: rankPool({ applicants, listing, criteria }).stats };
+    const { stats, inactive } = rankPool({ applicants, flat: flatToRank(store, landlordId), criteria });
+    return { listing: store.getListing(landlordId), flat, missing: missingForListing(flat), inactive, preferences, stats };
   };
 }
