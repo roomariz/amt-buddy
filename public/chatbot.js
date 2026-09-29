@@ -196,6 +196,7 @@ function renderTurn(view, state) {
 // A restored answer: drawn like a live one, without step chips or the "working" line.
 function appendRestoredAnswer(markdown) {
   const view = appendBotTurn();
+  view.steps.remove(); // an empty, labelled list would still be read out
   view.working.hidden = true;
   view.content.innerHTML = renderMarkdown(markdown);
 }
