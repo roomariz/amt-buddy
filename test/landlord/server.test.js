@@ -7,6 +7,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { createApp } from "../../src/app.js";
+import { APPLICANT_POOL_DIRECTORY, readApplicantPool } from "../../src/landlord/applicant-pool.js";
+import { POOL_DATE } from "../../src/landlord/applicant-pool-generator.js";
 import { createLandlordStore } from "../../src/landlord/store.js";
 import { createFakeBerlinWfs } from "../helpers/fake-berlin-wfs.js";
 
@@ -782,4 +784,134 @@ test("remembered preferences and their deletion survive re-creating the app on t
   const third = await restart();
   t.after(third.stop);
   assert.deepEqual(await notesOf(third.server, landlordId), [kept]);
+});
+
+// --- Overview (the chat-first page) ----------------------------------------------------------
+
+const overviewOf = async (server, landlordId) => (await server.get(`/api/v1/landlord/${landlordId}/overview`)).body.data;
+
+test("before a Listing the overview ranks the whole pool with names, household shapes and reasons, and says what is inactive", async (t) => {
+  const server = await start();
+  t.after(server.close);
+  const landlordId = await signIn(server);
+
+  const { status, body } = await server.get(`/api/v1/landlord/${landlordId}/overview`);
+
+  assert.equal(status, 200);
+  const data = body.data;
+  assert.deepEqual(data.flat, { address: null, livingAreaSqm: null, rooms: null, askingRent: null, buildingYear: null });
+  assert.deepEqual(data.missing, ["address", "livingAreaSqm", "rooms", "askingRent"]);
+  assert.equal(data.rentCheck, null);
+  assert.equal(data.rentCheckNote, null);
+  assert.deepEqual(data.inactive, [
+    { criterion: "affordability", missing: ["askingRent"] },
+    { requirement: "occupancyCompliant", missing: ["livingAreaSqm", "rooms"] },
+  ]);
+  // Saved shares as saved; active ones without affordability: 20/70, 15/70, 5/70.
+  assert.deepEqual(data.criteria.weights, { affordability: 30, schufa: 20, documents: 15, credibility: 15, employment: 15, previousLandlord: 5 });
+  assert.deepEqual(data.criteria.activeWeights, { affordability: 0, schufa: 28.6, documents: 21.4, credibility: 21.4, employment: 21.4, previousLandlord: 7.1 });
+  assert.equal(data.criteria.requirements.occupancyCompliant, true);
+  // Nobody is excluded while the size is unknown: all 40 are ranked.
+  assert.equal(data.ranked.length, 40);
+  assert.deepEqual(data.ranked.map(({ rank }) => rank), Array.from({ length: 40 }, (_, index) => index + 1));
+  for (const entry of data.ranked) {
+    assert.deepEqual(Object.keys(entry), ["applicantId", "name", "householdShape", "rank", "matchScore", "reason"]);
+    assert.ok(entry.name.trim());
+    assert.ok(["single", "couple", "family", "group"].includes(entry.householdShape), entry.applicantId);
+    assert.doesNotMatch(entry.reason.en + entry.reason.de, /rent burden|Mietbelastung/);
+  }
+  assert.equal(data.stats.total, 40);
+  assert.equal(data.stats.excluded, 0);
+  assert.equal(data.stats.canAfford, null);
+  assert.deepEqual(data.shortlist, []);
+  assert.deepEqual(data.poolErrors, []);
+});
+
+test("the overview's household shapes follow each profile's adults and children", async (t) => {
+  const server = await start();
+  t.after(server.close);
+  const landlordId = await signIn(server);
+  const { applicants } = await readApplicantPool(APPLICANT_POOL_DIRECTORY, { today: POOL_DATE });
+  const households = new Map(applicants.map(({ id, profile }) => [id, profile.household]));
+
+  const { ranked } = await overviewOf(server, landlordId);
+
+  for (const { applicantId, householdShape } of ranked) {
+    const { adults, children } = households.get(applicantId);
+    const expected = children > 0 ? "family" : adults === 1 ? "single" : adults === 2 ? "couple" : "group";
+    assert.equal(householdShape, expected, applicantId);
+  }
+  assert.ok(new Set(ranked.map(({ householdShape }) => householdShape)).size >= 3, "the pool has several shapes");
+});
+
+test("a Listing saved on the classic page updates the overview's flat details; the ranking matches the dashboard's", async (t) => {
+  const server = await start();
+  t.after(server.close);
+  const landlordId = await signIn(server);
+  await server.put(`/api/v1/landlord/${landlordId}/listing`, WUEHLISCH_LISTING);
+
+  const data = await overviewOf(server, landlordId);
+  const dashboard = (await server.get(`/api/v1/landlord/${landlordId}/dashboard`)).body.data;
+
+  assert.deepEqual(data.flat, { ...WUEHLISCH_LISTING, buildingYear: null });
+  assert.deepEqual(data.missing, []);
+  assert.deepEqual(data.inactive, []);
+  assert.equal(data.rentCheck.allowedRent, 539);
+  assert.deepEqual(data.criteria.activeWeights, data.criteria.weights);
+  assert.deepEqual(
+    data.ranked.map(({ applicantId, rank, matchScore }) => ({ applicantId, rank, matchScore })),
+    dashboard.ranked.map(({ applicantId, rank, matchScore }) => ({ applicantId, rank, matchScore })),
+  );
+  assert.deepEqual(data.ranked.slice(0, 2).map(({ reason }) => reason), dashboard.recommendations.map(({ reason }) => reason));
+  assert.deepEqual(data.stats, dashboard.stats);
+});
+
+test("a Listing without a Rent check: the overview carries the note why", async (t) => {
+  const server = await start();
+  t.after(server.close);
+  const landlordId = await signIn(server);
+  await server.put(`/api/v1/landlord/${landlordId}/listing`, { ...WUEHLISCH_LISTING, address: "Erfundene Straße 1, 10245 Berlin" });
+
+  const data = await overviewOf(server, landlordId);
+
+  assert.equal(data.rentCheck, null);
+  assert.equal(data.rentCheckNote.code, "address_not_verified");
+  assert.deepEqual(data.missing, []);
+});
+
+test("the overview's Shortlist has names, shapes, current ranks, and the Requirement that excludes an entry", async (t) => {
+  const server = await start();
+  t.after(server.close);
+  const landlordId = await signIn(server);
+  const base = `/api/v1/landlord/${landlordId}`;
+  const { applicants } = await readApplicantPool(APPLICANT_POOL_DIRECTORY, { today: POOL_DATE });
+  const withPets = applicants.find(({ profile }) => profile.pets).id;
+  const withoutPets = applicants.find(({ profile }) => !profile.pets).id;
+  await server.put(`${base}/shortlist/${withoutPets}`, { status: "to_invite", note: "Call back" });
+  await server.put(`${base}/shortlist/${withPets}`, { status: "invited" });
+  await server.put(`${base}/criteria`, { requirements: { noPets: true } });
+
+  const { shortlist, ranked } = await overviewOf(server, landlordId);
+
+  assert.deepEqual(shortlist.map(({ applicantId, status, note, excluded, excludedBy }) => ({ applicantId, status, note, excluded, excludedBy })), [
+    { applicantId: withoutPets, status: "to_invite", note: "Call back", excluded: false, excludedBy: null },
+    { applicantId: withPets, status: "invited", note: null, excluded: true, excludedBy: "noPets" },
+  ]);
+  const rankedEntry = ranked.find(({ applicantId }) => applicantId === withoutPets);
+  assert.equal(shortlist[0].rank, rankedEntry.rank);
+  assert.equal(shortlist[0].name, rankedEntry.name);
+  assert.equal(shortlist[0].householdShape, rankedEntry.householdShape);
+  assert.equal(shortlist[1].rank, null);
+  assert.ok(!ranked.some(({ applicantId }) => applicantId === withPets));
+});
+
+test("the overview never carries contact details or protected fields; an unknown landlord is a 404", async (t) => {
+  const server = await start();
+  t.after(server.close);
+  const landlordId = await signIn(server);
+
+  const text = JSON.stringify(await overviewOf(server, landlordId));
+
+  assert.doesNotMatch(text, /"(contact|email|phone|nationality|religion|dateOfBirth|gender|photo|familyPlans)":/);
+  assert.equal((await server.get("/api/v1/landlord/nobody/overview")).status, 404);
 });

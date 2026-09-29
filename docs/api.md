@@ -360,6 +360,45 @@ The Rent check runs `evaluateMietspiegel` with the asking rent as contract rent 
 - `notes`: the Landlord preferences the chat remembered (`remember_preference`), oldest first: `[{ noteId, note, created }]`, also without a Listing.
 - `poolErrors`: `[{ file, reason }]`, the pool files that could not be read as an application.
 
+`PUT listing` also saves the Listing's address, size, rooms, rent and building year as the landlord's flat details (see `GET overview`), so both pages agree.
+
+### `GET /api/v1/landlord/:landlordId/overview`
+
+The chat-first page's data (`/landlord-chat.html`). Unlike `GET dashboard` it ranks from the first visit: the pool is ranked for the flat details, a Listing or not, and a fact about the flat that is still missing switches off what depends on it (it is listed in `inactive`).
+
+→ `200 { "data": { "flat", "missing", "rentCheck", "rentCheckNote", "criteria", "inactive", "ranked", "stats", "shortlist", "poolErrors" } }`:
+
+```json
+{
+  "flat": { "address": null, "livingAreaSqm": 65, "rooms": 2, "askingRent": null, "buildingYear": null },
+  "missing": ["address", "askingRent"],
+  "rentCheck": null,
+  "rentCheckNote": null,
+  "criteria": {
+    "weights": { "affordability": 30, "schufa": 20, "documents": 15, "credibility": 15, "employment": 15, "previousLandlord": 5 },
+    "activeWeights": { "affordability": 0, "schufa": 28.6, "documents": 21.4, "credibility": 21.4, "employment": 21.4, "previousLandlord": 7.1 },
+    "requirements": { "schufaCleanOnly": false, "completeDocumentsOnly": false, "maxRentToIncome": null, "noPets": false, "noSmoking": false, "latestMoveIn": null, "occupancyCompliant": true }
+  },
+  "inactive": [{ "criterion": "affordability", "missing": ["askingRent"] }],
+  "ranked": [
+    { "applicantId": "A-007", "name": "Lena Schmidt", "householdShape": "couple", "rank": 1, "matchScore": 97.1, "reason": { "de": "…", "en": "…" } }
+  ],
+  "stats": { "total": 40, "completeDocuments": 19, "canAfford": null, "canAffordAtMedian": null, "cleanSchufa": 24, "excluded": 0, "maxRentToIncome": 0.3333, "medianRent": null },
+  "shortlist": [
+    { "applicantId": "A-012", "name": "…", "status": "invited", "note": null, "added": "…", "rank": null, "matchScore": null, "excluded": true, "householdShape": "family", "excludedBy": "noPets" }
+  ],
+  "poolErrors": []
+}
+```
+
+- `flat`: the flat details the landlord gave so far, each `null` until known (on either page: the chat's `update_flat_details` or `PUT listing`). `missing`: what the Listing and its Rent check still need (`address`, `livingAreaSqm`, `rooms`, `askingRent`; the building year is optional).
+- `rentCheck`: the Listing's Rent check (as in `PUT listing`), or `null`; `rentCheckNote` is the Listing's `note` (`{ code, message }`) when a Listing exists without a Rent check, otherwise `null`.
+- `criteria.weights`: the saved shares in %, one decimal (what the chat quotes); `criteria.activeWeights`: each criterion's share of the Match score now, with the inactive ones at 0 and the others renormalised (the same as `weights` when nothing is inactive).
+- `inactive`: `[{ criterion | requirement, missing: [fact] }]`. Without `askingRent`: `affordability` (and the `maxRentToIncome` Requirement when it is set; it is not evaluated); without `livingAreaSqm` or `rooms`: the `occupancyCompliant` Requirement when it is on. A Requirement that is off is not listed.
+- `ranked`: every applicant who meets the (evaluated) Requirements, best first, with the `reason` of `recommendations` (see `GET dashboard`) for each, not just the top two; it never mentions the rent burden while affordability is inactive. `householdShape` is computed from the profile's adults and children only (never from gender): `family` with any children, otherwise `single` (1 adult), `couple` (2) or `group` (3 or more).
+- `stats`: as in `GET dashboard`; `canAfford` is `null` without an asking rent, `canAffordAtMedian` and `medianRent` without a Rent check.
+- `shortlist`: the dashboard's Shortlist entries, plus `householdShape` and `excludedBy` (the Requirement that now excludes the applicant, or `null`).
+
 The server reads the Applicant pool once at start from `APPLICANT_POOL_DIR` (default: the committed pool in `data/applicants`), as of `APPLICANT_POOL_TODAY` (default: `POOL_DATE`, the day the committed pool was generated, so its SCHUFA-Auskünfte do not expire).
 
 ### `PUT /api/v1/landlord/:landlordId/shortlist/:applicantId`
@@ -421,7 +460,7 @@ criteria }` for the later chat Tool integration.
 
 ### `POST /api/v1/landlord/:landlordId/chat`
 
-One turn of the Landlord Orchestrator (`src/landlord/orchestrator/`), a LangGraph graph of its own (`ingest → agent ⇄ tools → verifyGrounding → finalize`; the tenant Orchestrator is not involved). The conversation is kept in memory, one thread per landlord. At the start of every turn the system prompt gets, from SQLite, the Landlord preferences (the saved Selection criteria, weights to one decimal, and the remembered notes), the Listing (with its Rent check) and the pool stats under those criteria. That is the long-term memory: it survives a server restart even though the thread does not.
+One turn of the Landlord Orchestrator (`src/landlord/orchestrator/`), a LangGraph graph of its own (`ingest → agent ⇄ tools → verifyGrounding → finalize`; the tenant Orchestrator is not involved). The conversation is kept in memory, one thread per landlord. At the start of every turn the system prompt gets, from SQLite, the Landlord preferences (the saved Selection criteria, weights to one decimal, and the remembered notes), the Listing (with its Rent check) or, before one, the flat details and what is still missing, the inactive items and the pool stats under those criteria. That is the long-term memory: it survives a server restart even though the thread does not.
 
 ```json
 { "message": "Only applicants with a clean SCHUFA, please." }
@@ -430,18 +469,20 @@ One turn of the Landlord Orchestrator (`src/landlord/orchestrator/`), a LangGrap
 → `200 text/event-stream`, the same framing as the tenant chat (`event: <type>` + `data: <the event as JSON>`, `: keep-alive` comments):
 
 - `{ "type": "token", "text": "…" }`: the answer (Markdown), once it has passed the grounding check (ADR 0003): every number comes from a Tool result of this turn, the landlord's Listing, the pool stats or their own message; applicant ids (`A-007`) are not checked as figures. The model only knows applicant ids; the page shows each known applicant's name next to the id.
-- `{ "type": "criteria" }` / `{ "type": "shortlist" }` / `{ "type": "notes" }`: a Tool changed the Selection criteria / the Shortlist / remembered a Landlord preference (it is saved already); after a turn with one of them the page reloads the dashboard.
+- `{ "type": "criteria" }` / `{ "type": "shortlist" }` / `{ "type": "notes" }` / `{ "type": "flat" }`: a Tool changed the Selection criteria / the Shortlist / remembered a Landlord preference / saved flat details (and, with all four facts, the Listing); it is saved already. After a turn with one of them the page reloads its data.
 - `{ "type": "done" }` or `{ "type": "error", "message" }`: exactly one ends every turn.
 
 Without `OPENAI_MODEL` and `OPENAI_API_KEY` the stream is a single `token` saying the AI chat is not configured (in German or English, following the message), then `done`. A body without a non-empty `message` of at most 4000 characters is a `422 validation_error`; an unknown landlord a `404 landlord_not_found`.
 
-The six landlord Tools have shared zod contracts in `src/landlord/orchestrator/tool-contracts.js` (`get_ranking`, `get_applicant_profile`, `update_selection_criteria`, `remember_preference`, `update_shortlist`, `get_rent_check`); the Orchestrator refuses to start if one is missing. A Tool gets the landlord as `config.configurable.landlordId` and must return applicant ids only, never names or protected characteristics. The server runs on the real Tools (`createLandlordTools({ getStore, getApplicantPool })`, `src/landlord/orchestrator/landlord-tools.js`), built on the dashboard's functions:
+The eight landlord Tools have shared zod contracts in `src/landlord/orchestrator/tool-contracts.js` (`get_ranking`, `get_applicant_profile`, `update_selection_criteria`, `adjust_selection_criteria`, `update_flat_details`, `remember_preference`, `update_shortlist`, `get_rent_check`); the Orchestrator refuses to start if one is missing. A Tool gets the landlord as `config.configurable.landlordId` and must return applicant ids only, never names or protected characteristics. The server runs on the real Tools (`createLandlordTools({ getStore, getApplicantPool, fetchImpl })`, `src/landlord/orchestrator/landlord-tools.js`), built on the dashboard's functions. They rank for the flat details, a Listing or not; the ranking Tools' results carry `inactive` as in `GET overview`:
 
-- `get_ranking`: the top 10 ranked applicants (`applicantId`, `rank`, `matchScore`, `rentToIncome`, `breakdown`), `rankedCount`, the pool `stats`, `excludedByReason` (count per Requirement), the `criteria` and the `shortlist` as `{ applicantId, status }` (notes are left out: they are the landlord's free text). Without a Listing it is an input error asking for the Listing.
-- `get_applicant_profile`: the anonymised profile (names on other people's documents removed), `rank`, `matchScore`, `breakdown`, `rentToIncome`, `excludedBy` and `exclusionReasons`, and `shortlistStatus`.
-- `update_selection_criteria`: `updateSelectionCriteria`; returns `previous` and `criteria` (weights rounded to one decimal, so the chat can quote them) and the new `top` 3.
+- `get_ranking`: the top 10 ranked applicants (`applicantId`, `rank`, `matchScore`, `rentToIncome`, `breakdown`), `rankedCount`, the pool `stats`, `excludedByReason` (count per Requirement), the `criteria`, the `shortlist` as `{ applicantId, status }` (notes are left out: they are the landlord's free text) and `inactive`. An inactive criterion's breakdown entry is `{ "subscore": null, "weight": 0 }`, and `rentToIncome` is `null` without an asking rent.
+- `get_applicant_profile`: the anonymised profile (names on other people's documents removed), `rank`, `matchScore`, `breakdown`, `rentToIncome`, `excludedBy` and `exclusionReasons`, `shortlistStatus` and `inactive`.
+- `update_selection_criteria { requirements }`: Requirements only (`updateSelectionCriteria`); its contract refuses `weights`, so the chat changes weights only through `adjust_selection_criteria` and its limits (`PUT criteria` keeps its absolute weights and has no 50 % cap). Returns `previous` and `criteria` (weights rounded to one decimal, so the chat can quote them), the new `top` 3 and `inactive`.
+- `adjust_selection_criteria { changes: [{ criterion, factor } | { criterion, share }] }`: `adjustSelectionCriteria` (`src/landlord/criteria.js`), relative changes computed in code. A named criterion's new share is its saved share × `factor` (1.3 = 30 % more, 0 = ignore) or `share` %; the criteria not named keep their proportions and fill the rest to 100 %. No share can exceed 50 % (a request above is capped); an unnamed share may not be pushed above 50 %, at least two criteria stay above 0, and when every unnamed criterion is at 0 the named ones must reach 100 %; otherwise it is an input error and nothing is saved. Returns `{ previous, criteria, applied: [{ criterion, from, requested, to, capped }], top, inactive }`, shares in % to one decimal. A change to an inactive criterion is saved too.
+- `update_flat_details { address?, livingAreaSqm?, rooms?, askingRent?, buildingYear? }`: `updateFlatDetails` (`src/landlord/flat-details.js`) merges what is given into the saved flat details, each value checked as `PUT listing` checks it (a value it refuses, or an address without postal code, is an input error with the same message, and nothing is saved). Once address, size, rooms and rent are all known it builds and saves the Listing with its Rent check as `PUT listing` does. Returns `{ flat, missing, listing, rentCheck, note, stats, top, inactive }`: `listing` is `{ addressVerified, canonicalAddress, residentialLocation, buildingAgePeriod }` or `null`; `note` says why there is no Rent check (facts still missing, or the Listing's note, e.g. an address the register does not know).
 - `update_shortlist`: `updateShortlist`, the same checks as the HTTP endpoint; `note` is only the note the model sent in this call (an earlier note is the landlord's free text and is not handed back).
-- `get_rent_check`: the Listing's Rent check, or `null` with a `note` saying why.
+- `get_rent_check`: the Listing's Rent check, or `null` with a `note` saying why (before a Listing also `missing`: the facts it still needs).
 - `remember_preference`: stores the trimmed `note` for the landlord (`preference_notes`) and returns `{ noteId, note }`; a blank note is an input error. It is shown in the system prompt of every later turn and conversation, and on the page.
 
 `createLandlordStubTools` (fixed data) remains for tests.

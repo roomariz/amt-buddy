@@ -1,7 +1,9 @@
 import { readJson, sendError, sendJson } from "../http-json.js";
 import { streamEvents } from "../http-sse.js";
 import { buildListing, ListingInputError } from "./listing.js";
-import { getApplicantProfile } from "./applicant-profile.js";
+import { getApplicantProfile, householdShapeOf } from "./applicant-profile.js";
+import { flatToRank, missingForListing } from "./flat-details.js";
+import { recommendationReasons } from "./recommendation-reasons.js";
 import { detectLanguage, landlordReply } from "./orchestrator/replies.js";
 import { DEFAULT_CRITERIA, rankApplicants } from "./scorer.js";
 import { CriteriaInputError, updateSelectionCriteria } from "./criteria.js";
@@ -111,6 +113,9 @@ function shortlistFor(entries, { applicants }, { ranked, excluded }) {
   }));
 }
 
+const oneDecimal = (weights) =>
+  Object.fromEntries(Object.entries(weights).map(([criterion, weight]) => [criterion, Math.round(weight * 10) / 10]));
+
 function decodeId(encoded) {
   try {
     return decodeURIComponent(encoded);
@@ -168,6 +173,57 @@ export function createLandlordApi({ getStore, getApplicantPool = () => EMPTY_POO
         ...ranking,
         shortlist: shortlistFor(getStore().getShortlist(landlordId), pool, ranking),
         notes: getStore().listNotes(landlordId),
+        poolErrors: pool.errors,
+      },
+    });
+  }
+
+  // GET /api/v1/landlord/:landlordId/overview → the chat-first page's data (docs/api.md): the flat
+  // details and what the Listing still needs, the Rent check, the criteria (saved and active
+  // shares), what is inactive, the whole ranking with names, household shapes and reasons, the
+  // stats, the Shortlist and the pool errors. Ranked for the flat details, a Listing or not.
+  async function overview(response, landlordId) {
+    const store = getStore();
+    const pool = await getApplicantPool();
+    const criteria = store.getCriteria(landlordId);
+    const flat = store.getFlatDetails(landlordId);
+    const listing = store.getListing(landlordId);
+    const ranking = rankApplicants({
+      profiles: pool.applicants.map(({ profile }) => profile),
+      listing: flatToRank(store, landlordId),
+      criteria,
+    });
+    const applicantsById = new Map(pool.applicants.map((applicant) => [applicant.id, applicant]));
+    const shapeOf = (applicantId) => {
+      const applicant = applicantsById.get(applicantId);
+      return applicant ? householdShapeOf(applicant.profile.household) : null;
+    };
+    const excludedBy = new Map(ranking.excluded.map((entry) => [entry.applicantId, entry.excludedBy]));
+    sendJson(response, 200, {
+      data: {
+        flat,
+        missing: missingForListing(flat),
+        rentCheck: listing?.rentCheck ?? null,
+        rentCheckNote: listing && !listing.rentCheck ? listing.note : null,
+        criteria: { weights: oneDecimal(criteria.weights), activeWeights: oneDecimal(ranking.activeWeights), requirements: criteria.requirements },
+        inactive: ranking.inactive,
+        ranked: ranking.ranked.map(({ applicantId, rank, matchScore, breakdown, rentToIncome }) => {
+          const { contact, profile } = applicantsById.get(applicantId);
+          return {
+            applicantId,
+            name: contact.name,
+            householdShape: householdShapeOf(profile.household),
+            rank,
+            matchScore,
+            reason: recommendationReasons({ profile, breakdown, rentToIncome, matchScore }).reason,
+          };
+        }),
+        stats: ranking.stats,
+        shortlist: shortlistFor(store.getShortlist(landlordId), pool, ranking).map((entry) => ({
+          ...entry,
+          householdShape: shapeOf(entry.applicantId),
+          excludedBy: excludedBy.get(entry.applicantId) ?? null,
+        })),
         poolErrors: pool.errors,
       },
     });
@@ -237,7 +293,7 @@ export function createLandlordApi({ getStore, getApplicantPool = () => EMPTY_POO
   }
 
   // POST /api/v1/landlord/:landlordId/chat { message } → one turn of the Landlord Orchestrator,
-  // streamed as SSE (token, criteria, shortlist, done, error).
+  // streamed as SSE (token, criteria, shortlist, notes, flat, done, error).
   async function chat(request, response, landlordId) {
     const body = await readBody(request, response, 64 * 1024);
     if (!body) return;
@@ -276,6 +332,7 @@ export function createLandlordApi({ getStore, getApplicantPool = () => EMPTY_POO
 
   const routes = {
     "GET dashboard": (request, response, landlordId) => dashboard(response, landlordId),
+    "GET overview": (request, response, landlordId) => overview(response, landlordId),
     "PUT listing": saveListing,
     "POST chat": chat,
     "PUT criteria": async (request, response, landlordId) => {
@@ -311,7 +368,7 @@ export function createLandlordApi({ getStore, getApplicantPool = () => EMPTY_POO
         await signIn(request, response);
         return true;
       }
-      const match = /^([^/]+)\/(dashboard|listing|chat|criteria|shortlist|applicants|notes)(?:\/([^/]+))?$/.exec(path);
+      const match = /^([^/]+)\/(dashboard|overview|listing|chat|criteria|shortlist|applicants|notes)(?:\/([^/]+))?$/.exec(path);
       // The Shortlist's and the applicants' paths carry an applicant id, the notes' a note id; the others none.
       const takesId = match && Object.hasOwn(ID_RESOURCES, match[2]);
       const handler = match && takesId === (match[3] !== undefined) && routes[`${request.method} ${match[2]}`];

@@ -13,6 +13,15 @@ function withoutDocumentNames(profile) {
   return { ...profile, documentCheck };
 }
 
+// The household's shape for the page's avatar, from adults and children only (never from a
+// protected characteristic such as gender): any children "family", else 1 adult "single", 2
+// "couple", 3 or more "group".
+export function householdShapeOf({ adults, children }) {
+  if (children > 0) return "family";
+  if (adults === 1) return "single";
+  return adults === 2 ? "couple" : "group";
+}
+
 // The reusable, contact-free Applicant profile lookup. The chat Tool calls this directly, with the
 // flat details as `listing` (so it scores before a Listing too); names and contact details are
 // joined only by the HTTP endpoint for page display. No listing at all: no score.

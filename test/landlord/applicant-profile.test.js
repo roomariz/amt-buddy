@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
 
 import { readApplicantPool } from "../../src/landlord/applicant-pool.js";
-import { getApplicantProfile } from "../../src/landlord/applicant-profile.js";
+import { getApplicantProfile, householdShapeOf } from "../../src/landlord/applicant-profile.js";
 import { rankApplicants } from "../../src/landlord/scorer.js";
 
 const directory = fileURLToPath(new URL("../fixtures/applicants/", import.meta.url));
@@ -24,4 +24,17 @@ test("the reusable lookup returns a scored profile without contact, using the ex
   const mismatch = getApplicantProfile({ applicants, listing, applicantId: "A-other-name" });
   assert.ok(!JSON.stringify(mismatch).includes("Jonas Schmidt"));
   assert.ok(!JSON.stringify(mismatch).includes("Lena Schmidt"));
+});
+
+test("the household shape comes from adults and children only: single, couple, family, group", () => {
+  const cases = [
+    [{ adults: 1, children: 0, childrenUpToSix: 0 }, "single"],
+    [{ adults: 2, children: 0, childrenUpToSix: 0 }, "couple"],
+    [{ adults: 3, children: 0, childrenUpToSix: 0 }, "group"],
+    [{ adults: 5, children: 0, childrenUpToSix: 0 }, "group"],
+    [{ adults: 1, children: 1, childrenUpToSix: 1 }, "family"],
+    [{ adults: 2, children: 3, childrenUpToSix: 0 }, "family"],
+    [{ adults: 4, children: 1, childrenUpToSix: 0 }, "family"],
+  ];
+  for (const [household, shape] of cases) assert.equal(householdShapeOf(household), shape, JSON.stringify(household));
 });

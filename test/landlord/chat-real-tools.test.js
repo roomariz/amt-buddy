@@ -42,11 +42,13 @@ async function start({ store = createLandlordStore({ path: ":memory:" }), name =
   const { landlordId } = (await (await request("POST", "/api/v1/landlord/sessions", { name })).json()).data;
   if (listing) await request("PUT", `/api/v1/landlord/${landlordId}/listing`, listing);
   const dashboard = async () => (await (await request("GET", `/api/v1/landlord/${landlordId}/dashboard`)).json()).data;
+  const overview = async () => (await (await request("GET", `/api/v1/landlord/${landlordId}/overview`)).json()).data;
   const applicant = async (applicantId) => (await (await request("GET", `/api/v1/landlord/${landlordId}/applicants/${applicantId}`)).json()).data;
   return {
     landlordId,
     store,
     dashboard,
+    overview,
     applicant,
     get model() {
       return model;
@@ -126,6 +128,9 @@ test("flat facts in a message are saved with update_flat_details (flat event); a
   assert.deepEqual(typesOf(first), ["flat", "token", "done"]);
   assert.deepEqual(server.store.getFlatDetails(server.landlordId), { address: null, livingAreaSqm: 50, rooms: 2, askingRent: 700, buildingYear: null });
   assert.equal((await server.dashboard()).listing, null);
+  const before = await server.overview();
+  assert.deepEqual(before.missing, ["address"]);
+  assert.deepEqual(before.inactive, [], "rent, size and rooms are known: affordability and occupancy count");
 
   const second = await server.chat("Wühlischstraße 30, 10245 Berlin");
 
@@ -135,6 +140,7 @@ test("flat facts in a message are saved with update_flat_details (flat event); a
   assert.equal(listing.address, "Wühlischstraße 30, 10245 Berlin");
   assert.equal(rentCheck.allowedRent, 539);
   assert.ok(ranked.length > 0, "the classic dashboard ranks for the Listing the chat built");
+  assert.equal((await server.overview()).rentCheck.allowedRent, 539);
 });
 
 test("without a Listing the ranking Tool ranks anyway and says what is inactive; the prompt carries the flat details", async (t) => {
