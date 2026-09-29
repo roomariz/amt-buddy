@@ -61,10 +61,10 @@ function previousLandlordOf({ status, arrears }) {
   return 0.3;
 }
 
-// Each criterion's subscore (0–1) of one profile.
+// Each criterion's subscore (0–1) of one profile; affordability null without an asking rent.
 function subscoresOf(profile, rentToIncome) {
   return {
-    affordability: affordabilityOf(rentToIncome),
+    affordability: rentToIncome === null ? null : affordabilityOf(rentToIncome),
     schufa: SCHUFA_SUBSCORES[profile.schufaStatus] ?? 0,
     documents: documentsOf(profile.documentCheck),
     credibility: profile.credibilityScore / 100,
@@ -86,6 +86,32 @@ function sharesOf(weights = {}) {
   const total = CRITERIA.reduce((sum, criterion) => sum + merged[criterion], 0);
   if (total === 0) throw new TypeError("At least one criterion needs a weight above zero.");
   return Object.fromEntries(CRITERIA.map((criterion) => [criterion, merged[criterion] / total]));
+}
+
+const isMissing = (value) => value === null || value === undefined;
+
+// What the flat facts still missing switch off: [{ criterion | requirement, missing: [field] }].
+// Without the asking rent, affordability and (when set) the maxRentToIncome Requirement; without
+// the size or the rooms, the occupancyCompliant Requirement (when on). A Requirement that is off
+// is not listed.
+function inactiveOf(listing, requirements) {
+  const missing = (fields) => fields.filter((field) => isMissing(listing[field]));
+  const inactive = [];
+  const noRent = missing(["askingRent"]);
+  if (noRent.length > 0) inactive.push({ criterion: "affordability", missing: noRent });
+  if (noRent.length > 0 && requirements.maxRentToIncome !== null) inactive.push({ requirement: "maxRentToIncome", missing: noRent });
+  const noSize = missing(["livingAreaSqm", "rooms"]);
+  if (noSize.length > 0 && requirements.occupancyCompliant) inactive.push({ requirement: "occupancyCompliant", missing: noSize });
+  return inactive;
+}
+
+// The shares with the inactive criteria at 0 and the active ones renormalised to sum to 1 (all 0
+// when only inactive criteria carry weight). Nothing inactive: the shares as they are.
+function activeSharesOf(shares, inactive) {
+  const off = new Set(inactive.map(({ criterion }) => criterion).filter(Boolean));
+  if (off.size === 0) return shares;
+  const total = CRITERIA.reduce((sum, criterion) => sum + (off.has(criterion) ? 0 : shares[criterion]), 0);
+  return Object.fromEntries(CRITERIA.map((criterion) => [criterion, off.has(criterion) || total === 0 ? 0 : shares[criterion] / total]));
 }
 
 const isDay = (value) => typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
@@ -166,7 +192,8 @@ export const DEFAULT_MAX_RENT_TO_INCOME = 1 / 3;
 
 // The pool stats: counts over every profile, excluded or not. "Can afford" means a rent-to-income
 // ratio at most the maxRentToIncome Requirement (1/3 while it is off), at the asking rent and at
-// the Rent check's Mietspiegel median (null without a Rent check: unknown, not zero).
+// the Rent check's Mietspiegel median (null without a Rent check: unknown, not zero). Without an
+// asking rent "can afford" is unknown too (null).
 function statsOf(profiles, listing, requirements, excludedCount) {
   const maxRentToIncome = requirements.maxRentToIncome ?? DEFAULT_MAX_RENT_TO_INCOME;
   const medianRent = listing.rentCheck?.range?.median ?? null;
@@ -174,7 +201,7 @@ function statsOf(profiles, listing, requirements, excludedCount) {
   return {
     total: profiles.length,
     completeDocuments: profiles.filter((profile) => profile.documentCheck.complete).length,
-    canAfford: canAffordAt(listing.askingRent),
+    canAfford: isMissing(listing.askingRent) ? null : canAffordAt(listing.askingRent),
     canAffordAtMedian: medianRent === null ? null : canAffordAt(medianRent),
     cleanSchufa: profiles.filter((profile) => profile.schufaStatus === "clean").length,
     excluded: excludedCount,
@@ -188,43 +215,60 @@ const RECOMMENDATION_COUNT = 2;
 
 const byApplicantId = (a, b) => (a.applicantId < b.applicantId ? -1 : a.applicantId > b.applicantId ? 1 : 0);
 
-// rankApplicants({ profiles, listing, criteria? }) → { ranked, excluded, stats, recommendations }
+// rankApplicants({ profiles, listing?, criteria? }) → { ranked, excluded, stats, recommendations,
+// inactive, activeWeights }
 // - profiles: Applicant profiles (readApplicantPool's `profile`: anonymised, never a name).
 // - listing: { livingAreaSqm, rooms, askingRent, rentCheck? } of the Landlord's Listing; the Rent
-//   check's Mietspiegel median (`rentCheck.range.median`) feeds stats.canAffordAtMedian.
+//   check's Mietspiegel median (`rentCheck.range.median`) feeds stats.canAffordAtMedian. Any of
+//   them may be missing (null, or no listing at all): what depends on a missing fact is inactive.
+// - inactive: [{ criterion | requirement, missing: [field] }]. An inactive criterion's share is 0
+//   and the active ones are renormalised; an inactive Requirement is not evaluated.
+// - activeWeights: { <criterion>: % of the Match score } after that (the weights when nothing is
+//   inactive).
 // - criteria: { weights?, requirements? }; what is left out is DEFAULT_CRITERIA's. Weights are
 //   relative (any non-negative numbers, not all zero) and normalised to sum to 1. Throws a
 //   TypeError for a weight or Requirement value of the wrong kind.
 // - ranked: the applicants who meet every Requirement, best first, ties by applicant id:
 //   [{ applicantId, rank (1…), matchScore (0–100, one decimal), rentToIncome (asking rent / net
-//   household income), breakdown: { <criterion>: { subscore (0–1), weight (% of the Match score) } } }].
+//   household income; null without an asking rent), breakdown: { <criterion>: { subscore (0–1;
+//   null when inactive), weight (% of the Match score) } } }].
 // - excluded: the others, by applicant id: [{ applicantId, excludedBy (the first failed
 //   Requirement), reasons: [{ requirement, message, …the values behind it }] }].
-// - stats: counts over the whole pool: { total, completeDocuments, canAfford, canAffordAtMedian
-//   (null without a Rent check), cleanSchufa, excluded, maxRentToIncome (the ratio "can afford"
+// - stats: counts over the whole pool: { total, completeDocuments, canAfford (null without an
+//   asking rent), canAffordAtMedian (null without a Rent check), cleanSchufa, excluded, maxRentToIncome (the ratio "can afford"
 //   uses: the Requirement's, or 1/3 while it is off), medianRent (null without a Rent check) }.
 // - recommendations: the top two ranked applicants (fewer when fewer are ranked): [{ applicantId,
 //   rank, matchScore, strengths: [criterion], weakness: criterion | null, reason: { de, en } }],
 //   the reason generated by code from the breakdown (see recommendationReasons).
 // Pure and deterministic: the same input always gives the same result, whatever its order.
 export function rankApplicants({ profiles, listing, criteria = {} }) {
-  const shares = sharesOf(criteria.weights);
+  listing ??= {};
   const requirements = requirementsOf(criteria.requirements);
+  const inactive = inactiveOf(listing, requirements);
+  const shares = activeSharesOf(sharesOf(criteria.weights), inactive);
+  // The Requirements evaluated: the inactive ones switched off.
+  const evaluated = { ...requirements };
+  for (const { requirement } of inactive) {
+    if (requirement) evaluated[requirement] = DEFAULT_CRITERIA.requirements[requirement] === null ? null : false;
+  }
   const excluded = [];
   const scored = [];
   for (const profile of profiles) {
-    const rentToIncome = listing.askingRent / profile.netHouseholdIncome;
-    const reasons = failedRequirements(profile, rentToIncome, listing, requirements);
+    const rentToIncome = isMissing(listing.askingRent) ? null : listing.askingRent / profile.netHouseholdIncome;
+    const reasons = failedRequirements(profile, rentToIncome, listing, evaluated);
     if (reasons.length > 0) {
       excluded.push({ applicantId: profile.id, excludedBy: reasons[0].requirement, reasons });
       continue;
     }
     const subscores = subscoresOf(profile, rentToIncome);
     const breakdown = Object.fromEntries(
-      CRITERIA.map((criterion) => [criterion, { subscore: round(subscores[criterion], 4), weight: round(shares[criterion] * 100, 2) }]),
+      CRITERIA.map((criterion) => [
+        criterion,
+        { subscore: subscores[criterion] === null ? null : round(subscores[criterion], 4), weight: round(shares[criterion] * 100, 2) },
+      ]),
     );
-    const score = CRITERIA.reduce((sum, criterion) => sum + subscores[criterion] * shares[criterion] * 100, 0);
-    scored.push({ applicantId: profile.id, score, breakdown, rentToIncome: round(rentToIncome, 4) });
+    const score = CRITERIA.reduce((sum, criterion) => sum + (subscores[criterion] ?? 0) * shares[criterion] * 100, 0);
+    scored.push({ applicantId: profile.id, score, breakdown, rentToIncome: rentToIncome === null ? null : round(rentToIncome, 4) });
   }
   scored.sort((a, b) => b.score - a.score || byApplicantId(a, b));
   const profilesById = new Map(profiles.map((profile) => [profile.id, profile]));
@@ -239,5 +283,7 @@ export function rankApplicants({ profiles, listing, criteria = {} }) {
       matchScore,
       ...recommendationReasons({ profile: profilesById.get(applicantId), breakdown, rentToIncome, matchScore }),
     })),
+    inactive,
+    activeWeights: Object.fromEntries(CRITERIA.map((criterion) => [criterion, round(shares[criterion] * 100, 2)])),
   };
 }

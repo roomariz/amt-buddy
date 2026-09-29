@@ -92,12 +92,12 @@ function listOf(phrases, and) {
   return `${phrases.slice(0, -1).join(", ")} ${and} ${phrases.at(-1)}`;
 }
 
-// The criteria that count (weight above zero), strongest first: by subscore, then by weight,
-// then in the breakdown's order.
+// The criteria that count (weight above zero, and a subscore: an inactive criterion has none),
+// strongest first: by subscore, then by weight, then in the breakdown's order.
 function criteriaByStrength(breakdown) {
   const order = Object.keys(breakdown);
   return order
-    .filter((criterion) => breakdown[criterion].weight > 0)
+    .filter((criterion) => breakdown[criterion].weight > 0 && breakdown[criterion].subscore !== null)
     .sort(
       (a, b) =>
         breakdown[b].subscore - breakdown[a].subscore || breakdown[b].weight - breakdown[a].weight || order.indexOf(a) - order.indexOf(b),
@@ -115,7 +115,8 @@ function weaknessOf(breakdown) {
 // recommendationReasons({ profile, breakdown, rentToIncome, matchScore }) → { strengths, weakness,
 // reason: { de, en } }: the two or three strongest criteria (subscore at least 0.75), the notable
 // weakness (the lowest subscore below 0.6, or null), and the sentence built from them in each
-// language. Without a strength, the sentence names the Match score instead.
+// language. Without a strength, the sentence names the Match score instead. rentToIncome is null
+// without an asking rent; affordability is inactive then and never named.
 export function recommendationReasons({ profile, breakdown, rentToIncome, matchScore }) {
   const strengths = criteriaByStrength(breakdown)
     .filter((criterion) => breakdown[criterion].subscore >= STRENGTH_MIN)

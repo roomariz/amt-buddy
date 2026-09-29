@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+import { recommendationReasons } from "../../src/landlord/recommendation-reasons.js";
 import { DEFAULT_CRITERIA, rankApplicants } from "../../src/landlord/scorer.js";
 
 // A flat of 60 m² with 2 rooms at 1000 € asking rent.
@@ -490,4 +491,142 @@ test("each criterion's weakness has its own wording in both languages", () => {
     assert.ok(reason.en.endsWith(` To note: ${en}.`), reason.en);
     assert.ok(reason.de.endsWith(` Zu beachten: ${de}.`), reason.de);
   }
+});
+
+// --- Ranking before a Listing -----------------------------------------------------------------
+
+// The flat without its asking rent, and without anything at all.
+const NO_RENT = { livingAreaSqm: 60, rooms: 2 };
+
+test("without an asking rent affordability is inactive: its share is 0 and the other criteria are renormalised", () => {
+  const result = rankApplicants({ profiles: [MIXED], listing: NO_RENT });
+  const [entry] = result.ranked;
+
+  // The other five default weights sum to 70: SCHUFA 20/70, documents, credibility and employment
+  // 15/70 each, previous landlord 5/70. MIXED: 20 × 0.5 + 15 × 1 + 15 × 0.7 + 15 × 0.6 + 5 × 0.5 = 47
+  // → 47 / 70 = 67.14.
+  assert.equal(entry.matchScore, 67.1);
+  assert.equal(entry.rentToIncome, null);
+  assert.deepEqual(entry.breakdown.affordability, { subscore: null, weight: 0 });
+  assert.deepEqual(
+    Object.fromEntries(Object.entries(entry.breakdown).map(([criterion, { weight }]) => [criterion, weight])),
+    { affordability: 0, schufa: 28.57, documents: 21.43, credibility: 21.43, employment: 21.43, previousLandlord: 7.14 },
+  );
+  assert.deepEqual(result.activeWeights, { affordability: 0, schufa: 28.57, documents: 21.43, credibility: 21.43, employment: 21.43, previousLandlord: 7.14 });
+  assert.deepEqual(result.inactive, [{ criterion: "affordability", missing: ["askingRent"] }]);
+});
+
+test("with a full Listing nothing is inactive and the active weights are the saved ones", () => {
+  const result = rankApplicants({ profiles: [MIXED], listing: LISTING });
+  assert.deepEqual(result.inactive, []);
+  assert.deepEqual(result.activeWeights, DEFAULT_CRITERIA.weights);
+});
+
+test("without an asking rent the maxRentToIncome Requirement is not evaluated; switched off it is not listed", () => {
+  const poor = profile("A", { netHouseholdIncome: 1000 });
+
+  const on = rankApplicants({ profiles: [poor], listing: NO_RENT, criteria: { requirements: { maxRentToIncome: 0.3 } } });
+  assert.deepEqual(on.excluded, []);
+  assert.equal(on.ranked.length, 1);
+  assert.deepEqual(on.inactive, [
+    { criterion: "affordability", missing: ["askingRent"] },
+    { requirement: "maxRentToIncome", missing: ["askingRent"] },
+  ]);
+
+  const off = rankApplicants({ profiles: [poor], listing: NO_RENT });
+  assert.deepEqual(off.inactive, [{ criterion: "affordability", missing: ["askingRent"] }]);
+});
+
+test("without the size or the rooms the occupancy Requirement is not evaluated", () => {
+  // Seven adults need 63 m²: excluded from a 60 m² flat, but the size is not known yet.
+  const sevenAdults = profile("A-too-many", { householdSize: 7, household: { adults: 6, children: 1, childrenUpToSix: 0 } });
+
+  const noSize = rankApplicants({ profiles: [sevenAdults], listing: { rooms: 2, askingRent: 1000 } });
+  assert.deepEqual(noSize.excluded, []);
+  assert.deepEqual(noSize.inactive, [{ requirement: "occupancyCompliant", missing: ["livingAreaSqm"] }]);
+
+  const noRooms = rankApplicants({ profiles: [sevenAdults], listing: { livingAreaSqm: 60, askingRent: 1000, rooms: null } });
+  assert.deepEqual(noRooms.excluded, []);
+  assert.deepEqual(noRooms.inactive, [{ requirement: "occupancyCompliant", missing: ["rooms"] }]);
+
+  const off = rankApplicants({ profiles: [sevenAdults], listing: { askingRent: 1000 }, criteria: { requirements: { occupancyCompliant: false } } });
+  assert.deepEqual(off.inactive, []);
+});
+
+test("without any flat details every applicant is still ranked, on the criteria that do not need them", () => {
+  const sevenAdults = profile("A-2", { householdSize: 7, household: { adults: 6, children: 1, childrenUpToSix: 0 } });
+  for (const listing of [undefined, null, {}]) {
+    const result = rankApplicants({ profiles: [MIXED, sevenAdults], listing });
+    // A-2 is complete and clean: 100. MIXED: 67.1 (see above).
+    assert.deepEqual(result.ranked.map(({ applicantId, matchScore }) => [applicantId, matchScore]), [["A-2", 100], ["A-mixed", 67.1]]);
+    assert.deepEqual(result.inactive, [
+      { criterion: "affordability", missing: ["askingRent"] },
+      { requirement: "occupancyCompliant", missing: ["livingAreaSqm", "rooms"] },
+    ]);
+  }
+});
+
+test("stats without an asking rent: 'can afford' is unknown (null), not zero", () => {
+  const { stats } = rankApplicants({ profiles: POOL, listing: NO_RENT });
+
+  assert.equal(stats.canAfford, null);
+  assert.equal(stats.canAffordAtMedian, null);
+  assert.equal(stats.medianRent, null);
+  assert.equal(stats.total, 5);
+  assert.equal(stats.cleanSchufa, 3);
+});
+
+test("when only inactive criteria carry weight, every Match score is 0 and ties go by applicant id", () => {
+  const weights = { affordability: 100, schufa: 0, documents: 0, credibility: 0, employment: 0, previousLandlord: 0 };
+  const { ranked, activeWeights } = rankApplicants({ profiles: [profile("A-2"), MIXED], listing: NO_RENT, criteria: { weights } });
+
+  assert.deepEqual(ranked.map(({ applicantId, matchScore }) => [applicantId, matchScore]), [["A-2", 0], ["A-mixed", 0]]);
+  assert.deepEqual(Object.values(activeWeights), [0, 0, 0, 0, 0, 0]);
+});
+
+test("reasons without an asking rent never mention the rent burden", () => {
+  // Affordability inactive; SCHUFA 0 (missing), documents 0.67, credibility 0.9, employment 0.3,
+  // previous landlord 1.
+  const { recommendations } = rankApplicants({
+    profiles: [
+      profile("A-1", {
+        netHouseholdIncome: 2500,
+        credibilityScore: 90,
+        employmentType: "other",
+        schufaStatus: "missing",
+        documentCheck: { complete: false, schufa: { status: "missing", reason: "No SCHUFA-Auskunft." } },
+      }),
+    ],
+    listing: NO_RENT,
+  });
+  const [recommendation] = recommendations;
+
+  assert.deepEqual(recommendation.strengths, ["previousLandlord", "credibility"]);
+  assert.equal(recommendation.weakness, "schufa");
+  assert.equal(
+    recommendation.reason.en,
+    "You may like this applicant for their previous-landlord confirmation without arrears and high credibility (90/100). To note: no usable SCHUFA-Auskunft.",
+  );
+  assert.equal(
+    recommendation.reason.de,
+    "Dieser Bewerber könnte Ihnen gefallen: Vorvermieterbescheinigung ohne Mietrückstände und hohe Glaubwürdigkeit (90/100). Zu beachten: keine verwertbare SCHUFA-Auskunft.",
+  );
+});
+
+test("reasons skip a criterion without a subscore, whatever its weight", () => {
+  const one = (subscore, weight) => ({ subscore, weight });
+  const breakdown = {
+    affordability: one(null, 30),
+    schufa: one(1, 20),
+    documents: one(1, 15),
+    credibility: one(0.5, 15),
+    employment: one(1, 15),
+    previousLandlord: one(1, 5),
+  };
+
+  const { strengths, weakness, reason } = recommendationReasons({ profile: profile("A-1", { credibilityScore: 50 }), breakdown, rentToIncome: null, matchScore: 80 });
+
+  assert.deepEqual(strengths, ["schufa", "documents", "employment"]);
+  assert.equal(weakness, "credibility");
+  assert.doesNotMatch(reason.en + reason.de, /rent burden|Mietbelastung|null|NaN/);
 });
