@@ -258,7 +258,7 @@ test("the system prompt carries the Listing, its Rent check and the pool stats e
   assert.match(system, /"allowedRent":/);
   assert.match(system, new RegExp(`Applicant pool statistics:\\n\\{"total":${stats.total},`));
   assert.match(system, /whom to invite.*get_ranking.*Shortlist/);
-  assert.match(system, /why one applicant ranks above another.*get_applicant_profile for both/);
+  assert.match(system, /why one applicant ranks above another, call compare_applicants/);
 });
 
 test("a preference remembered in one conversation is in the system prompt of a new thread for the same landlord only", async (t) => {
@@ -332,6 +332,8 @@ test("no applicant name, contact detail or protected field appears in any messag
         { name: "update_flat_details", args: { facts: [{ fact: "askingRent", value: 950 }] } },
         { name: "update_shortlist", args: { applicantId: ids[0], status: "to_invite", note: null } },
         ...ids.map((applicantId) => ({ name: "get_applicant_profile", args: { applicantId } })),
+        // Each applicant against the next, ranked and excluded ones alike.
+        ...ids.slice(1).map((applicantId, index) => ({ name: "compare_applicants", args: { applicantIds: [ids[index], applicantId] } })),
       ],
     },
     "Done.",
@@ -364,6 +366,7 @@ test("before a Listing too, no applicant name, contact detail or protected field
         { name: "update_selection_criteria", args: { changes: [{ requirement: "schufaCleanOnly", value: true }] } },
         { name: "update_flat_details", args: { facts: [{ fact: "askingRent", value: 950 }, { fact: "rooms", value: 2 }] } },
         ...ids.map((applicantId) => ({ name: "get_applicant_profile", args: { applicantId } })),
+        ...ids.slice(1).map((applicantId, index) => ({ name: "compare_applicants", args: { applicantIds: [ids[index], applicantId] } })),
       ],
     },
     "Done.",

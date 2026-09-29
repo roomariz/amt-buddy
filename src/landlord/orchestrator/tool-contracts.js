@@ -138,6 +138,41 @@ export const LANDLORD_TOOL_CONTRACTS = {
       inactive,
     }),
   },
+  compare_applicants: {
+    name: "compare_applicants",
+    description:
+      "Compare two applicants under the current Selection criteria: each one's rank and Match score (or the Requirement that excluded them), which one leads, the gap between their Match scores, and per criterion the points each gets and the difference, largest difference first ('differences'); criteria worth the same points to both are listed in 'equal'. Use it to explain why one applicant ranks above another.",
+    schema: z.object({
+      applicantIds: z
+        .array(applicantId)
+        .length(2)
+        .refine(([first, second]) => first !== second, "Name two different applicants.")
+        .describe("The two applicants' ids, e.g. ['A-022', 'A-032']; differences are the first's points minus the second's"),
+    }),
+    output: z.looseObject({
+      applicants: z
+        .array(
+          z.looseObject({
+            applicantId,
+            rank: z.number().int().min(1).nullable(),
+            matchScore: z.number().min(0).max(100).nullable(),
+            excludedBy: z.string().nullable(),
+          }),
+        )
+        .length(2),
+      leader: applicantId.nullable(),
+      scoreGap: z.number().nullable(),
+      differences: z.array(
+        z.looseObject({
+          criterion: z.enum(SELECTION_CRITERIA),
+          points: z.record(z.string(), z.number().min(0).max(100)),
+          difference: z.number(),
+        }),
+      ),
+      equal: z.array(z.enum(SELECTION_CRITERIA)),
+      note: z.string().nullable(),
+    }),
+  },
   update_selection_criteria: {
     name: "update_selection_criteria",
     description:

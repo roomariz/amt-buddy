@@ -1,5 +1,6 @@
 import { tool } from "@langchain/core/tools";
 
+import { compareApplicants } from "./landlord-tools.js";
 import { LANDLORD_TOOL_CONTRACTS } from "./tool-contracts.js";
 
 // Fixed data in the shape of the real landlord Tools' results, by applicant id only.
@@ -146,6 +147,8 @@ export const LANDLORD_STUB_HANDLERS = {
     );
     return { profile, matchScore: ranked.matchScore, breakdown: ranked.breakdown, contributions, excludedBy: null, inactive: [] };
   },
+  // The real Tool's comparison over the fixed ranking, so the two cannot drift apart.
+  compare_applicants: ({ applicantIds }) => compareApplicants({ ranked: RANKED, excluded: [] }, applicantIds),
   update_selection_criteria: ({ changes }) => ({
     previous: DEFAULT_CRITERIA,
     criteria: {

@@ -47,6 +47,56 @@ const roundedCriteria = ({ weights, requirements }) => ({
 const contributionsOf = (breakdown) =>
   Object.fromEntries(Object.entries(breakdown).map(([criterion, { subscore, weight }]) => [criterion, subscore === null ? null : oneDecimal(subscore * weight)]));
 
+// Criteria whose points differ by less than this are equal for the two applicants.
+const EQUAL_POINTS = 0.05;
+
+// compare_applicants' result for two applicant ids in a ranking ({ ranked, excluded } of
+// rankApplicants): each one's rank and Match score, or the Requirement that excluded them; when both
+// are ranked, the leader, the Match score gap (first − second) and per active criterion both
+// applicants' points (the contributions) with their difference (first − second), largest first.
+// Computed here (ADR 0004): a live model given both contributions misread which criteria differed.
+// Throws a Tool input error for an id that is not in the pool.
+export function compareApplicants({ ranked, excluded }, [first, second]) {
+  const entryOf = (id) => {
+    const entry = ranked.find(({ applicantId }) => applicantId === id) ?? excluded.find(({ applicantId }) => applicantId === id);
+    if (!entry) throw new LandlordToolInputError(`There is no applicant '${id}' in the Applicant pool.`);
+    return entry;
+  };
+  const entries = [entryOf(first), entryOf(second)];
+  const applicants = entries.map(({ applicantId, rank, matchScore, excludedBy }) => ({
+    applicantId,
+    rank: rank ?? null,
+    matchScore: matchScore ?? null,
+    excludedBy: excludedBy ?? null,
+  }));
+  const out = entries.filter(({ excludedBy }) => excludedBy);
+  if (out.length > 0) {
+    const which = out.map(({ applicantId, excludedBy }) => `${applicantId} is excluded by the Requirement ${excludedBy}`).join("; ");
+    return { applicants, leader: null, scoreGap: null, differences: [], equal: [], note: `${which}: an excluded applicant has no Match score, so there are no points to compare.` };
+  }
+  const [a, b] = entries.map(({ breakdown }) => contributionsOf(breakdown));
+  const differences = [];
+  const equal = [];
+  for (const criterion of Object.keys(a)) {
+    // An inactive criterion counts for neither.
+    if (a[criterion] === null || b[criterion] === null) continue;
+    const difference = oneDecimal(a[criterion] - b[criterion]);
+    if (Math.abs(difference) < EQUAL_POINTS) equal.push(criterion);
+    else differences.push({ criterion, points: { [first]: a[criterion], [second]: b[criterion] }, difference });
+  }
+  differences.sort((x, y) => Math.abs(y.difference) - Math.abs(x.difference));
+  const [scoreA, scoreB] = entries.map(({ matchScore }) => matchScore);
+  const tie = scoreA === scoreB;
+  return {
+    applicants,
+    leader: tie ? null : scoreA > scoreB ? first : second,
+    scoreGap: oneDecimal(scoreA - scoreB),
+    differences,
+    equal,
+    note: tie ? "equal Match scores; ordered by applicant id" : null,
+  };
+}
+
 // A ranked applicant as the model sees it.
 const rankedEntry = ({ applicantId, rank, matchScore, rentToIncome, breakdown }) => ({ applicantId, rank, matchScore, rentToIncome, breakdown });
 
@@ -151,6 +201,10 @@ export function createLandlordTools({ getStore, getApplicantPool, fetchImpl }) {
         shortlistStatus: shortlisted?.status ?? null,
         inactive: rankPool(state).inactive,
       };
+    },
+
+    async compare_applicants({ applicantIds }, landlordId) {
+      return compareApplicants(rankPool(await landlordState(landlordId)), applicantIds);
     },
 
     // Requirements only: the contract has no weights, so the model changes them only through

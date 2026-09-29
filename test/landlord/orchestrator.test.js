@@ -162,6 +162,31 @@ test("saving flat details emits a flat event", async () => {
   assert.deepEqual(calls.map(({ name, args }) => ({ name, args })), [{ name: "update_flat_details", args: { facts: [{ fact: "askingRent", value: 1100 }, { fact: "livingAreaSqm", value: 65 }, { fact: "rooms", value: 2 }] } }]);
 });
 
+test("comparing two applicants emits no change event and the answer quotes the Tool's points", async () => {
+  const answer =
+    "A-001 is 13 points ahead of A-004: affordability (30 against 24) and employment (15 against 9) favour A-001 by 6 points each, previous landlord by 2.5 and credibility by 2.2; SCHUFA and documents are equal.";
+  const { orchestrator, model, calls } = setup({
+    script: [{ toolCalls: [{ name: "compare_applicants", args: { applicantIds: ["A-001", "A-004"] } }] }, answer],
+  });
+
+  const events = await collect(orchestrator.send({ landlordId: "l-1", message: "Why is A-001 above A-004?" }));
+
+  assert.deepEqual(typesOf(events), ["token", "done"]);
+  assert.equal(answerOf(events), answer);
+  assert.equal(model.calls.length, 2, "grounded: no rewrite");
+  assert.deepEqual(calls.map(({ name }) => name), ["compare_applicants"]);
+  // The stub's fixed ranking, default weights: A-001 at full marks (30, 20, 15, 15, 15, 5), A-004
+  // 0.8 × 30 = 24, 20, 15, 0.85 × 15 = 12.75 → 12.8, 0.6 × 15 = 9, 0.5 × 5 = 2.5; Match scores 94 and 81.
+  const { leader, scoreGap, differences, equal } = JSON.parse(model.calls[1].at(-1).content);
+  assert.deepEqual({ leader, scoreGap, equal }, { leader: "A-001", scoreGap: 13, equal: ["schufa", "documents"] });
+  assert.deepEqual(differences.map(({ criterion, difference }) => [criterion, difference]), [
+    ["affordability", 6],
+    ["employment", 6],
+    ["previousLandlord", 2.5],
+    ["credibility", 2.2],
+  ]);
+});
+
 test("a Tool call that fails emits no change event and the model learns the error", async () => {
   const { orchestrator, model, logs } = setup({
     toolOverrides: {

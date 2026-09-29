@@ -14,6 +14,7 @@ import { ScriptedChatModel } from "../orchestrator/helpers/scripted-model.js";
 const SAMPLE_ARGS = {
   get_ranking: {},
   get_applicant_profile: { applicantId: "A-001" },
+  compare_applicants: { applicantIds: ["A-001", "A-004"] },
   update_selection_criteria: { changes: [{ requirement: "schufaCleanOnly", value: true }] },
   adjust_selection_criteria: { changes: [{ criterion: "employment", by: "factor", value: 1.3 }] },
   update_flat_details: { facts: [{ fact: "askingRent", value: 1100 }, { fact: "livingAreaSqm", value: 65 }, { fact: "rooms", value: 2 }] },
@@ -22,9 +23,10 @@ const SAMPLE_ARGS = {
   get_rent_check: {},
 };
 
-test("the eight landlord Tools have contracts", () => {
+test("the nine landlord Tools have contracts", () => {
   assert.deepEqual(LANDLORD_TOOL_NAMES.sort(), [
     "adjust_selection_criteria",
+    "compare_applicants",
     "get_applicant_profile",
     "get_ranking",
     "get_rent_check",

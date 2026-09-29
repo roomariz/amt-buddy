@@ -34,6 +34,7 @@ const someApplicant = pool.applicants[0].id;
 const SAMPLE_ARGS = {
   get_ranking: {},
   get_applicant_profile: { applicantId: someApplicant },
+  compare_applicants: { applicantIds: [someApplicant, pool.applicants[1].id] },
   update_selection_criteria: { changes: [{ requirement: "schufaCleanOnly", value: true }] },
   adjust_selection_criteria: { changes: [{ criterion: "employment", by: "factor", value: 2 }] },
   update_flat_details: { facts: [{ fact: "askingRent", value: 950 }] },
@@ -347,6 +348,113 @@ test("get_applicant_profile: the contributions sum to the Match score; inactive 
   assert.equal((await call("get_applicant_profile", { applicantId: excluded })).contributions, null);
 });
 
+// Two constructed applicants for compare_applicants, households of 2 (the Listing's 60 m², 2 rooms
+// fit them). A-100: net income 3000, fixed-term, clean SCHUFA, credibility 80, first-time renter.
+// A-101: net income 4500, self-employed, negative SCHUFA, credibility 90, previous landlord confirmed
+// without arrears.
+function comparedPair(changes = {}) {
+  const present = { status: "present", reason: null };
+  const base = { ...pool.applicants[0].profile, householdSize: 2, household: { adults: 2, children: 0, childrenUpToSix: 0 } };
+  const documents = (previousLandlord) => ({ schufa: present, incomeProof: present, previousLandlord, complete: true, issues: [] });
+  const profiles = [
+    { ...base, id: "A-100", netHouseholdIncome: 3000, employmentType: "fixed_term", schufaStatus: "clean", credibilityScore: 80, documentCheck: documents({ status: "not_required", reason: null, arrears: null }) },
+    { ...base, id: "A-101", netHouseholdIncome: 4500, employmentType: "self_employed", schufaStatus: "negative", credibilityScore: 90, documentCheck: documents({ ...present, arrears: false }) },
+  ].map((profile) => ({ ...profile, ...changes[profile.id] }));
+  return { applicants: profiles.map((profile) => ({ id: profile.id, profile })), errors: [] };
+}
+
+test("compare_applicants: per criterion both applicants' points and their difference, largest first; equal criteria apart", async () => {
+  const { call } = setup({ applicantPool: comparedPair() });
+
+  const result = await call("compare_applicants", { applicantIds: ["A-101", "A-100"] });
+
+  // Asking rent 900, default weights. A-100: affordability 900 / 3000 = 0.3 → (0.4 − 0.3) / 0.15 ×
+  // 30 = 20, SCHUFA 20, documents 2 of 2 × 15 = 15, credibility 0.8 × 15 = 12, fixed-term 0.6 × 15 =
+  // 9, first-time renter 0.5 × 5 = 2.5: 78.5. A-101: 900 / 4500 = 0.2 → 30, negative SCHUFA 0,
+  // documents 3 of 3 × 15 = 15, 0.9 × 15 = 13.5, self-employed 0.6 × 15 = 9, confirmed 5: 72.5.
+  // Differences are A-101's points minus A-100's; affordability favours the lower-ranked A-101.
+  assert.deepEqual(result, {
+    applicants: [
+      { applicantId: "A-101", rank: 2, matchScore: 72.5, excludedBy: null },
+      { applicantId: "A-100", rank: 1, matchScore: 78.5, excludedBy: null },
+    ],
+    leader: "A-100",
+    scoreGap: -6,
+    differences: [
+      { criterion: "schufa", points: { "A-101": 0, "A-100": 20 }, difference: -20 },
+      { criterion: "affordability", points: { "A-101": 30, "A-100": 20 }, difference: 10 },
+      { criterion: "previousLandlord", points: { "A-101": 5, "A-100": 2.5 }, difference: 2.5 },
+      { criterion: "credibility", points: { "A-101": 13.5, "A-100": 12 }, difference: 1.5 },
+    ],
+    equal: ["documents", "employment"],
+    note: null,
+  });
+  assert.doesNotThrow(() => LANDLORD_TOOL_CONTRACTS.compare_applicants.output.parse(result));
+});
+
+test("compare_applicants: equal Match scores have no leader and say they are ordered by applicant id", async () => {
+  // A-101 as A-100 in every scored respect.
+  const same = { netHouseholdIncome: 3000, employmentType: "fixed_term", schufaStatus: "clean", credibilityScore: 80 };
+  const pair = comparedPair({ "A-101": same });
+  pair.applicants[1].profile.documentCheck = pair.applicants[0].profile.documentCheck;
+  const { call } = setup({ applicantPool: pair });
+
+  const result = await call("compare_applicants", { applicantIds: ["A-100", "A-101"] });
+
+  assert.equal(result.leader, null);
+  assert.equal(result.scoreGap, 0);
+  assert.equal(result.note, "equal Match scores; ordered by applicant id");
+  assert.deepEqual(result.differences, []);
+  assert.deepEqual(result.equal, ["affordability", "schufa", "documents", "credibility", "employment", "previousLandlord"]);
+  assert.deepEqual(result.applicants.map(({ rank, matchScore }) => ({ rank, matchScore })), [{ rank: 1, matchScore: 78.5 }, { rank: 2, matchScore: 78.5 }]);
+});
+
+test("compare_applicants: an excluded applicant has no points to compare; the note says which Requirement", async () => {
+  const { store, landlordId, call } = setup({ applicantPool: comparedPair() });
+  store.saveCriteria(landlordId, { ...store.getCriteria(landlordId), requirements: { ...store.getCriteria(landlordId).requirements, schufaCleanOnly: true } });
+
+  const result = await call("compare_applicants", { applicantIds: ["A-100", "A-101"] });
+
+  assert.deepEqual(result, {
+    applicants: [
+      { applicantId: "A-100", rank: 1, matchScore: 78.5, excludedBy: null },
+      { applicantId: "A-101", rank: null, matchScore: null, excludedBy: "schufaCleanOnly" },
+    ],
+    leader: null,
+    scoreGap: null,
+    differences: [],
+    equal: [],
+    note: "A-101 is excluded by the Requirement schufaCleanOnly: an excluded applicant has no Match score, so there are no points to compare.",
+  });
+  assert.doesNotThrow(() => LANDLORD_TOOL_CONTRACTS.compare_applicants.output.parse(result));
+});
+
+test("compare_applicants: an inactive criterion is in neither the differences nor the equal ones", async () => {
+  const { call } = setup({ withListing: false, applicantPool: comparedPair() });
+
+  const result = await call("compare_applicants", { applicantIds: ["A-101", "A-100"] });
+
+  // No asking rent: affordability is off, the other five share 100 % (SCHUFA 28.57, credibility
+  // 21.43, previous landlord 7.14). SCHUFA 0 against 28.6; previous landlord 7.1 against 3.6 (3.5);
+  // credibility 19.3 against 17.1 (2.2).
+  assert.deepEqual(result.differences.map(({ criterion, difference }) => ({ criterion, difference })), [
+    { criterion: "schufa", difference: -28.6 },
+    { criterion: "previousLandlord", difference: 3.5 },
+    { criterion: "credibility", difference: 2.2 },
+  ]);
+  assert.deepEqual(result.equal, ["documents", "employment"]);
+});
+
+test("compare_applicants refuses an unknown id, the same id twice, or other than two ids, as input errors", async () => {
+  const { call } = setup({ applicantPool: comparedPair() });
+
+  const refused = [["A-100", "A-999"], ["A-100", "A-100"], ["A-100"], ["A-100", "A-101", "A-100"]];
+  for (const applicantIds of refused) {
+    await assert.rejects(call("compare_applicants", { applicantIds }), (error) => errorKind(error) === "input", JSON.stringify(applicantIds));
+  }
+  await assert.rejects(call("compare_applicants", { applicantIds: ["A-100", "A-999"] }), /no applicant 'A-999'/);
+});
+
 test("update_shortlist never hands the landlord's earlier note back to the model", async () => {
   const { store, landlordId, call } = setup();
   store.saveShortlistEntry(landlordId, { applicantId: someApplicant, status: "to_invite", note: "Call Mrs. X on Monday" });
@@ -444,7 +552,7 @@ test("the system prompt explains the pool stats fields and when a share may be c
   assert.match(system, /canAffordAtMedian = how many could afford the Mietspiegel median rent "medianRent"/);
   assert.match(system, /canAfford = how many can afford the asking rent/);
   assert.match(system, /capped only for a change whose "capped" is true/);
-  assert.match(system, /compare their "contributions" criterion by criterion: name the criteria with the largest differences in points, and only those/);
+  assert.match(system, /call compare_applicants and go through its "differences" in order: say which criteria favour which applicant and by how many points, including those that favour the lower-ranked one; call criteria equal only if they are in "equal"/);
 });
 
 test("a whitespace-only note is an input error and nothing is stored", async () => {
