@@ -75,8 +75,13 @@ Shortlist panel, set each entry's status (to invite, invited, declined), add a
 short note, or remove it.
 Amt Buddy never contacts applicants; the status only helps you keep track.
 
-Signing in again with the same name brings your flat and your Shortlist back,
-also after a restart.
+Tell the chat what matters to you (for example "I'd like someone who stays
+long-term") and Amt Buddy remembers it for your next conversations, together
+with your Selection criteria. The **Remembered preferences** panel lists what it
+remembered; delete any entry you don't want kept.
+
+Signing in again with the same name brings your flat, your Shortlist and your
+remembered preferences back, also after a restart.
 The data is kept in `data/landlord.sqlite` (set `LANDLORD_DB_PATH` to use another
 file).
 

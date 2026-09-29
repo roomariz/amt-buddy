@@ -1483,3 +1483,10 @@ footer a { color: inherit; }
 .shortlist-add:disabled { cursor: default; color: #1f5f2e; background: none; }
 .recommendation-card .shortlist-add { margin-top: 8px; padding-left: 0; }
 #applicant-detail-body > .shortlist-add { margin-bottom: 8px; padding-left: 0; }
+
+/* The remembered Landlord preferences */
+.preferences-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.preferences-entry { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 10px 12px; border: 1px solid #e5e5e5; border-radius: 12px; background: #fafafa; }
+.preferences-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
+.preferences-date { font-size: 0.8rem; color: #5d5d5d; }
+.preferences-delete { flex: none; }

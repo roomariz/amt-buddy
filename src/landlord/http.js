@@ -11,6 +11,8 @@ import { normalizeLandlordName } from "./store.js";
 const MAX_NAME_LENGTH = 100;
 const MAX_MESSAGE_LENGTH = 4_000;
 const LANDLORD_PATH = "/api/v1/landlord/";
+const APPLICANT_NOT_FOUND = ["applicant_not_found", "No applicant with this id."];
+const NOTE_NOT_FOUND = ["note_not_found", "No remembered preference with this id."];
 
 class LandlordInputError extends Error {
   constructor(details) {
@@ -150,7 +152,8 @@ export function createLandlordApi({ getStore, getApplicantPool = () => EMPTY_POO
   }
 
   // GET /api/v1/landlord/:landlordId/dashboard → { listing, rentCheck, criteria, ranked, excluded,
-  // stats, recommendations, hint, shortlist, defaultCriteria, poolErrors }.
+  // stats, recommendations, hint, shortlist, notes, defaultCriteria, poolErrors }; `notes` are the
+  // remembered Landlord preferences, [{ noteId, note, created }], oldest first.
   async function dashboard(response, landlordId) {
     const listing = getStore().getListing(landlordId);
     const pool = await getApplicantPool();
@@ -164,6 +167,7 @@ export function createLandlordApi({ getStore, getApplicantPool = () => EMPTY_POO
         defaultCriteria: DEFAULT_CRITERIA,
         ...ranking,
         shortlist: shortlistFor(getStore().getShortlist(landlordId), pool, ranking),
+        notes: getStore().listNotes(landlordId),
         poolErrors: pool.errors,
       },
     });
@@ -260,6 +264,16 @@ export function createLandlordApi({ getStore, getApplicantPool = () => EMPTY_POO
     else yield* orchestrator.send({ landlordId, message, signal });
   }
 
+  // DELETE /api/v1/landlord/:landlordId/notes/:noteId → { noteId, deleted: true }; a note this
+  // landlord does not have → 404.
+  async function deleteNote(request, response, landlordId, noteId) {
+    if (!getStore().deleteNote(landlordId, noteId)) {
+      sendError(response, 404, ...NOTE_NOT_FOUND);
+      return;
+    }
+    sendJson(response, 200, { data: { noteId, deleted: true } });
+  }
+
   const routes = {
     "GET dashboard": (request, response, landlordId) => dashboard(response, landlordId),
     "PUT listing": saveListing,
@@ -279,6 +293,14 @@ export function createLandlordApi({ getStore, getApplicantPool = () => EMPTY_POO
     "GET applicants": (request, response, landlordId, applicantId) => applicantDetail(response, landlordId, applicantId),
     "PUT shortlist": putShortlistEntry,
     "DELETE shortlist": deleteShortlistEntry,
+    "DELETE notes": deleteNote,
+  };
+
+  // The paths that carry an id after the resource, and the error for an id that cannot be decoded.
+  const ID_RESOURCES = {
+    shortlist: APPLICANT_NOT_FOUND,
+    applicants: APPLICANT_NOT_FOUND,
+    notes: NOTE_NOT_FOUND,
   };
 
   return {
@@ -289,10 +311,10 @@ export function createLandlordApi({ getStore, getApplicantPool = () => EMPTY_POO
         await signIn(request, response);
         return true;
       }
-      const match = /^([^/]+)\/(dashboard|listing|chat|criteria|shortlist|applicants)(?:\/([^/]+))?$/.exec(path);
-      // The Shortlist's and the applicants' paths carry an applicant id; the others none.
-      const takesApplicant = match && (match[2] === "shortlist" || match[2] === "applicants");
-      const handler = match && takesApplicant === (match[3] !== undefined) && routes[`${request.method} ${match[2]}`];
+      const match = /^([^/]+)\/(dashboard|listing|chat|criteria|shortlist|applicants|notes)(?:\/([^/]+))?$/.exec(path);
+      // The Shortlist's and the applicants' paths carry an applicant id, the notes' a note id; the others none.
+      const takesId = match && Object.hasOwn(ID_RESOURCES, match[2]);
+      const handler = match && takesId === (match[3] !== undefined) && routes[`${request.method} ${match[2]}`];
       if (!handler) {
         sendError(response, 404, "not_found", "No such landlord endpoint.");
         return true;
@@ -302,12 +324,12 @@ export function createLandlordApi({ getStore, getApplicantPool = () => EMPTY_POO
         sendError(response, 404, "landlord_not_found", "No landlord with this id. Sign in again.");
         return true;
       }
-      const applicantId = match[3] === undefined ? undefined : decodeId(match[3]);
-      if (applicantId === null) {
-        sendError(response, 404, "applicant_not_found", "No applicant with this id.");
+      const id = match[3] === undefined ? undefined : decodeId(match[3]);
+      if (id === null) {
+        sendError(response, 404, ...ID_RESOURCES[match[2]]);
         return true;
       }
-      await handler(request, response, landlordId, applicantId);
+      await handler(request, response, landlordId, id);
       return true;
     },
   };

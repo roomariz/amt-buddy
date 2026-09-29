@@ -15,14 +15,15 @@ import { ScriptedChatModel } from "../orchestrator/helpers/scripted-model.js";
 const OPENAI_ENV = { OPENAI_MODEL: "scripted", OPENAI_API_KEY: "sk-test" };
 const LISTING = { address: "Wühlischstraße 30, 10245 Berlin", livingAreaSqm: 60, rooms: 2, askingRent: 900 };
 
-// `script(dashboard)` gives the model's script once the Listing is saved, so answers can quote the
-// real figures the Tools will return.
-async function start() {
+// `setScript` sets the model's script once the Listing is saved, so answers can quote the real
+// figures the Tools will return. `store` lets two apps share one landlord store (a server restart:
+// the chat thread is gone, the store is not); `name` is the landlord who signs in.
+async function start({ store = createLandlordStore({ path: ":memory:" }), name = "Erika Muster" } = {}) {
   let model;
   let script = [];
   const app = createApp({
     env: OPENAI_ENV,
-    landlordStore: createLandlordStore({ path: ":memory:" }),
+    landlordStore: store,
     fetchImpl: createFakeBerlinWfs().fetchImpl,
     // The server's own Tools and context; only the model is scripted.
     createLandlordChat: ({ tools, getContext }) => {
@@ -36,7 +37,7 @@ async function start() {
     const response = await fetch(base + path, { method, headers: { "content-type": "application/json" }, body: body && JSON.stringify(body) });
     return response;
   };
-  const { landlordId } = (await (await request("POST", "/api/v1/landlord/sessions", { name: "Erika Muster" })).json()).data;
+  const { landlordId } = (await (await request("POST", "/api/v1/landlord/sessions", { name })).json()).data;
   await request("PUT", `/api/v1/landlord/${landlordId}/listing`, LISTING);
   const dashboard = async () => (await (await request("GET", `/api/v1/landlord/${landlordId}/dashboard`)).json()).data;
   const applicant = async (applicantId) => (await (await request("GET", `/api/v1/landlord/${landlordId}/applicants/${applicantId}`)).json()).data;
@@ -170,6 +171,40 @@ test("the system prompt carries the Listing, its Rent check and the pool stats e
   assert.match(system, new RegExp(`Applicant pool statistics:\\n\\{"total":${stats.total},`));
   assert.match(system, /whom to invite.*get_ranking.*Shortlist/);
   assert.match(system, /why one applicant ranks above another.*get_applicant_profile for both/);
+});
+
+test("a preference remembered in one conversation is in the system prompt of a new thread for the same landlord only", async (t) => {
+  const store = createLandlordStore({ path: ":memory:" });
+  const first = await start({ store });
+  first.setScript([
+    { toolCalls: [{ name: "remember_preference", args: { note: "Wants someone who stays long-term." } }] },
+    "I'll remember that you want someone who stays long-term.",
+  ]);
+  const events = await first.chat("I'd like someone who stays long-term.");
+  await first.close();
+  assert.deepEqual(typesOf(events), ["notes", "token", "done"]);
+
+  // A server restart: a new app and a new Orchestrator (so a new, empty chat thread) on the same store.
+  const second = await start({ store });
+  t.after(second.close);
+  second.setScript(["You told me you want someone who stays long-term."]);
+  await second.chat("What do you remember about me?");
+  const system = second.model.calls[0][0].content;
+  assert.equal(second.model.calls[0].length, 2, "a new thread: the system prompt and this message only");
+  assert.match(system, /Landlord preferences remembered from earlier conversations:/);
+  assert.match(system, /Wants someone who stays long-term\./);
+  assert.match(system, /"weights":\{"affordability":30,/);
+  assert.match(system, /do not ask the landlord to repeat them/);
+  assert.deepEqual(
+    (await second.dashboard()).notes.map(({ note }) => note),
+    ["Wants someone who stays long-term."],
+  );
+
+  const other = await start({ store, name: "Max Mustermann" });
+  t.after(other.close);
+  other.setScript(["Nothing yet."]);
+  await other.chat("What do you remember about me?");
+  assert.doesNotMatch(other.model.calls[0][0].content, /stays long-term/);
 });
 
 // Everything in the committed pool's files that must never reach the model: names (declared and on

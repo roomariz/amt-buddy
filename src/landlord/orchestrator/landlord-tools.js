@@ -4,13 +4,11 @@ import { getApplicantProfile } from "../applicant-profile.js";
 import { CriteriaInputError, updateSelectionCriteria } from "../criteria.js";
 import { rankApplicants } from "../scorer.js";
 import { ShortlistInputError, updateShortlist } from "../shortlist.js";
-import { LANDLORD_STUB_HANDLERS } from "./stub-tools.js";
 import { LANDLORD_TOOL_CONTRACTS } from "./tool-contracts.js";
 
 // The real landlord Tools, built on the dashboard's functions (scorer, criteria, applicant
 // profile, Shortlist). Every result names applicants by id only: the Applicant profile is the
 // anonymised one, and neither names, contact details nor Shortlist notes are passed on.
-// remember_preference stays a stub until the Landlord preferences are stored (#47).
 
 // How many ranked applicants get_ranking shows, and update_selection_criteria's "new top".
 const RANKING_LIMIT = 10;
@@ -112,7 +110,12 @@ export function createLandlordTools({ getStore, getApplicantPool }) {
       return { previous: roundedCriteria(updated.previous), criteria: roundedCriteria(updated.criteria), top };
     },
 
-    remember_preference: LANDLORD_STUB_HANDLERS.remember_preference,
+    async remember_preference({ note }, landlordId) {
+      const text = note.trim();
+      if (!text) throw new LandlordToolInputError("The note is empty: say in a few words what the landlord prefers.");
+      const { noteId, note: saved } = getStore().addNote(landlordId, text);
+      return { noteId, note: saved };
+    },
 
     async update_shortlist({ applicantId, status, note }, landlordId) {
       const { applicants } = await getApplicantPool();
@@ -148,14 +151,21 @@ export function createLandlordTools({ getStore, getApplicantPool }) {
 }
 
 // createLandlordContext({ getStore, getApplicantPool }) → getContext(landlordId) for the Landlord
-// Orchestrator: what its system prompt shows every turn, the Listing (with its Rent check) and the
-// pool stats under the landlord's Selection criteria (no stats without a Listing).
+// Orchestrator: what its system prompt shows every turn, loaded from the store so it outlives the
+// chat thread (the long-term memory): the Landlord preferences (saved Selection criteria and the
+// remembered notes), the Listing (with its Rent check) and the pool stats under those criteria (no
+// stats without a Listing).
 export function createLandlordContext({ getStore, getApplicantPool }) {
   return async (landlordId) => {
     const store = getStore();
+    const criteria = store.getCriteria(landlordId);
+    const preferences = {
+      criteria: roundedCriteria(criteria),
+      notes: store.listNotes(landlordId).map(({ note, created }) => ({ note, created: created.slice(0, 10) })),
+    };
     const listing = store.getListing(landlordId);
-    if (!listing) return { listing: null };
+    if (!listing) return { listing: null, preferences };
     const { applicants } = await getApplicantPool();
-    return { listing, stats: rankPool({ applicants, listing, criteria: store.getCriteria(landlordId) }).stats };
+    return { listing, preferences, stats: rankPool({ applicants, listing, criteria }).stats };
   };
 }

@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { APPLICANT_POOL_DIRECTORY, readApplicantPool } from "../../src/landlord/applicant-pool.js";
 import { POOL_DATE } from "../../src/landlord/applicant-pool-generator.js";
 import { buildListing } from "../../src/landlord/listing.js";
-import { createLandlordTools, LANDLORD_TOOL_CONTRACTS, LANDLORD_TOOL_NAMES } from "../../src/landlord/orchestrator/index.js";
+import { createLandlordContext, createLandlordTools, LANDLORD_TOOL_CONTRACTS, LANDLORD_TOOL_NAMES } from "../../src/landlord/orchestrator/index.js";
 import { createLandlordStore } from "../../src/landlord/store.js";
 import { createFakeBerlinWfs } from "../helpers/fake-berlin-wfs.js";
 
@@ -120,4 +120,36 @@ test("update_shortlist never hands the landlord's earlier note back to the model
   assert.deepEqual(changed, { applicantId: someApplicant, status: "invited", note: null });
   assert.equal(store.getShortlist(landlordId)[0].note, "Call Mrs. X on Monday", "the note is kept");
   assert.equal((await call("update_shortlist", { applicantId: someApplicant, status: "invited", note: "Viewing Friday" })).note, "Viewing Friday");
+});
+
+test("remember_preference stores the note for this landlord only; the context shows it with the saved criteria", async () => {
+  const { store, landlordId, call } = setup();
+  const other = store.signIn("Max Mustermann").landlordId;
+  const getContext = createLandlordContext({ getStore: () => store, getApplicantPool: async () => pool });
+
+  const first = await call("remember_preference", { note: "  Wants someone who stays long-term.  " });
+  const second = await call("remember_preference", { note: "No students, please." });
+
+  assert.equal(first.note, "Wants someone who stays long-term.");
+  assert.notEqual(first.noteId, second.noteId);
+  assert.doesNotThrow(() => LANDLORD_TOOL_CONTRACTS.remember_preference.output.parse(first));
+  const context = await getContext(landlordId);
+  assert.deepEqual(context.preferences.notes.map(({ note }) => note), ["Wants someone who stays long-term.", "No students, please."]);
+  assert.deepEqual(context.preferences.criteria, store.getCriteria(landlordId));
+  assert.deepEqual((await getContext(other)).preferences.notes, []);
+
+  // Saved criteria, as the chat can quote them: weights to one decimal (50 of 135 → 37 %, 30 → 22.2 %).
+  await call("update_selection_criteria", { weights: { employment: 50 } });
+  const { weights } = (await getContext(landlordId)).preferences.criteria;
+  assert.equal(weights.employment, 37);
+  assert.equal(weights.affordability, 22.2);
+});
+
+test("a whitespace-only note is an input error and nothing is stored", async () => {
+  const { landlordId, store, call } = setup({ withListing: false });
+  const getContext = createLandlordContext({ getStore: () => store, getApplicantPool: async () => pool });
+  await assert.rejects(call("remember_preference", { note: "   " }), (error) => error.kind === "input");
+  const context = await getContext(landlordId);
+  assert.equal(context.listing, null);
+  assert.deepEqual(context.preferences.notes, []);
 });

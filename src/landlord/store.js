@@ -5,8 +5,8 @@ import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 import { DEFAULT_CRITERIA } from "./scorer.js";
 
-// The landlord's state in SQLite (Node's built-in node:sqlite). Later landlord tickets add
-// their own tables (preference notes) next to landlords, listings, criteria and shortlist.
+// The landlord's state in SQLite (Node's built-in node:sqlite): landlords, listings, criteria,
+// shortlist and preference_notes (the free-text Landlord preferences).
 const SCHEMA = `
   CREATE TABLE IF NOT EXISTS landlords (
     id TEXT PRIMARY KEY,
@@ -31,6 +31,12 @@ const SCHEMA = `
     added TEXT NOT NULL,
     updated TEXT NOT NULL,
     PRIMARY KEY (landlord_id, applicant_id)
+  );
+  CREATE TABLE IF NOT EXISTS preference_notes (
+    id TEXT PRIMARY KEY,
+    landlord_id TEXT NOT NULL REFERENCES landlords(id),
+    note TEXT NOT NULL,
+    created TEXT NOT NULL
   );
 `;
 
@@ -59,6 +65,9 @@ const toLandlord = (row) => (row ? { landlordId: row.id, name: row.name } : null
 //   status and note; an entry keeps the time it was first added. No validation: see shortlist.js.
 // - removeShortlistEntry(landlordId, applicantId): removes the entry, if there is one.
 // - getShortlist(landlordId) → [{ applicantId, status, note, added, updated }], in the order added.
+// - addNote(landlordId, note) → { noteId, note, created }: stores a free-text Landlord preference.
+// - listNotes(landlordId) → [{ noteId, note, created }], oldest first.
+// - deleteNote(landlordId, noteId) → true when the landlord had that note and it is gone.
 // - close(): closes the database.
 export function createLandlordStore({ path = ":memory:" } = {}) {
   if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
@@ -88,6 +97,11 @@ export function createLandlordStore({ path = ":memory:" } = {}) {
   const selectShortlist = db.prepare(
     "SELECT applicant_id, status, note, added, updated FROM shortlist WHERE landlord_id = ? ORDER BY added, rowid",
   );
+
+  const insertNote = db.prepare("INSERT INTO preference_notes (id, landlord_id, note, created) VALUES (?, ?, ?, ?)");
+  // rowid breaks ties between notes added within the same millisecond.
+  const selectNotes = db.prepare("SELECT id, note, created FROM preference_notes WHERE landlord_id = ? ORDER BY created, rowid");
+  const deleteNoteRow = db.prepare("DELETE FROM preference_notes WHERE landlord_id = ? AND id = ?");
 
   return {
     signIn(name) {
@@ -124,6 +138,17 @@ export function createLandlordStore({ path = ":memory:" } = {}) {
         added: row.added,
         updated: row.updated,
       }));
+    },
+    addNote(landlordId, note) {
+      const entry = { noteId: randomUUID(), note, created: new Date().toISOString() };
+      insertNote.run(entry.noteId, landlordId, entry.note, entry.created);
+      return entry;
+    },
+    listNotes(landlordId) {
+      return selectNotes.all(landlordId).map((row) => ({ noteId: row.id, note: row.note, created: row.created }));
+    },
+    deleteNote(landlordId, noteId) {
+      return deleteNoteRow.run(landlordId, noteId).changes > 0;
     },
     close() {
       db.close();
