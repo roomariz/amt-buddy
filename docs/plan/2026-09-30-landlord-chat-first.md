@@ -202,7 +202,30 @@ ranking table, the Excluded section, the profile panel.
   - issue #56 (address without postal code): the chat asks for the postal code;
   - issue #57.
 
-## Work packages (sequential; commit at each green boundary; `npm test` green each time)
+## How the work is split
+
+The roles follow the user's multi-agent standard (from the BioNumbers project, without its testing
+practices):
+
+- **Orchestrator (the main session)**:
+  - writes the briefs and settles each contract before any fan-out;
+  - commits, and alone edits the shared files: `README.md`, `docs/api.md`, ADRs, `i18n.js`
+    when it is shared by parallel writers, and this plan;
+  - runs fault seeding and the final `npm test`.
+- **Writers**:
+  - implement against a settled contract;
+  - in parallel, one file each;
+  - never commit, never touch shared docs, never weaken a test (they stop and report);
+  - end with a JSON report `{ changed_files, contract, notes, blocked }`.
+- **Verifier**:
+  - measures and never edits;
+  - runs the suite, checks the diff against the claim, and names the test that would fail if a
+    claim were false;
+  - reports `{ green, suite, claim_holds, findings: [{ file, line, detail, wrong_if }],
+    not_checked, blocked }`;
+  - a separate writer applies its fixes.
+
+## Work packages (sequential; the orchestrator commits at each green boundary)
 
 1. **Backend**:
    - the scorer's inactive criteria;
