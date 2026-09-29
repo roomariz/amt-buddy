@@ -16,7 +16,7 @@ advice.
 
 ## Quick start
 
-You need [Node.js](https://nodejs.org/) 22.5 or newer (the landlord page uses
+You need [Node.js](https://nodejs.org/) 22.13 or newer (the landlord page uses
 Node's built-in SQLite).
 
 ```sh
