@@ -1,23 +1,35 @@
 // The /chatbot page's calls to the server (docs/orchestrator.md, "HTTP and SSE interface").
 // `fetchImpl` is the browser's fetch; tests pass a fake or run against the real app.
 
+import { t } from "../i18n.js";
 import { createSseParser } from "./sse.js";
 import { endTurn, initialTurn, reduceTurn } from "./turn.js";
 
+// Upload reasons in the current UI language (getters: read when an upload fails).
 export const UPLOAD_TEXT = {
-  noTextLayer:
-    "In diesem PDF ist kein lesbarer Text (zum Beispiel ein eingescannter Vertrag). Bitte laden Sie ein PDF mit Text oder eine Textdatei hoch.",
-  image: "Bilder von Mietverträgen können noch nicht gelesen werden. Bitte laden Sie ein PDF mit Text oder eine Textdatei hoch.",
-  tooLarge: "Die Datei ist zu groß (höchstens 15 MB).",
-  empty: "Das Dokument ist leer.",
-  failed: "Der Mietvertrag konnte nicht hochgeladen werden. Bitte versuchen Sie es noch einmal.",
+  get noTextLayer() {
+    return t("upload.noTextLayer");
+  },
+  get image() {
+    return t("upload.image");
+  },
+  get tooLarge() {
+    return t("upload.tooLarge");
+  },
+  get empty() {
+    return t("upload.empty");
+  },
+  get failed() {
+    return t("upload.failed");
+  },
 };
 
-const UPLOAD_REASONS = {
-  ocr_no_text: UPLOAD_TEXT.noTextLayer,
-  image_ocr_provider_required: UPLOAD_TEXT.image,
-  file_too_large: UPLOAD_TEXT.tooLarge,
-  empty_text: UPLOAD_TEXT.empty,
+// The server's reasons for a lease it cannot read → i18n keys. The form page's OCR upload shares them.
+export const UPLOAD_REASON_KEYS = {
+  ocr_no_text: "upload.noTextLayer",
+  image_ocr_provider_required: "upload.image",
+  file_too_large: "upload.tooLarge",
+  empty_text: "upload.empty",
 };
 
 const postJson = (fetchImpl, url, body, signal) =>
@@ -29,7 +41,14 @@ const postJson = (fetchImpl, url, body, signal) =>
   });
 
 // How the sidebar names each chat mode.
-export const MODE_LABEL = { orchestrator: "KI-Chat", rule_based: "Regelmodus" };
+export const MODE_LABEL = {
+  get orchestrator() {
+    return t("mode.orchestrator");
+  },
+  get rule_based() {
+    return t("mode.rule_based");
+  },
+};
 
 // "orchestrator" or "rule_based"; null when the status cannot be read.
 export async function fetchChatMode(fetchImpl) {
@@ -44,7 +63,7 @@ export async function fetchChatMode(fetchImpl) {
 }
 
 // Uploads a lease ({ file: base64, mimeType, fileName } or { text }) → { documentId }.
-// Throws an Error whose message is a friendly German reason.
+// Throws an Error whose message is a friendly reason in the UI language.
 export async function uploadLease({ fetchImpl, payload, signal }) {
   let response;
   let body;
@@ -58,7 +77,7 @@ export async function uploadLease({ fetchImpl, payload, signal }) {
   const documentId = body?.data?.documentId;
   if (response.ok && typeof documentId === "string") return { documentId };
   const code = body?.error?.details?.[0]?.code;
-  throw new Error(UPLOAD_REASONS[code] ?? UPLOAD_TEXT.failed);
+  throw new Error(t(UPLOAD_REASON_KEYS[code] ?? "upload.failed"));
 }
 
 // Runs one chat turn: posts `request` ({ threadId, message?, documentId?, confirm? }), folds the

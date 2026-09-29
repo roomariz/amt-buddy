@@ -5,9 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
+      data-i18n-attr="content:meta.chatDescription"
       content="Amt-Buddy Chat: Fragen zu Berliner Adressen, Mietspiegel 2026 und Belegung (§ 7 WoAufG Bln) stellen oder den Mietvertrag prüfen lassen."
     />
-    <title>Amt-Buddy · Chat</title>
+    <title data-i18n="meta.chatTitle">Amt-Buddy · Chat</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body class="gpt-body">
@@ -20,7 +21,7 @@
             <span class="brand-name">Amt-Buddy Chatbot</span>
           </div>
           <button type="button" id="btn-new-chat" class="new-chat-btn">
-            <span class="icon">💬</span> Neuer Chat
+            <span class="icon">💬</span> <span data-i18n="chat.newChat">Neuer Chat</span>
           </button>
         </div>
 
@@ -33,7 +34,7 @@
 
         <div class="sidebar-footer">
           <a href="/" class="sidebar-back-link">
-            <span>←</span> Zur Formularansicht
+            <span aria-hidden="true">←</span> <span data-i18n="chat.backToForm">Zur Formularansicht</span>
           </a>
           <div class="sidebar-user">
             <div class="user-avatar">BE</div>
@@ -49,15 +50,20 @@
       <main class="gpt-main">
         <!-- Top App Bar -->
         <header class="gpt-topbar">
-          <button type="button" id="sidebar-toggle-btn" class="icon-btn" aria-label="Seitenleiste umschalten" title="Seitenleiste">
+          <button type="button" id="sidebar-toggle-btn" class="icon-btn" aria-label="Seitenleiste umschalten" title="Seitenleiste" data-i18n-attr="aria-label:chat.sidebarToggle;title:chat.sidebar">
             ☰
           </button>
           <div class="topbar-center">
             <span class="topbar-title">Amt-Buddy Chatbot</span>
           </div>
-          <a href="/" class="topbar-exit-btn">
-            Standard-Formular ↗
-          </a>
+          <div class="topbar-actions">
+            <div class="lang-switch" role="group" aria-label="Sprache" data-i18n-attr="aria-label:lang.label">
+              <button type="button" data-lang="de" lang="de" aria-label="Deutsch" aria-pressed="true">DE</button>
+              <span aria-hidden="true">|</span>
+              <button type="button" data-lang="en" lang="en" aria-label="English" aria-pressed="false">EN</button>
+            </div>
+            <a href="/" class="topbar-exit-btn" data-i18n="chat.standardForm">Standard-Formular ↗</a>
+          </div>
         </header>
 
         <!-- Chat Scroll Container -->
@@ -65,7 +71,7 @@
           <!-- Initial Center Hero: Document Upload & Welcome -->
           <div id="gpt-hero" class="gpt-hero">
             <h2 class="hero-title">Amt-Buddy Chatbot</h2>
-            <p class="hero-subtitle">
+            <p class="hero-subtitle" data-i18n="chat.heroSubtitle">
               Stellen Sie Ihre Frage oder laden Sie Ihren Mietvertrag hoch. Amt-Buddy prüft Adresse, Mietspiegel und Belegung mit amtlichen Berliner Daten.
             </p>
 
@@ -73,25 +79,25 @@
             <div class="hero-upload-card" id="hero-upload-card">
               <div class="upload-card-icon">📄</div>
               <div class="upload-card-body">
-                <h3 class="upload-card-title">Mietvertrag hochladen</h3>
-                <p class="upload-card-desc">PDF mit Text, TXT oder Markdown hier ablegen oder Datei auswählen</p>
-                <button type="button" class="btn-select-file" id="btn-hero-select-file">
+                <h3 class="upload-card-title" data-i18n="chat.uploadTitle">Mietvertrag hochladen</h3>
+                <p class="upload-card-desc" data-i18n="chat.uploadDesc">PDF mit Text, TXT oder Markdown hier ablegen oder Datei auswählen</p>
+                <button type="button" class="btn-select-file" id="btn-hero-select-file" data-i18n="chat.selectFile">
                   Datei auswählen
                 </button>
               </div>
             </div>
 
             <!-- Optional suggestion prompts: each one sends its question as a message -->
-            <div class="bot-options-grid hero-suggestions" role="group" aria-label="Beispielfragen">
-              <button type="button" class="bot-option-btn" data-prompt="Liegt meine Miete im Mietspiegel? Wühlischstraße 30, 10245 Berlin, 60 m², 900 € Nettokaltmiete.">💶 Mietspiegel prüfen</button>
-              <button type="button" class="bot-option-btn" data-prompt="Ist meine Wohnung überbelegt? 50 m², 2 Zimmer, 4 Personen, davon 1 Kind unter 6 Jahren.">👥 Belegung prüfen</button>
-              <button type="button" class="bot-option-btn" data-prompt="Bitte prüfe die Adresse Berliner Straße 155, 10715 Berlin.">📍 Adresse prüfen</button>
-              <button type="button" class="bot-option-btn" data-prompt="Was bedeutet die Wohnlage im Berliner Mietspiegel?">❓ Was ist die Wohnlage?</button>
+            <div class="bot-options-grid hero-suggestions" role="group" aria-label="Beispielfragen" data-i18n-attr="aria-label:chat.suggestions">
+              <button type="button" class="bot-option-btn" data-i18n="chat.suggestRent" data-i18n-attr="data-prompt:chat.suggestRentPrompt" data-prompt="Liegt meine Miete im Mietspiegel? Wühlischstraße 30, 10245 Berlin, 60 m², 900 € Nettokaltmiete.">💶 Mietspiegel prüfen</button>
+              <button type="button" class="bot-option-btn" data-i18n="chat.suggestOccupancy" data-i18n-attr="data-prompt:chat.suggestOccupancyPrompt" data-prompt="Ist meine Wohnung überbelegt? 50 m², 2 Zimmer, 4 Personen, davon 1 Kind unter 6 Jahren.">👥 Belegung prüfen</button>
+              <button type="button" class="bot-option-btn" data-i18n="chat.suggestAddress" data-i18n-attr="data-prompt:chat.suggestAddressPrompt" data-prompt="Bitte prüfe die Adresse Berliner Straße 155, 10715 Berlin.">📍 Adresse prüfen</button>
+              <button type="button" class="bot-option-btn" data-i18n="chat.suggestLocation" data-i18n-attr="data-prompt:chat.suggestLocationPrompt" data-prompt="Was bedeutet die Wohnlage im Berliner Mietspiegel?">❓ Was ist die Wohnlage?</button>
             </div>
           </div>
 
           <!-- Message Stream -->
-          <div id="chat-stream" class="gpt-chat-stream" role="region" aria-label="Unterhaltung">
+          <div id="chat-stream" class="gpt-chat-stream" role="region" aria-label="Unterhaltung" data-i18n-attr="aria-label:chat.conversation">
             <!-- Messages injected dynamically -->
           </div>
         </div>
@@ -112,6 +118,7 @@
                 class="gpt-btn-attach"
                 title="Mietvertrag anhängen (PDF oder Text)"
                 aria-label="Mietvertrag anhängen"
+                data-i18n-attr="title:chat.attachTitle;aria-label:chat.attach"
               >
                 +
               </button>
@@ -121,7 +128,7 @@
                 <div id="attachment-preview" class="chat-attachment-chip" hidden>
                   <span class="chip-file-icon">📄</span>
                   <span id="chip-file-name" class="chip-file-name"></span>
-                  <button type="button" id="chip-file-remove" class="chip-remove-btn" title="Datei entfernen" aria-label="Datei entfernen">✕</button>
+                  <button type="button" id="chip-file-remove" class="chip-remove-btn" title="Datei entfernen" aria-label="Datei entfernen" data-i18n-attr="title:chat.removeFile;aria-label:chat.removeFile">✕</button>
                 </div>
 
                 <textarea
@@ -131,19 +138,20 @@
                   maxlength="4000"
                   aria-label="Nachricht an Amt-Buddy"
                   placeholder="Frage stellen oder Mietvertrag anhängen …"
+                  data-i18n-attr="aria-label:chat.inputLabel;placeholder:chat.inputPlaceholder"
                 ></textarea>
               </div>
 
-              <button type="submit" id="chat-send-btn" class="gpt-btn-send" title="Senden" aria-label="Senden">
+              <button type="submit" id="chat-send-btn" class="gpt-btn-send" title="Senden" aria-label="Senden" data-i18n-attr="title:chat.send;aria-label:chat.send">
                 ↑
               </button>
             </form>
 
-            <p id="mode-note" class="mode-note" hidden>
+            <p id="mode-note" class="mode-note" hidden data-i18n="chat.modeNote">
               Der KI-Chat ist nicht eingerichtet. Amt-Buddy antwortet mit festen Regeln und merkt sich den Gesprächsverlauf nicht.
             </p>
 
-            <div class="input-disclaimer">
+            <div class="input-disclaimer" data-i18n="chat.disclaimer">
               Amt-Buddy nutzt offizielle Berliner Open Data (WFS-Kataster &amp; Mietspiegel 2026). Angaben dienen der rechtlichen Orientierung.
             </div>
           </div>

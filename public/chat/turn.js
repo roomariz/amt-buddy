@@ -1,12 +1,21 @@
 // One chat turn as a view model: the Orchestrator's events (docs/orchestrator.md, "HTTP and SSE
 // interface") folded into what the page shows. Pure: reduceTurn(state, event) → new state.
 
+import { t } from "../i18n.js";
 import { reviewCard } from "./tenancy.js";
 
+// The turn's own texts in the current UI language. Getters: read when a turn uses them, so a
+// switch applies to new text while text already shown stays.
 export const TURN_TEXT = {
-  failed: "Amt-Buddy konnte diese Nachricht gerade nicht beantworten. Bitte versuchen Sie es gleich noch einmal.",
-  connectionLost: "Die Verbindung zu Amt-Buddy wurde unterbrochen. Bitte senden Sie Ihre Nachricht noch einmal.",
-  done: "Antwort ist da.",
+  get failed() {
+    return t("turn.failed");
+  },
+  get connectionLost() {
+    return t("turn.connectionLost");
+  },
+  get done() {
+    return t("turn.done");
+  },
 };
 
 // Sub-agent step wording per status. Compliance names the check the message asked for; when
@@ -18,47 +27,14 @@ function complianceCheck(intents, blocked) {
   return occupancy ? "occupancy" : "mietspiegel";
 }
 
-const STEP_LABELS = {
-  OfficialDataAgent: {
-    running: "Prüfe das amtliche Berliner Adressregister …",
-    done: "Adresse im amtlichen Register geprüft",
-    failed: "Der amtliche Berliner Dienst antwortet gerade nicht",
-    needs_facts: "Für die Adressprüfung fehlen noch Angaben",
-  },
-  ComplianceAgent: {
-    running: {
-      mietspiegel: "Berechne den Mietspiegel …",
-      occupancy: "Prüfe die Belegung (§ 7 WoAufG Bln) …",
-      both: "Prüfe Mietspiegel und Belegung …",
-      remaining: "Führe die mögliche Prüfung durch …",
-    },
-    done: {
-      mietspiegel: "Mietspiegel berechnet",
-      occupancy: "Belegung geprüft",
-      both: "Mietspiegel und Belegung geprüft",
-      remaining: "Mögliche Prüfung abgeschlossen",
-    },
-    failed: "Die Prüfung konnte nicht abgeschlossen werden",
-    needs_facts: "Für die Prüfung fehlen noch Angaben",
-  },
-  LeaseAnalysisAgent: {
-    running: "Lese Ihren Mietvertrag …",
-    done: "Mietvertrag gelesen",
-    failed: "Der Mietvertrag konnte nicht gelesen werden",
-    needs_facts: "Bitte laden Sie Ihren Mietvertrag hoch",
-  },
-};
-
-const OTHER_STEP = {
-  running: "Arbeite an Ihrer Anfrage …",
-  done: "Schritt erledigt",
-  failed: "Ein Schritt ist fehlgeschlagen",
-  needs_facts: "Es fehlen noch Angaben",
-};
+// Sub-agents with their own wording (i18n.js, "steps"); any other agent gets "steps.other".
+const NAMED_AGENTS = ["OfficialDataAgent", "ComplianceAgent", "LeaseAnalysisAgent"];
 
 function stepLabel(agent, status, intents, blocked = false) {
-  const label = (STEP_LABELS[agent] ?? OTHER_STEP)[status];
-  return typeof label === "string" ? label : label[complianceCheck(intents, blocked)];
+  const group = NAMED_AGENTS.includes(agent) ? agent : "other";
+  // Compliance's running and done wording names the check.
+  const perCheck = group === "ComplianceAgent" && (status === "running" || status === "done");
+  return t(`steps.${group}.${status}${perCheck ? `.${complianceCheck(intents, blocked)}` : ""}`);
 }
 
 // Event statuses → chip statuses.

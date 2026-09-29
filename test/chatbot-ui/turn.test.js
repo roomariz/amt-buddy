@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+import { setLanguage } from "../../public/i18n.js";
 import { announcements, endTurn, initialTurn, reduceTurn, TURN_TEXT } from "../../public/chat/turn.js";
 
 const run = (events, state = initialTurn()) => events.reduce(reduceTurn, state);
@@ -118,4 +119,29 @@ test("announcements name the steps that changed and the end of the turn", () => 
   assert.deepEqual(announcements(before, after), ["Adresse im amtlichen Register geprüft"]);
   assert.deepEqual(announcements(after, reduceTurn(after, { type: "done" })), ["Antwort ist da."]);
   assert.deepEqual(announcements(after, reduceTurn(after, { type: "error", message: "x" })), [TURN_TEXT.failed]);
+});
+
+test("in English, step labels and the turn's own texts are English", (t) => {
+  setLanguage("en");
+  t.after(() => setLanguage("de"));
+  const state = run([
+    { type: "intent", intents: ["mietspiegel", "occupancy"] },
+    { type: "agent_step", agent: "OfficialDataAgent", status: "started" },
+    { type: "agent_step", agent: "OfficialDataAgent", status: "finished" },
+    { type: "agent_step", agent: "ComplianceAgent", status: "started" },
+    { type: "agent_step", agent: "SomeNewAgent", status: "started" },
+    { type: "error", message: "x" },
+  ]);
+  assert.deepEqual(
+    state.steps.map(({ label }) => label),
+    ["Address checked in the official register", "The check could not be completed", "A step failed"],
+  );
+  assert.equal(state.error, "Amt-Buddy could not answer this message right now. Please try again in a moment.");
+  assert.equal(
+    endTurn(initialTurn()).error,
+    "The connection to Amt-Buddy was interrupted. Please send your message again.",
+  );
+  const running = run([{ type: "intent", intents: ["occupancy"] }, { type: "agent_step", agent: "ComplianceAgent", status: "started" }]);
+  assert.equal(running.steps[0].label, "Checking occupancy (§ 7 WoAufG Bln) …");
+  assert.deepEqual(announcements(running, reduceTurn(running, { type: "done" })), ["The answer is ready."]);
 });

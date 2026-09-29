@@ -1,6 +1,11 @@
+import { UPLOAD_REASON_KEYS } from "./chat/api.js";
+import { startI18n, t } from "./i18n.js";
+
 const form = document.querySelector("#address-form");
 const result = document.querySelector("#result");
 const button = form.querySelector("button");
+
+startI18n();
 
 function escapeHtml(value) {
   return String(value)
@@ -10,6 +15,28 @@ function escapeHtml(value) {
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
 }
+
+// Known server error codes → translated text; anything else shows the server's own message.
+// Address codes depend on the field ("invalid_format" is used for more than one).
+const ADDRESS_ERROR_KEYS = {
+  "address:invalid_format": "errors.addressFormat",
+  "street:invalid_length": "errors.streetLength",
+  "houseNumber:invalid_format": "errors.houseNumber",
+  "postalCode:outside_berlin": "errors.postalCode",
+};
+
+function errorText(body, fallbackKey) {
+  const detail = body?.error?.details?.[0];
+  const key =
+    ADDRESS_ERROR_KEYS[`${detail?.field}:${detail?.code}`] ??
+    UPLOAD_REASON_KEYS[detail?.code] ??
+    (body?.error?.code === "berlin_data_service_unavailable" ? "errors.serviceUnavailable" : undefined);
+  if (key) return t(key);
+  return detail?.message ?? body?.error?.message ?? t(fallbackKey);
+}
+
+// The submit button's content (label + arrow), in the current language.
+const submitLabel = () => `<span class="button-label" data-i18n="form.submit">${escapeHtml(t("form.submit"))}</span> <span aria-hidden="true">→</span>`;
 
 function showResult(kind, html) {
   result.className = `result ${kind}`;
@@ -21,7 +48,7 @@ form.addEventListener("submit", async (event) => {
   event.preventDefault();
   result.hidden = true;
   button.disabled = true;
-  button.textContent = "Wird geprüft …";
+  button.textContent = t("form.checking");
 
   const rawData = Object.fromEntries(new FormData(form));
   const payload = { address: rawData.address };
@@ -53,15 +80,12 @@ form.addEventListener("submit", async (event) => {
     });
     const body = await response.json();
 
-    if (!response.ok) {
-      const message = body.error?.details?.[0]?.message ?? body.error?.message;
-      throw new Error(message || "Die Prüfung ist fehlgeschlagen.");
-    }
+    if (!response.ok) throw new Error(errorText(body, "result.failed"));
 
     if (!body.data.verified) {
       showResult(
         "not-verified",
-        "<strong>Nicht bestätigt</strong><p>Diese Kombination wurde im amtlichen Berliner Adressbestand nicht gefunden. Bitte Schreibweise und Hausnummer prüfen.</p>",
+        `<strong>${escapeHtml(t("result.notVerified"))}</strong><p>${escapeHtml(t("result.notVerifiedText"))}</p>`,
       );
       return;
     }
@@ -70,64 +94,64 @@ form.addEventListener("submit", async (event) => {
     const residentialLocation = address.residentialLocation
       ? address.residentialLocation.charAt(0).toLocaleUpperCase("de-DE") +
         address.residentialLocation.slice(1)
-      : "Nicht ausgewiesen";
+      : t("result.notShown");
 
     const buildingAge = address.buildingAge;
     const buildingAgeText =
       buildingAge?.areaBuildingAgeClass ??
       buildingAge?.predominantAreaConstructionPeriod ??
-      "Nicht verfügbar";
+      t("result.notAvailable");
 
     let mietspiegelHtml = "";
     if (mietspiegel?.status === "calculated") {
       mietspiegelHtml = `
         <div class="result-section">
           <p class="result-section-title">
-            <span>Berliner Mietspiegel 2026 (Tabellenfeld ${escapeHtml(mietspiegel.field)})</span>
-            <span class="badge badge-success">Mietwert ermittelt</span>
+            <span>${escapeHtml(t("result.mietspiegelField", { field: mietspiegel.field }))}</span>
+            <span class="badge badge-success">${escapeHtml(t("result.rentFound"))}</span>
           </p>
 
           <div class="reference-range-box">
-            <div class="range-header">Amtliche Mietspiegel-Referenzspanne (Nettokaltmiete)</div>
+            <div class="range-header">${escapeHtml(t("result.range"))}</div>
             <div class="range-values">
               <div class="range-col">
-                <span class="range-label">Unterer Wert</span>
+                <span class="range-label">${escapeHtml(t("result.lower"))}</span>
                 <span class="range-num">${escapeHtml(mietspiegel.rentPerSqm.lower.toFixed(2))} €/m²</span>
-                <span class="range-sub">${escapeHtml(mietspiegel.monthlyReferenceRent.lower.toFixed(2))} € / Mo.</span>
+                <span class="range-sub">${escapeHtml(mietspiegel.monthlyReferenceRent.lower.toFixed(2))} ${escapeHtml(t("result.perMonth"))}</span>
               </div>
               <div class="range-col range-median">
-                <span class="range-label">Mittelwert (Median)</span>
+                <span class="range-label">${escapeHtml(t("result.median"))}</span>
                 <span class="range-num">${escapeHtml(mietspiegel.rentPerSqm.median.toFixed(2))} €/m²</span>
-                <span class="range-sub">${escapeHtml(mietspiegel.monthlyReferenceRent.median.toFixed(2))} € / Mo.</span>
+                <span class="range-sub">${escapeHtml(mietspiegel.monthlyReferenceRent.median.toFixed(2))} ${escapeHtml(t("result.perMonth"))}</span>
               </div>
               <div class="range-col">
-                <span class="range-label">Oberer Wert</span>
+                <span class="range-label">${escapeHtml(t("result.upper"))}</span>
                 <span class="range-num">${escapeHtml(mietspiegel.rentPerSqm.upper.toFixed(2))} €/m²</span>
-                <span class="range-sub">${escapeHtml(mietspiegel.monthlyReferenceRent.upper.toFixed(2))} € / Mo.</span>
+                <span class="range-sub">${escapeHtml(mietspiegel.monthlyReferenceRent.upper.toFixed(2))} ${escapeHtml(t("result.perMonth"))}</span>
               </div>
             </div>
           </div>
 
           <dl>
-            <div><dt>Mietspiegelfeld</dt><dd><strong>${escapeHtml(mietspiegel.field)}</strong></dd></div>
-            <div><dt>Baualtersklasse</dt><dd>${escapeHtml(mietspiegel.buildingAge)}</dd></div>
-            <div><dt>Wohnlage</dt><dd>${escapeHtml(mietspiegel.residentialLocation)}</dd></div>
-            <div><dt>Größenklasse</dt><dd>${escapeHtml(mietspiegel.sizeCategory)} (${escapeHtml(payload.livingAreaSqm ?? "–")} m²)</dd></div>
+            <div><dt>${escapeHtml(t("result.field"))}</dt><dd><strong>${escapeHtml(mietspiegel.field)}</strong></dd></div>
+            <div><dt>${escapeHtml(t("result.buildingAge"))}</dt><dd>${escapeHtml(mietspiegel.buildingAge)}</dd></div>
+            <div><dt>${escapeHtml(t("result.residentialLocation"))}</dt><dd>${escapeHtml(mietspiegel.residentialLocation)}</dd></div>
+            <div><dt>${escapeHtml(t("result.sizeCategory"))}</dt><dd>${escapeHtml(mietspiegel.sizeCategory)} (${escapeHtml(payload.livingAreaSqm ?? "–")} m²)</dd></div>
           </dl>
 
           <div class="interactive-comparison-box">
             <label for="interactive-rent-input" style="display: block; font-size: 0.74rem; font-weight: 700; text-transform: uppercase; margin-bottom: 6px; color: #59564f;">
-              Vertragsmiete vergleichen (optional):
+              ${escapeHtml(t("result.compare"))}
             </label>
             <div style="display: flex; gap: 8px; align-items: stretch; flex-wrap: wrap;">
-              <input type="number" id="interactive-rent-input" step="0.01" min="0" placeholder="Kaltmiete in € (z. B. 500)" style="max-width: 220px; padding: 10px 12px; margin: 0;" />
-              <button type="button" id="interactive-rent-btn" style="width: auto; padding: 10px 18px; margin: 0; font-size: 0.85rem;">Prüfen</button>
+              <input type="number" id="interactive-rent-input" step="0.01" min="0" placeholder="${escapeHtml(t("result.comparePlaceholder"))}" style="max-width: 220px; padding: 10px 12px; margin: 0;" />
+              <button type="button" id="interactive-rent-btn" style="width: auto; padding: 10px 18px; margin: 0; font-size: 0.85rem;">${escapeHtml(t("result.compareButton"))}</button>
             </div>
             <div id="interactive-comparison-result"></div>
           </div>
 
           <div class="disclaimer-box">
-            <strong>Berliner Mietspiegel 2026:</strong> Gesetzlicher qualifizierter Mietspiegel nach §§ 558c, 558d BGB. Die Spanne bildet die ortsübliche Vergleichsmiete für typische Wohnungen ab. Die konkrete Einordnung innerhalb der Spanne erfolgt über die Orientierungshilfe (Merkmale zu Bad, Küche, Wohnung, Gebäude, Umfeld).
+            <strong>Berliner Mietspiegel 2026:</strong> ${escapeHtml(t("result.mietspiegelNote"))}
           </div>
         </div>
       `;
@@ -135,14 +159,14 @@ form.addEventListener("submit", async (event) => {
       mietspiegelHtml = `
         <div class="result-section">
           <p class="result-section-title">Berliner Mietspiegel 2026</p>
-          <p style="margin: 0; font-size: 0.8rem; color: #59564f;">Wohnfläche (m²) oben angeben, um das zutreffende Mietspiegelfeld und die monatliche Referenzmiete zu berechnen.</p>
+          <p style="margin: 0; font-size: 0.8rem; color: #59564f;">${escapeHtml(t("result.missingSize"))}</p>
         </div>
       `;
     } else if (mietspiegel?.status === "missing_building_age") {
       mietspiegelHtml = `
         <div class="result-section">
           <p class="result-section-title">Berliner Mietspiegel 2026</p>
-          <p style="margin: 0; font-size: 0.8rem; color: #59564f;">Baualtersklasse für diesen Block nicht eindeutig ermittelbar. Bitte optional das konkrete Baujahr oben eingeben.</p>
+          <p style="margin: 0; font-size: 0.8rem; color: #59564f;">${escapeHtml(t("result.missingAge"))}</p>
         </div>
       `;
     }
@@ -151,56 +175,56 @@ form.addEventListener("submit", async (event) => {
     if (occupancyAssessment?.status === "meets_minimum" || occupancyAssessment?.status === "below_minimum") {
       const meetsMin = occupancyAssessment.meetsMinimum;
       const statusBadge = meetsMin
-        ? `<span class="badge badge-success">Mindestwohnfläche eingehalten</span>`
-        : `<span class="badge badge-warning">Mindestwohnfläche unterschritten</span>`;
+        ? `<span class="badge badge-success">${escapeHtml(t("result.meetsMinimum"))}</span>`
+        : `<span class="badge badge-warning">${escapeHtml(t("result.belowMinimum"))}</span>`;
 
       occupancyHtml = `
         <div class="result-section">
           <p class="result-section-title">
-            <span>Belegungsprüfung (${escapeHtml(occupancyAssessment.legalBasis)})</span>
+            <span>${escapeHtml(t("result.occupancy", { basis: occupancyAssessment.legalBasis }))}</span>
             ${statusBadge}
           </p>
           <dl>
-            <div><dt>Tatsächliche Wohnfläche</dt><dd>${escapeHtml(occupancyAssessment.livingAreaSqm)} m²</dd></div>
-            <div><dt>Gesetzliche Mindestfläche</dt><dd>${escapeHtml(occupancyAssessment.requiredAreaSqm)} m² (9 m²/Erw., 6 m²/Kind ≤ 6 J.)</dd></div>
-            <div><dt>Flächenreserve / Differenz</dt><dd>${occupancyAssessment.areaMarginSqm >= 0 ? "+" : ""}${escapeHtml(occupancyAssessment.areaMarginSqm)} m²</dd></div>
-            <div><dt>Personen / Zimmer</dt><dd>${escapeHtml(occupancyAssessment.occupants)} Pers. in ${escapeHtml(occupancyAssessment.rooms)} Zi.</dd></div>
-            <div><dt>Personen pro Zimmer</dt><dd>${escapeHtml(occupancyAssessment.occupantsPerRoom)}</dd></div>
-            <div><dt>Zimmer pro Person</dt><dd>${escapeHtml(occupancyAssessment.roomsPerOccupant)}</dd></div>
+            <div><dt>${escapeHtml(t("result.actualArea"))}</dt><dd>${escapeHtml(occupancyAssessment.livingAreaSqm)} m²</dd></div>
+            <div><dt>${escapeHtml(t("result.requiredArea"))}</dt><dd>${escapeHtml(occupancyAssessment.requiredAreaSqm)} m² ${escapeHtml(t("result.requiredAreaRule"))}</dd></div>
+            <div><dt>${escapeHtml(t("result.areaMargin"))}</dt><dd>${occupancyAssessment.areaMarginSqm >= 0 ? "+" : ""}${escapeHtml(occupancyAssessment.areaMarginSqm)} m²</dd></div>
+            <div><dt>${escapeHtml(t("result.peopleRooms"))}</dt><dd>${escapeHtml(t("result.peopleRoomsValue", { occupants: occupancyAssessment.occupants, rooms: occupancyAssessment.rooms }))}</dd></div>
+            <div><dt>${escapeHtml(t("result.perRoom"))}</dt><dd>${escapeHtml(occupancyAssessment.occupantsPerRoom)}</dd></div>
+            <div><dt>${escapeHtml(t("result.roomsPerPerson"))}</dt><dd>${escapeHtml(occupancyAssessment.roomsPerOccupant)}</dd></div>
           </dl>
           <div class="disclaimer-box">
-            <strong>Hinweis nach § 7 WoAufG Bln:</strong> Berechnet auf Basis der Selbstauskunft (statutarische Untergrenze: 9 m² je Person, 6 m² je Kind bis zum vollendeten 6. Lebensjahr). Keine amtliche Feststellung oder Rechtsberatung.
+            <strong>${escapeHtml(t("result.occupancyNoteTitle"))}</strong> ${escapeHtml(t("result.occupancyNote"))}
           </div>
         </div>
       `;
     } else if (occupancyAssessment?.status === "not_assessed") {
       occupancyHtml = `
         <div class="result-section">
-          <p class="result-section-title">Belegungsprüfung (§ 7 WoAufG Bln)</p>
-          <p style="margin: 0; font-size: 0.8rem; color: #59564f;">Nicht geprüft (optionale Wohnungs- und Belegungsdaten wurden nicht angegeben).</p>
+          <p class="result-section-title">${escapeHtml(t("result.occupancy", { basis: "§ 7 WoAufG Bln" }))}</p>
+          <p style="margin: 0; font-size: 0.8rem; color: #59564f;">${escapeHtml(t("result.notAssessed"))}</p>
         </div>
       `;
     }
 
     const buildingAgeNote =
       buildingAge?.note ??
-      "Überwiegende Baualtersklasse des Blocks (Umweltatlas Berlin, Stand 2015). Exaktes Gebäude-Baujahr amtlich nicht einzeln verifiziert.";
+      t("result.defaultAgeNote");
 
     showResult(
       "verified",
-      `<strong>Amtlich bestätigt</strong>
+      `<strong>${escapeHtml(t("result.verified"))}</strong>
        <p>${escapeHtml(address.street)} ${escapeHtml(address.houseNumber)} · ${escapeHtml(address.postalCode)} Berlin</p>
        <dl>
-         <div><dt>Wohnlage (Mietspiegel 2026)</dt><dd>${escapeHtml(residentialLocation)}</dd></div>
-         <div><dt>Mietstufe</dt><dd>${escapeHtml(address.rentTier?.locationCategory ? residentialLocation : "–")}</dd></div>
-         <div><dt>Baualtersklasse (Block)</dt><dd>${escapeHtml(buildingAgeText)}</dd></div>
-         <div><dt>Gebäude-Baujahr verifiziert</dt><dd>${buildingAge?.exactBuildingAgeVerified ? "Ja" : "Nein (nur Blockebene)"}</dd></div>
-         <div><dt>Bezirk</dt><dd>${escapeHtml(address.district ?? "–")}</dd></div>
-         <div><dt>Ortsteil</dt><dd>${escapeHtml(address.locality ?? "–")}</dd></div>
-         <div><dt>Adress-ID</dt><dd>${escapeHtml(address.officialId)}</dd></div>
+         <div><dt>${escapeHtml(t("result.location"))}</dt><dd>${escapeHtml(residentialLocation)}</dd></div>
+         <div><dt>${escapeHtml(t("result.rentTier"))}</dt><dd>${escapeHtml(address.rentTier?.locationCategory ? residentialLocation : "–")}</dd></div>
+         <div><dt>${escapeHtml(t("result.blockAge"))}</dt><dd>${escapeHtml(buildingAgeText)}</dd></div>
+         <div><dt>${escapeHtml(t("result.yearVerified"))}</dt><dd>${escapeHtml(t(buildingAge?.exactBuildingAgeVerified ? "result.yes" : "result.blockOnly"))}</dd></div>
+         <div><dt>${escapeHtml(t("result.district"))}</dt><dd>${escapeHtml(address.district ?? "–")}</dd></div>
+         <div><dt>${escapeHtml(t("result.locality"))}</dt><dd>${escapeHtml(address.locality ?? "–")}</dd></div>
+         <div><dt>${escapeHtml(t("result.addressId"))}</dt><dd>${escapeHtml(address.officialId)}</dd></div>
        </dl>
        <div class="disclaimer-box">
-         <strong>Mietspiegel &amp; Gebäudealter:</strong> Wohnlage ist die amtliche Mietspiegel-Lagekategorie, kein Geldbetrag. ${escapeHtml(buildingAgeNote)}
+         <strong>${escapeHtml(t("result.ageNoteTitle"))}</strong> ${escapeHtml(t("result.ageNote"))} ${escapeHtml(buildingAgeNote)}
        </div>
        ${mietspiegelHtml}
        ${occupancyHtml}`,
@@ -223,28 +247,23 @@ form.addEventListener("submit", async (event) => {
         const area = Number(payload.livingAreaSqm);
         const perSqm = area > 0 ? (val / area).toFixed(2) : "–";
 
-        if (val < lower) {
-          const diff = (lower - val).toFixed(2);
-          rentComparisonDiv.innerHTML = `
-            <div class="rent-comparison-banner comparison-below">
-              <strong>${val.toFixed(2)} € / Monat (${perSqm} €/m²)</strong> liegt <em>unterhalb</em> der amtlichen Mietspiegel-Referenzspanne (${lower.toFixed(2)} € – ${upper.toFixed(2)} €).<br />Differenz zur Untergrenze: -${diff} €.
-            </div>
-          `;
-        } else if (val > upper) {
-          const diff = (val - upper).toFixed(2);
-          rentComparisonDiv.innerHTML = `
-            <div class="rent-comparison-banner comparison-above">
-              <strong>${val.toFixed(2)} € / Monat (${perSqm} €/m²)</strong> liegt <em>oberhalb</em> der amtlichen Mietspiegel-Referenzspanne (${lower.toFixed(2)} € – ${upper.toFixed(2)} €).<br />Überschreitung der Obergrenze: +${diff} €.
-            </div>
-          `;
-        } else {
-          const diff = Math.abs(val - median).toFixed(2);
-          rentComparisonDiv.innerHTML = `
-            <div class="rent-comparison-banner comparison-within">
-              <strong>${val.toFixed(2)} € / Monat (${perSqm} €/m²)</strong> liegt <em>innerhalb</em> der amtlichen Mietspiegel-Referenzspanne (${lower.toFixed(2)} € – ${upper.toFixed(2)} €).<br />Abweichung zum Mittelwert: ${val >= median ? "+" : "-"}${diff} €.
-            </div>
-          `;
-        }
+        // Where the rent sits in the range, and the difference that matters there.
+        const range = { lower: lower.toFixed(2), upper: upper.toFixed(2) };
+        const [kind, position, difference] =
+          val < lower
+            ? ["below", "result.compareBelow", t("result.diffLower", { diff: (lower - val).toFixed(2) })]
+            : val > upper
+              ? ["above", "result.compareAbove", t("result.diffUpper", { diff: (val - upper).toFixed(2) })]
+              : [
+                  "within",
+                  "result.compareWithin",
+                  t("result.diffMedian", { sign: val >= median ? "+" : "-", diff: Math.abs(val - median).toFixed(2) }),
+                ];
+        rentComparisonDiv.innerHTML = `
+          <div class="rent-comparison-banner comparison-${kind}">
+            <strong>${val.toFixed(2)} ${escapeHtml(t("result.perMonthLong"))} (${perSqm} €/m²)</strong> ${escapeHtml(t(position, range))}<br />${escapeHtml(difference)}
+          </div>
+        `;
       };
 
       rentBtn.addEventListener("click", runComparison);
@@ -256,10 +275,10 @@ form.addEventListener("submit", async (event) => {
       });
     }
   } catch (error) {
-    showResult("error", `<strong>Prüfung nicht möglich</strong><p>${escapeHtml(error.message)}</p>`);
+    showResult("error", `<strong>${escapeHtml(t("result.failedTitle"))}</strong><p>${escapeHtml(error.message)}</p>`);
   } finally {
     button.disabled = false;
-    button.innerHTML = 'Adresse prüfen <span aria-hidden="true">→</span>';
+    button.innerHTML = submitLabel();
   }
 });
 
@@ -319,11 +338,11 @@ async function handleFileSelected(file) {
   if (!file) return;
 
   if (file.size > 15 * 1024 * 1024) {
-    showOcrFeedback("error", "Die Datei überschreitet die maximale Größe von 15 MB.");
+    showOcrFeedback("error", escapeHtml(t("upload.tooLarge")));
     return;
   }
 
-  showOcrFeedback("loading", `📄 Verarbeite "${escapeHtml(file.name)}" per OCR … Bitte warten.`);
+  showOcrFeedback("loading", escapeHtml(t("ocr.processing", { name: file.name })));
 
   try {
     const base64Data = await readFileAsBase64(file);
@@ -339,10 +358,7 @@ async function handleFileSelected(file) {
 
     const body = await response.json();
 
-    if (!response.ok) {
-      const msg = body.error?.details?.[0]?.message ?? body.error?.message ?? "OCR Extraktion fehlgeschlagen.";
-      throw new Error(msg);
-    }
+    if (!response.ok) throw new Error(errorText(body, "ocr.failed"));
 
     const { fields, confidence, prefilledApiPayload, warnings } = body.data;
 
@@ -382,22 +398,22 @@ async function handleFileSelected(file) {
       pills.push(`<span class="ocr-pill high-conf">📍 ${escapeHtml(fields.street)} ${escapeHtml(fields.houseNumber)} (${Math.round((confidence.address || 0) * 100)}%)</span>`);
     }
     if (fields.postalCode) {
-      pills.push(`<span class="ocr-pill high-conf">📮 PLZ ${escapeHtml(fields.postalCode)}</span>`);
+      pills.push(`<span class="ocr-pill high-conf">📮 ${escapeHtml(t("ocr.postalCode", { value: fields.postalCode }))}</span>`);
     }
     if (fields.livingAreaSqm) {
       pills.push(`<span class="ocr-pill high-conf">📐 ${fields.livingAreaSqm} m²</span>`);
     }
     if (fields.contractRent) {
-      pills.push(`<span class="ocr-pill high-conf">💶 Kaltmiete: ${fields.contractRent} €</span>`);
+      pills.push(`<span class="ocr-pill high-conf">💶 ${escapeHtml(t("ocr.rent", { value: fields.contractRent }))}</span>`);
     }
     if (fields.buildingYear) {
-      pills.push(`<span class="ocr-pill high-conf">🏗️ Baujahr: ${fields.buildingYear}</span>`);
+      pills.push(`<span class="ocr-pill high-conf">🏗️ ${escapeHtml(t("ocr.buildingYear", { value: fields.buildingYear }))}</span>`);
     }
     if (fields.rooms) {
-      pills.push(`<span class="ocr-pill med-conf">🚪 ${fields.rooms} Zimmer</span>`);
+      pills.push(`<span class="ocr-pill med-conf">🚪 ${escapeHtml(t("ocr.rooms", { value: fields.rooms }))}</span>`);
     }
     if (fields.occupants) {
-      pills.push(`<span class="ocr-pill med-conf">👥 ${fields.occupants} Personen</span>`);
+      pills.push(`<span class="ocr-pill med-conf">👥 ${escapeHtml(t("ocr.occupants", { value: fields.occupants }))}</span>`);
     }
 
     let warningHtml = "";
@@ -407,13 +423,13 @@ async function handleFileSelected(file) {
 
     showOcrFeedback(
       "success",
-      `<strong>✓ Daten erfolgreich extrahiert und in das Formular eingetragen!</strong>
+      `<strong>${escapeHtml(t("ocr.success"))}</strong>
        <div class="ocr-pill-grid">${pills.join("")}</div>
        ${warningHtml}
-       <p style="margin: 10px 0 0; font-size: 0.85rem;">Bitte überprüfen Sie die eingetragenen Daten und klicken Sie unten auf <strong>"Adresse prüfen"</strong>.</p>`
+       <p style="margin: 10px 0 0; font-size: 0.85rem;">${escapeHtml(t("ocr.reviewHint"))} <strong>"${escapeHtml(t("form.submit"))}"</strong>.</p>`
     );
   } catch (err) {
-    showOcrFeedback("error", `<strong>Fehler bei der OCR-Extraktion:</strong> ${escapeHtml(err.message)}`);
+    showOcrFeedback("error", `<strong>${escapeHtml(t("ocr.errorTitle"))}</strong> ${escapeHtml(err.message)}`);
   }
 }
 

@@ -1865,3 +1865,76 @@ footer a { color: inherit; }
   opacity: 0.6;
   cursor: default;
 }
+
+/* ==========================================
+   DE | EN language switch (both pages)
+   ========================================== */
+
+.header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.header-top .eyebrow { margin: 0; }
+
+/* The top bar is a <header>: lift the form page's header width cap so the title, switch and
+   link fit on one line. */
+.gpt-topbar { max-width: none; margin-bottom: 0; gap: 8px; }
+
+.gpt-topbar .topbar-title { white-space: nowrap; }
+
+/* Without this the global `button` rule stretches the sidebar toggle and pushes the switch out. */
+.gpt-topbar .icon-btn { width: auto; margin: 0; flex-shrink: 0; }
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.topbar-actions .topbar-exit-btn { white-space: nowrap; }
+
+.lang-switch {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid rgba(23, 23, 20, 0.35);
+  border-radius: 6px;
+  color: #5d5d5d;
+  font: 700 0.72rem/1 Arial, Helvetica, sans-serif;
+}
+
+/* Undo the form page's full-width black `button` look. */
+.lang-switch button {
+  width: auto;
+  min-width: 32px;
+  min-height: 28px;
+  margin: 0;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+
+.lang-switch button:hover { background: rgba(23, 23, 20, 0.08); color: #171714; }
+
+.lang-switch button[aria-pressed="true"] { background: #171714; color: #ffffff; }
+
+.lang-switch button:focus-visible { outline: 3px solid #ffd84d; outline-offset: 1px; }
+
+/* The submit button's label is a span for translation; only the arrow floats right. */
+button .button-label { float: none; }
+
+@media (max-width: 480px) {
+  .gpt-topbar .topbar-title { display: none; }
+}

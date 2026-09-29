@@ -9,6 +9,7 @@
  */
 
 import { fetchChatMode, MODE_LABEL, runTurn, uploadLease, UPLOAD_TEXT } from "./chat/api.js";
+import { onLanguageChange, startI18n, t } from "./i18n.js";
 import { renderMarkdown } from "./chat/markdown.js";
 import { confirmPayload, inputModeFor } from "./chat/tenancy.js";
 import { currentThreadId, startNewThread } from "./chat/thread.js";
@@ -54,6 +55,7 @@ let stagedFile = null;
 let busy = false;
 let activeTurn = null; // AbortController of the running turn
 let openReviewCard = null; // the latest review card, until it is sent or a newer turn starts
+let chatMode = null; // "orchestrator", "rule_based" or null (unknown)
 
 // --- small DOM helpers -------------------------------------------------------------------------
 
@@ -137,10 +139,10 @@ function appendBotTurn() {
   avatar.setAttribute("aria-hidden", "true");
   const bubble = el("div", "bot-bubble");
   const header = el("div", "bot-header");
-  header.append(el("span", "bot-name", "Amt-Buddy"), el("span", "bot-tag", "Offizielle Prüfung · Berlin Open Data"));
+  header.append(el("span", "bot-name", "Amt-Buddy"), el("span", "bot-tag", t("chat.botTag")));
   const steps = el("ul", "agent-steps");
-  steps.setAttribute("aria-label", "Arbeitsschritte");
-  const working = el("p", "turn-working", "Amt-Buddy arbeitet …");
+  steps.setAttribute("aria-label", t("chat.steps"));
+  const working = el("p", "turn-working", t("chat.working"));
   const content = el("div", "bot-content");
   const error = el("p", "turn-error");
   error.hidden = true;
@@ -183,19 +185,13 @@ function renderTurn(view, state) {
 
 // --- review card (Unconfirmed facts) ---------------------------------------------------------
 
-const LEVEL_TEXT = { high: "sicher erkannt", medium: "unsicher erkannt", low: "sehr unsicher erkannt" };
-
 function renderReviewCard(view, review) {
   const form = el("form", "doc-result-card review-card");
   const titleId = `review-title-${Date.now().toString(36)}`;
   form.setAttribute("aria-labelledby", titleId);
-  const title = el("div", "doc-title", "📋 Werte aus Ihrem Mietvertrag prüfen");
+  const title = el("div", "doc-title", t("review.title"));
   title.id = titleId;
-  const hint = el(
-    "p",
-    "review-hint",
-    "Unsicher erkannte Werte sind gelb oder rot markiert. Bitte prüfen oder korrigieren Sie sie – erst dann rechnet Amt-Buddy damit.",
-  );
+  const hint = el("p", "review-hint", t("review.hint"));
   const grid = el("div", "doc-fact-grid");
   for (const field of review.fields) {
     const item = el("label", `doc-fact-item review-field conf-${field.level}`);
@@ -212,14 +208,14 @@ function renderReviewCard(view, review) {
     const confidence = el(
       "small",
       "review-confidence",
-      field.confidence === null ? "ohne Angabe zur Sicherheit" : `${LEVEL_TEXT[field.level]} (${Math.round(field.confidence * 100)} %)`,
+      field.confidence === null ? t("review.noConfidence") : `${t(`review.${field.level}`)} (${Math.round(field.confidence * 100)} %)`,
     );
     confidence.id = `${inputId}-confidence`;
     input.setAttribute("aria-describedby", confidence.id);
     item.append(caption, input, confidence);
     grid.append(item);
   }
-  const submit = el("button", "btn-select-file review-submit", "Werte bestätigen und prüfen");
+  const submit = el("button", "btn-select-file review-submit", t("review.submit"));
   submit.type = "submit";
   form.append(title, hint, grid, submit);
 
@@ -234,7 +230,7 @@ function renderReviewCard(view, review) {
       .filter((field) => field.name in confirm)
       .map((field) => `${field.label}: ${confirm[field.name]}${field.unit ? ` ${field.unit}` : ""}`)
       .join(", ");
-    sendTurn({ confirm }, { text: `Werte bestätigt – ${summary}` }, null, form);
+    sendTurn({ confirm }, { text: t("chat.confirmedValues", { summary }) }, null, form);
   });
 
   openReviewCard = form;
@@ -268,15 +264,15 @@ async function sendTurn(request, shown, file = null, reviewForm = null) {
   try {
     let documentId;
     if (file) {
-      renderStepChip(view.steps, { key: "upload", status: "running", label: "Lade Ihren Mietvertrag hoch …" });
+      renderStepChip(view.steps, { key: "upload", status: "running", label: t("upload.running") });
       view.working.hidden = true;
-      announce(["Lade Ihren Mietvertrag hoch …"]);
+      announce([t("upload.running")]);
       try {
         ({ documentId } = await uploadLease({ fetchImpl: fetch, payload: await filePayload(file), signal: controller.signal }));
-        renderStepChip(view.steps, { key: "upload", status: "done", label: "Mietvertrag hochgeladen" });
+        renderStepChip(view.steps, { key: "upload", status: "done", label: t("upload.done") });
       } catch (error) {
         if (controller.signal.aborted) return;
-        renderStepChip(view.steps, { key: "upload", status: "failed", label: "Hochladen fehlgeschlagen" });
+        renderStepChip(view.steps, { key: "upload", status: "failed", label: t("upload.stepFailed") });
         view.error.textContent = error.message || UPLOAD_TEXT.failed;
         view.error.hidden = false;
         announce([view.error.textContent]);
@@ -357,10 +353,14 @@ function resetToNewChat() {
   chatUserInput.focus();
 }
 
+function renderChatMode() {
+  if (modeNote) modeNote.hidden = chatMode !== "rule_based";
+  if (modeLabel) modeLabel.textContent = MODE_LABEL[chatMode] ?? t("mode.unknown");
+}
+
 async function showChatMode() {
-  const mode = await fetchChatMode(fetch);
-  if (modeNote) modeNote.hidden = mode !== "rule_based";
-  if (modeLabel) modeLabel.textContent = MODE_LABEL[mode] ?? "Chat";
+  chatMode = await fetchChatMode(fetch);
+  renderChatMode();
 }
 
 // --- event listeners ---------------------------------------------------------------------------
@@ -440,6 +440,8 @@ document.addEventListener("click", (event) => {
 
 // --- start -------------------------------------------------------------------------------------
 
+startI18n();
+onLanguageChange(renderChatMode);
 sidebarToggleBtn?.setAttribute("aria-expanded", "true");
 sidebarToggleBtn?.setAttribute("aria-controls", "gpt-sidebar");
 showChatMode();
