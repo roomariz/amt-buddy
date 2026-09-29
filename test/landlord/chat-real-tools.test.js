@@ -77,7 +77,7 @@ test("a stated preference changes the saved Selection criteria, emits criteria a
   server.setScript([
     {
       toolCalls: [
-        { name: "adjust_selection_criteria", args: { changes: [{ criterion: "employment", factor: 2 }, { criterion: "affordability", factor: 1.5 }] } },
+        { name: "adjust_selection_criteria", args: { changes: [{ criterion: "employment", by: "factor", value: 2 }, { criterion: "affordability", by: "factor", value: 1.5 }] } },
       ],
     },
     // Employment 15 → 30, affordability 30 → 45; the other four (55) fill the remaining 25.
@@ -99,7 +99,7 @@ test("a vague request ('SCHUFA matters more') becomes adjust_selection_criteria 
   const server = await start();
   t.after(server.close);
   server.setScript([
-    { toolCalls: [{ name: "adjust_selection_criteria", args: { changes: [{ criterion: "schufa", factor: 1.3 }] } }] },
+    { toolCalls: [{ name: "adjust_selection_criteria", args: { changes: [{ criterion: "schufa", by: "factor", value: 1.3 }] } }] },
     "I read that as SCHUFA: it now counts 26 % instead of 20 %; affordability 27.8 %.",
   ]);
 
@@ -117,9 +117,9 @@ test("flat facts in a message are saved with update_flat_details (flat event); a
   const server = await start({ listing: null });
   t.after(server.close);
   server.setScript([
-    { toolCalls: [{ name: "update_flat_details", args: { askingRent: 700, livingAreaSqm: 50, rooms: 2 } }] },
+    { toolCalls: [{ name: "update_flat_details", args: { facts: [{ fact: "askingRent", value: 700 }, { fact: "livingAreaSqm", value: 50 }, { fact: "rooms", value: 2 }] } }] },
     "Saved: 700 €, 50 m², 2 rooms. Tell me the address with its postal code for the Rent check.",
-    { toolCalls: [{ name: "update_flat_details", args: { address: "Wühlischstraße 30, 10245 Berlin" } }] },
+    { toolCalls: [{ name: "update_flat_details", args: { facts: [{ fact: "address", value: "Wühlischstraße 30, 10245 Berlin" }] } }] },
     "The Berliner Mietspiegel allows at most 539 € for your flat.",
   ]);
 
@@ -147,7 +147,7 @@ test("a flat value the Listing form refuses is an input error the model learns; 
   const server = await start({ listing: null });
   t.after(server.close);
   server.setScript([
-    { toolCalls: [{ name: "update_flat_details", args: { address: "Wühlischstraße 30", askingRent: 700 } }] },
+    { toolCalls: [{ name: "update_flat_details", args: { facts: [{ fact: "address", value: "Wühlischstraße 30" }, { fact: "askingRent", value: 700 }] } }] },
     "Please give me the address with its postal code.",
   ]);
 
@@ -178,7 +178,7 @@ test("'Only clean SCHUFA' switches on that Requirement: the dashboard excludes t
   const server = await start();
   t.after(server.close);
   server.setScript([
-    { toolCalls: [{ name: "update_selection_criteria", args: { requirements: { schufaCleanOnly: true } } }] },
+    { toolCalls: [{ name: "update_selection_criteria", args: { changes: [{ requirement: "schufaCleanOnly", value: true }] } }] },
     "From now on only applicants with a clean SCHUFA are ranked.",
   ]);
 
@@ -214,7 +214,7 @@ test("an unknown applicant on the Shortlist is an input error the model learns; 
   const server = await start();
   t.after(server.close);
   server.setScript([
-    { toolCalls: [{ name: "update_shortlist", args: { applicantId: "A-999", status: "to_invite" } }] },
+    { toolCalls: [{ name: "update_shortlist", args: { applicantId: "A-999", status: "to_invite", note: null } }] },
     "There is no applicant A-999.",
   ]);
 
@@ -323,10 +323,10 @@ test("no applicant name, contact detail or protected field appears in any messag
       toolCalls: [
         { name: "get_ranking", args: {} },
         { name: "get_rent_check", args: {} },
-        { name: "update_selection_criteria", args: { requirements: { noPets: true } } },
-        { name: "adjust_selection_criteria", args: { changes: [{ criterion: "employment", factor: 2 }] } },
-        { name: "update_flat_details", args: { askingRent: 950 } },
-        { name: "update_shortlist", args: { applicantId: ids[0], status: "to_invite" } },
+        { name: "update_selection_criteria", args: { changes: [{ requirement: "noPets", value: true }] } },
+        { name: "adjust_selection_criteria", args: { changes: [{ criterion: "employment", by: "factor", value: 2 }] } },
+        { name: "update_flat_details", args: { facts: [{ fact: "askingRent", value: 950 }] } },
+        { name: "update_shortlist", args: { applicantId: ids[0], status: "to_invite", note: null } },
         ...ids.map((applicantId) => ({ name: "get_applicant_profile", args: { applicantId } })),
       ],
     },
@@ -353,9 +353,9 @@ test("before a Listing too, no applicant name, contact detail or protected field
       toolCalls: [
         { name: "get_ranking", args: {} },
         { name: "get_rent_check", args: {} },
-        { name: "adjust_selection_criteria", args: { changes: [{ criterion: "affordability", factor: 1.3 }] } },
-        { name: "update_selection_criteria", args: { requirements: { schufaCleanOnly: true } } },
-        { name: "update_flat_details", args: { askingRent: 950, rooms: 2 } },
+        { name: "adjust_selection_criteria", args: { changes: [{ criterion: "affordability", by: "factor", value: 1.3 }] } },
+        { name: "update_selection_criteria", args: { changes: [{ requirement: "schufaCleanOnly", value: true }] } },
+        { name: "update_flat_details", args: { facts: [{ fact: "askingRent", value: 950 }, { fact: "rooms", value: 2 }] } },
         ...ids.map((applicantId) => ({ name: "get_applicant_profile", args: { applicantId } })),
       ],
     },
@@ -399,7 +399,7 @@ test("'Whom should I invite?' is answered from the ranking and the Shortlist", a
   const { ranked } = await server.dashboard();
   const [first, second] = ranked;
   server.setScript([
-    { toolCalls: [{ name: "update_shortlist", args: { applicantId: second.applicantId, status: "invited" } }] },
+    { toolCalls: [{ name: "update_shortlist", args: { applicantId: second.applicantId, status: "invited", note: null } }] },
     `${second.applicantId} is invited.`,
     { toolCalls: [{ name: "get_ranking", args: {} }] },
     `Invite ${first.applicantId} (Match score ${first.matchScore}); ${second.applicantId} is already invited.`,

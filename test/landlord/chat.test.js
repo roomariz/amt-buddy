@@ -66,7 +66,7 @@ const answerOf = (events) => events.filter((e) => e.type === "token").map((e) =>
 test("the landlord chat streams the Orchestrator's events as SSE, criteria event included", async (t) => {
   const server = await start({
     script: [
-      { toolCalls: [{ name: "update_selection_criteria", args: { requirements: { schufaCleanOnly: true } } }] },
+      { toolCalls: [{ name: "update_selection_criteria", args: { changes: [{ requirement: "schufaCleanOnly", value: true }] } }] },
       "From now on only applicants with a clean SCHUFA are ranked.",
     ],
   });

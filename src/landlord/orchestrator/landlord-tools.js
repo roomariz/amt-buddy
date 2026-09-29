@@ -56,6 +56,17 @@ function asToolInputError(error, addendum = "") {
   return new LandlordToolInputError(addendum ? `${message} ${addendum}` : message);
 }
 
+// A Tool's list of changes ([{ <key>, value }], naming only what changes) as the object the
+// dashboard function takes. A name listed twice is refused: which value was meant is unclear.
+function namedValues(entries, key) {
+  const values = {};
+  for (const { [key]: name, value } of entries) {
+    if (Object.hasOwn(values, name)) throw new LandlordToolInputError(`'${name}' is listed more than once: list it once. Nothing was saved.`);
+    values[name] = value;
+  }
+  return values;
+}
+
 // A criteria change's result: the old and new criteria to one decimal, the new top 3 and what is
 // inactive.
 function criteriaResult({ previous, criteria }, state) {
@@ -131,8 +142,9 @@ export function createLandlordTools({ getStore, getApplicantPool, fetchImpl }) {
     },
 
     // Requirements only: the contract has no weights, so the model changes them only through
-    // adjust_selection_criteria and its limits.
-    async update_selection_criteria({ requirements }, landlordId) {
+    // adjust_selection_criteria and its limits. Each value is checked by updateSelectionCriteria.
+    async update_selection_criteria({ changes }, landlordId) {
+      const requirements = namedValues(changes, "requirement");
       let updated;
       try {
         updated = updateSelectionCriteria({ store: getStore(), landlordId, input: { requirements } });
@@ -160,7 +172,8 @@ export function createLandlordTools({ getStore, getApplicantPool, fetchImpl }) {
       return { previous, criteria, applied, top, inactive };
     },
 
-    async update_flat_details(input, landlordId) {
+    async update_flat_details({ facts }, landlordId) {
+      const input = namedValues(facts, "fact");
       let updated;
       try {
         updated = await updateFlatDetails({ store: getStore(), landlordId, input, fetchImpl });
@@ -190,7 +203,10 @@ export function createLandlordTools({ getStore, getApplicantPool, fetchImpl }) {
       return { noteId, note: saved };
     },
 
-    async update_shortlist({ applicantId, status, note }, landlordId) {
+    // The chat never clears a note: a model fills an unused note with null or "", and the note is
+    // the landlord's free text, which it has not seen. So null or blank keeps the entry's note.
+    async update_shortlist({ applicantId, status, note: given }, landlordId) {
+      const note = given?.trim() ? given : undefined;
       const { applicants } = await getApplicantPool();
       const applicantIds = new Set(applicants.map(({ id }) => id));
       let entry;

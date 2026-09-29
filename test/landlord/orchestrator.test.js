@@ -115,8 +115,8 @@ test("a preference that changes the Selection criteria emits a criteria event", 
     script: [
       {
         toolCalls: [
-          { name: "adjust_selection_criteria", args: { changes: [{ criterion: "employment", factor: 1.3 }] } },
-          { name: "update_selection_criteria", args: { requirements: { schufaCleanOnly: true } } },
+          { name: "adjust_selection_criteria", args: { changes: [{ criterion: "employment", by: "factor", value: 1.3 }] } },
+          { name: "update_selection_criteria", args: { changes: [{ requirement: "schufaCleanOnly", value: true }] } },
         ],
       },
       "Ich habe die Beschäftigung stärker gewichtet und nur saubere SCHUFA zugelassen.",
@@ -137,7 +137,7 @@ test("a preference that changes the Selection criteria emits a criteria event", 
 test("a Shortlist change emits a shortlist event", async () => {
   const { orchestrator } = setup({
     script: [
-      { toolCalls: [{ name: "update_shortlist", args: { applicantId: "A-004", status: "to_invite" } }] },
+      { toolCalls: [{ name: "update_shortlist", args: { applicantId: "A-004", status: "to_invite", note: null } }] },
       "A-004 is on your Shortlist, to invite.",
     ],
   });
@@ -151,7 +151,7 @@ test("a Shortlist change emits a shortlist event", async () => {
 test("saving flat details emits a flat event", async () => {
   const { orchestrator, calls } = setup({
     script: [
-      { toolCalls: [{ name: "update_flat_details", args: { askingRent: 1100, livingAreaSqm: 65, rooms: 2 } }] },
+      { toolCalls: [{ name: "update_flat_details", args: { facts: [{ fact: "askingRent", value: 1100 }, { fact: "livingAreaSqm", value: 65 }, { fact: "rooms", value: 2 }] } }] },
       "I saved the rent of 1100 €, 65 m² and 2 rooms.",
     ],
   });
@@ -159,7 +159,7 @@ test("saving flat details emits a flat event", async () => {
   const events = await collect(orchestrator.send({ landlordId: "l-1", message: "The rent is 1100 €, 65 m², 2 rooms." }));
 
   assert.deepEqual(typesOf(events), ["flat", "token", "done"]);
-  assert.deepEqual(calls.map(({ name, args }) => ({ name, args })), [{ name: "update_flat_details", args: { askingRent: 1100, livingAreaSqm: 65, rooms: 2 } }]);
+  assert.deepEqual(calls.map(({ name, args }) => ({ name, args })), [{ name: "update_flat_details", args: { facts: [{ fact: "askingRent", value: 1100 }, { fact: "livingAreaSqm", value: 65 }, { fact: "rooms", value: 2 }] } }]);
 });
 
 test("a Tool call that fails emits no change event and the model learns the error", async () => {
@@ -170,7 +170,7 @@ test("a Tool call that fails emits no change event and the model learns the erro
       },
     },
     script: [
-      { toolCalls: [{ name: "update_shortlist", args: { applicantId: "A-999", status: "to_invite" } }] },
+      { toolCalls: [{ name: "update_shortlist", args: { applicantId: "A-999", status: "to_invite", note: null } }] },
       "There is no applicant A-999.",
     ],
   });
@@ -193,6 +193,7 @@ test("the system prompt carries the Listing, the AGG refusal rule and the landlo
   assert.match(german, /"askingRent":700/);
   assert.match(german, /Never rank, select, exclude or comment on applicants by protected characteristics under the AGG/);
   assert.match(german, /refuse politely/);
+  assert.match(german, /equal Match scores are ordered by applicant id: say so; never invent a reason for their order/);
   assert.match(german, /Reply in German/);
   assert.match(english, /Reply in English/);
   assert.match(english, /"askingRent":700/);

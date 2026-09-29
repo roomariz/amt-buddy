@@ -109,7 +109,7 @@ test("a turn that changes the Shortlist reports it, so the page can reload the d
   const { fetchImpl, close } = await start({
     env: { OPENAI_MODEL: "scripted", OPENAI_API_KEY: "sk-test" },
     script: [
-      { toolCalls: [{ name: "update_shortlist", args: { applicantId: "A-001", status: "to_invite" } }] },
+      { toolCalls: [{ name: "update_shortlist", args: { applicantId: "A-001", status: "to_invite", note: null } }] },
       "A-001 is on your Shortlist.",
     ],
   });

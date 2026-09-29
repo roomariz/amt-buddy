@@ -14,6 +14,10 @@ export const SCHUFA_STATUSES = ["clean", "minor_entries", "negative", "missing"]
 // The flat facts a Listing needs; one that is missing switches off what depends on it.
 export const FLAT_FACTS = ["address", "livingAreaSqm", "rooms", "askingRent"];
 
+// The changing Tools' inputs have no optional fields: a live model filled every optional number
+// with 0 (a share next to the factor it meant, building year 0 and then an invented 1800). So each
+// takes a list naming only what changes, every field of an entry required.
+
 const applicantId = z.string().min(1).describe("The applicant's id, e.g. 'A-007'");
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
@@ -28,6 +32,7 @@ const requirements = z.object({
   latestMoveIn: day.nullable(),
   occupancyCompliant: z.boolean(),
 });
+export const REQUIREMENTS = Object.keys(requirements.shape);
 
 // Selection criteria: weights per criterion (normalised to sum to 100) and the hard Requirements.
 const selectionCriteria = z.looseObject({ weights, requirements });
@@ -135,21 +140,33 @@ export const LANDLORD_TOOL_CONTRACTS = {
     // Strict, so that weights are refused rather than dropped: they change only through
     // adjust_selection_criteria, under its limits.
     schema: z.strictObject({
-      requirements: requirements.partial().describe("Requirements to change"),
+      changes: z
+        .array(
+          z.object({
+            requirement: z.enum(REQUIREMENTS),
+            value: z
+              .union([z.boolean(), z.number(), z.string(), z.null()])
+              .describe(
+                "true or false for schufaCleanOnly, completeDocumentsOnly, noPets, noSmoking, occupancyCompliant; for maxRentToIncome the largest rent-to-income ratio (0.35 = rent at most 35 % of net income) or null to switch it off; for latestMoveIn a date 'YYYY-MM-DD' or null to switch it off",
+              ),
+          }),
+        )
+        .min(1)
+        .describe("Only the Requirements the landlord changes; the others keep their saved values"),
     }),
     output: z.looseObject({ previous: selectionCriteria, criteria: selectionCriteria, top: z.array(rankedApplicant).max(3), inactive }),
   },
   adjust_selection_criteria: {
     name: "adjust_selection_criteria",
     description:
-      "Change how much criteria count, relative to their saved shares: per criterion a factor (1.3 = 30 % more, 1.5 = much more, 0.7 = less, 2 = double, 0.5 = halve, 0 = ignore) or a target share in %. The criteria not named keep their proportions and fill the rest to 100 %. No share can exceed 50 % (a request above is capped). Saves them and returns the old and new criteria (shares in %), what was applied (from, requested, to, capped) and the new top 3.",
+      "Change how much criteria count, relative to their saved shares: per criterion by a factor (1.3 = 30 % more, 1.5 = much more, 0.7 = less, 2 = double, 0.5 = halve, 0 = ignore) or to a target share in %. The criteria not named keep their proportions and fill the rest to 100 %. No share can exceed 50 % (a request above is capped). Saves them and returns the old and new criteria (shares in %), what was applied (from, requested, to, capped) and the new top 3.",
     schema: z.object({
       changes: z
         .array(
           z.object({
             criterion: z.enum(SELECTION_CRITERIA),
-            factor: z.number().min(0).optional().describe("Multiplies the saved share; give this or share"),
-            share: z.number().min(0).max(100).optional().describe("The new share in %; give this or factor"),
+            by: z.enum(["factor", "share"]).describe("'factor': value multiplies the saved share; 'share': value is the new share in %"),
+            value: z.number().min(0).describe("The factor (1.3 = 30 % more), or the share in % (at most 100)"),
           }),
         )
         .min(1),
@@ -167,13 +184,21 @@ export const LANDLORD_TOOL_CONTRACTS = {
   update_flat_details: {
     name: "update_flat_details",
     description:
-      "Save facts about the landlord's flat as they give them: address (street, house number and postal code), living area, rooms, asking net cold rent, building year. Once address, size, rooms and rent are all known, builds the Listing and its Rent check (Berliner Mietspiegel, Mietpreisbremse). Returns the saved details, what is still missing, the Rent check (or a note why there is none), the pool statistics, the new top 3 and what is not counted yet.",
+      "Save facts about the landlord's flat as they give them, only those they stated: address (street, house number and postal code), living area, rooms, asking net cold rent, building year (only when the landlord states the year; never guess). Once address, size, rooms and rent are all known, builds the Listing and its Rent check (Berliner Mietspiegel, Mietpreisbremse). Returns the saved details, what is still missing, the Rent check (or a note why there is none), the pool statistics, the new top 3 and what is not counted yet.",
     schema: z.object({
-      address: z.string().optional().describe("Street, house number and postal code, e.g. 'Wühlischstraße 30, 10245 Berlin'"),
-      livingAreaSqm: z.number().optional().describe("Living area in m²"),
-      rooms: z.number().optional(),
-      askingRent: z.number().optional().describe("Asking net cold rent (Nettokaltmiete) per month in EUR"),
-      buildingYear: z.number().int().optional().describe("Only when the landlord states it"),
+      facts: z
+        .array(
+          z.object({
+            fact: z.enum([...FLAT_FACTS, "buildingYear"]),
+            value: z
+              .union([z.string(), z.number()])
+              .describe(
+                "address: street, house number and postal code, e.g. 'Wühlischstraße 30, 10245 Berlin'; livingAreaSqm: living area in m²; rooms: number of rooms; askingRent: asking net cold rent (Nettokaltmiete) per month in EUR; buildingYear: only when the landlord states the year; never guess",
+              ),
+          }),
+        )
+        .min(1)
+        .describe("Only the facts the landlord stated in this conversation"),
     }),
     output: z.looseObject({
       flat: z.object({
@@ -201,11 +226,11 @@ export const LANDLORD_TOOL_CONTRACTS = {
   update_shortlist: {
     name: "update_shortlist",
     description:
-      "Add an applicant to the landlord's Shortlist or change their entry: status 'to_invite', 'invited' or 'declined', with an optional short note; status 'remove' takes them off the Shortlist.",
+      "Add an applicant to the landlord's Shortlist or change their entry: status 'to_invite', 'invited' or 'declined', with a short note or null; status 'remove' takes them off the Shortlist.",
     schema: z.object({
       applicantId,
       status: z.enum([...SHORTLIST_STATUSES, "remove"]),
-      note: z.string().max(500).optional(),
+      note: z.string().max(500).nullable().describe("A short note the landlord asked to save on the entry, or null to keep the entry's note as it is"),
     }),
     output: z.looseObject({
       applicantId,

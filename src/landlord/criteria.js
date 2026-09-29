@@ -16,8 +16,10 @@ const requirementsSchema = z.strictObject({
 const updateSchema = z.strictObject({ weights: weightsSchema.optional(), requirements: requirementsSchema.optional() });
 
 const CRITERIA = Object.keys(DEFAULT_CRITERIA.weights);
+// Every field required, so a model has no optional number to fill with 0 (it did: "share": 0 next
+// to the factor it meant).
 const changesSchema = z
-  .array(z.strictObject({ criterion: z.enum(CRITERIA), factor: z.number().nonnegative().optional(), share: z.number().min(0).max(100).optional() }))
+  .array(z.strictObject({ criterion: z.enum(CRITERIA), by: z.enum(["factor", "share"]), value: z.number().nonnegative() }))
   .min(1);
 
 export class CriteriaInputError extends Error {
@@ -82,9 +84,9 @@ function parseChanges(changes) {
   }
   const problems = [];
   const seen = new Set();
-  parsed.data.forEach(({ criterion, factor, share }, index) => {
-    if ((factor === undefined) === (share === undefined)) {
-      problems.push({ field: `changes.${index}`, code: "factor_or_share", message: `Give '${criterion}' either a factor or a share, not both or neither.` });
+  parsed.data.forEach(({ criterion, by, value }, index) => {
+    if (by === "share" && value > 100) {
+      problems.push({ field: `changes.${index}.value`, code: "too_big", message: `The share for '${criterion}' is at most 100 %.` });
     }
     if (seen.has(criterion)) {
       problems.push({ field: `changes.${index}.criterion`, code: "duplicate_criterion", message: `'${criterion}' is named more than once.` });
@@ -98,9 +100,10 @@ function parseChanges(changes) {
 // adjustSelectionCriteria({ store, landlordId, changes }) → { previous, criteria, applied }: the
 // relative weight change of the chat ("give SCHUFA 30 % more importance"), computed in code, never
 // by the model (ADR 0004).
-// - changes: [{ criterion, factor } | { criterion, share }]. A named criterion's new share is its
-//   saved share × factor, or the share given, in % of the saved criteria. The criteria not named
-//   keep their proportions and are scaled to fill the rest to 100 %.
+// - changes: [{ criterion, by: "factor" | "share", value }]. A named criterion's new share is its
+//   saved share × value (by "factor"), or value itself (by "share", at most 100), in % of the
+//   saved criteria. The criteria not named keep their proportions and are scaled to fill the rest
+//   to 100 %.
 // - applied: [{ criterion, from, requested, to, capped }], unrounded.
 // Limits, all checked before the store changes (CriteriaInputError otherwise):
 // - a share above MAX_SHARE (50 %) is capped at it and reported as capped;
@@ -115,9 +118,9 @@ export function adjustSelectionCriteria({ store, landlordId, changes }) {
   const savedTotal = sum(CRITERIA.map((criterion) => previous.weights[criterion]));
   const saved = Object.fromEntries(CRITERIA.map((criterion) => [criterion, (previous.weights[criterion] / savedTotal) * 100]));
 
-  const applied = parsed.map(({ criterion, factor, share }) => {
+  const applied = parsed.map(({ criterion, by, value }) => {
     const from = tidy(saved[criterion]);
-    const requested = tidy(share ?? from * factor);
+    const requested = tidy(by === "share" ? value : from * value);
     return { criterion, from, requested, to: Math.min(requested, MAX_SHARE), capped: requested > MAX_SHARE };
   });
   const named = new Map(applied.map(({ criterion, to }) => [criterion, to]));

@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { z } from "zod";
 
 import {
   createLandlordOrchestrator,
@@ -13,9 +14,9 @@ import { ScriptedChatModel } from "../orchestrator/helpers/scripted-model.js";
 const SAMPLE_ARGS = {
   get_ranking: {},
   get_applicant_profile: { applicantId: "A-001" },
-  update_selection_criteria: { requirements: { schufaCleanOnly: true } },
-  adjust_selection_criteria: { changes: [{ criterion: "employment", factor: 1.3 }] },
-  update_flat_details: { askingRent: 1100, livingAreaSqm: 65, rooms: 2 },
+  update_selection_criteria: { changes: [{ requirement: "schufaCleanOnly", value: true }] },
+  adjust_selection_criteria: { changes: [{ criterion: "employment", by: "factor", value: 1.3 }] },
+  update_flat_details: { facts: [{ fact: "askingRent", value: 1100 }, { fact: "livingAreaSqm", value: 65 }, { fact: "rooms", value: 2 }] },
   remember_preference: { note: "I'd like someone who stays long-term." },
   update_shortlist: { applicantId: "A-001", status: "to_invite", note: "Stable income" },
   get_rent_check: {},
@@ -39,6 +40,40 @@ test("the eight landlord Tools have contracts", () => {
   }
 });
 
+// The paths of every optional property in a JSON schema, at any depth ("facts[].value").
+function optionalProperties(schema, path = "") {
+  if (Array.isArray(schema)) return schema.flatMap((item) => optionalProperties(item, path));
+  if (!schema || typeof schema !== "object") return [];
+  const found = [];
+  const required = new Set(schema.required ?? []);
+  for (const [key, value] of Object.entries(schema)) {
+    if (key === "properties") {
+      for (const [name, property] of Object.entries(value)) {
+        const at = path ? `${path}.${name}` : name;
+        if (!required.has(name)) found.push(at);
+        found.push(...optionalProperties(property, at));
+      }
+    } else {
+      found.push(...optionalProperties(value, key === "items" ? `${path}[]` : path));
+    }
+  }
+  return found;
+}
+
+// A live model (gpt-4.1) filled every optional input with a value (a share of 0 next to its
+// factor, building year 0, then an invented 1800): the scripted model cannot reproduce that, so
+// the contracts themselves must leave nothing to fill.
+test("no landlord Tool input has an optional property, at any depth", () => {
+  // The check finds an optional property where there is one, nested in a list too.
+  const canary = z.object({ facts: z.array(z.object({ fact: z.string(), year: z.number().optional() })) });
+  assert.deepEqual(optionalProperties(z.toJSONSchema(canary, { io: "input" })), ["facts[].year"]);
+
+  for (const name of LANDLORD_TOOL_NAMES) {
+    const schema = z.toJSONSchema(LANDLORD_TOOL_CONTRACTS[name].schema, { io: "input" });
+    assert.deepEqual(optionalProperties(schema), [], name);
+  }
+});
+
 test("every stub Tool's result satisfies its contract's output schema", async () => {
   const { tools } = createLandlordStubTools();
   for (const stub of tools) {
@@ -51,7 +86,7 @@ test("every stub Tool's result satisfies its contract's output schema", async ()
 test("removing an applicant from the Shortlist is a valid stub call too", async () => {
   const { tools } = createLandlordStubTools();
   const shortlist = tools.find((candidate) => candidate.name === "update_shortlist");
-  const result = await shortlist.invoke({ applicantId: "A-002", status: "remove" });
+  const result = await shortlist.invoke({ applicantId: "A-002", status: "remove", note: null });
   assert.doesNotThrow(() => LANDLORD_TOOL_CONTRACTS.update_shortlist.output.parse(result));
 });
 

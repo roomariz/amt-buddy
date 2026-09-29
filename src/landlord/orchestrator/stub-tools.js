@@ -142,9 +142,12 @@ export const LANDLORD_STUB_HANDLERS = {
     const ranked = RANKED.find((entry) => entry.applicantId === applicantId);
     return { profile, matchScore: ranked.matchScore, breakdown: ranked.breakdown, excludedBy: null, inactive: [] };
   },
-  update_selection_criteria: ({ requirements = {} }) => ({
+  update_selection_criteria: ({ changes }) => ({
     previous: DEFAULT_CRITERIA,
-    criteria: { ...DEFAULT_CRITERIA, requirements: { ...DEFAULT_CRITERIA.requirements, ...requirements } },
+    criteria: {
+      ...DEFAULT_CRITERIA,
+      requirements: { ...DEFAULT_CRITERIA.requirements, ...Object.fromEntries(changes.map(({ requirement, value }) => [requirement, value])) },
+    },
     top: RANKED,
     inactive: [],
   }),
@@ -159,8 +162,8 @@ export const LANDLORD_STUB_HANDLERS = {
     top: RANKED,
     inactive: [],
   }),
-  update_flat_details: (details) => ({
-    flat: { address: null, livingAreaSqm: null, rooms: null, askingRent: null, buildingYear: null, ...details },
+  update_flat_details: ({ facts }) => ({
+    flat: { address: null, livingAreaSqm: null, rooms: null, askingRent: null, buildingYear: null, ...Object.fromEntries(facts.map(({ fact, value }) => [fact, value])) },
     missing: ["address"],
     rentCheck: null,
     note: "The Rent check needs the flat's address; still missing: address.",
