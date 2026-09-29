@@ -202,6 +202,16 @@ ranking table, the Excluded section, the profile panel.
   - issue #56 (address without postal code): the chat asks for the postal code;
   - issue #57.
 
+**Changed during the build (2026-09-30).** A live probe showed the real model fills every optional
+number with 0. It sent a `share` of 0 beside a `factor`, and a building year of 0, then an invented
+1800. So every landlord Tool input now lists only what the landlord changes, with nothing optional:
+- `adjust_selection_criteria` takes `changes: [{ criterion, by: "factor" | "share", value }]`;
+- `update_selection_criteria` takes `changes: [{ requirement, value }]`;
+- `update_flat_details` takes `facts: [{ fact, value }]`;
+- `update_shortlist`'s `note` is required, and null keeps the note.
+
+A guard test keeps optional properties out. See `docs/api.md`.
+
 ## How the work is split
 
 The roles follow the user's multi-agent standard (from the BioNumbers project, without its testing
