@@ -27,6 +27,13 @@ export function confidenceLevel(confidence) {
   return "low";
 }
 
+// A fact's translated label and unit, as the review card and the confirm bubble show them.
+function labelAndUnit({ name, unit, unitKey }) {
+  return { label: t(`facts.${name}`), unit: unitKey ? t(unitKey) : unit };
+}
+
+const leaseFact = (name) => LEASE_FACTS.find((fact) => fact.name === name);
+
 const isUnconfirmed = (fact) =>
   fact?.source === "lease" && !(typeof fact.confidence === "number" && fact.confidence >= CONFIDENCE_THRESHOLD);
 
@@ -41,20 +48,17 @@ function displayValue(value) {
 // still comes from the lease, Unconfirmed ones first.
 export function reviewCard(tenancy) {
   if (!tenancy || typeof tenancy !== "object") return null;
-  const fields = LEASE_FACTS.filter(({ name }) => tenancy[name]?.source === "lease").map(
-    ({ name, unit, unitKey }) => {
-      const fact = tenancy[name];
-      return {
-        name,
-        label: t(`facts.${name}`),
-        unit: unitKey ? t(unitKey) : unit,
-        value: displayValue(fact.value),
-        confidence: typeof fact.confidence === "number" ? fact.confidence : null,
-        level: confidenceLevel(fact.confidence),
-        unconfirmed: isUnconfirmed(fact),
-      };
-    },
-  );
+  const fields = LEASE_FACTS.filter(({ name }) => tenancy[name]?.source === "lease").map((leaseFact) => {
+    const fact = tenancy[leaseFact.name];
+    return {
+      name: leaseFact.name,
+      ...labelAndUnit(leaseFact),
+      value: displayValue(fact.value),
+      confidence: typeof fact.confidence === "number" ? fact.confidence : null,
+      level: confidenceLevel(fact.confidence),
+      unconfirmed: isUnconfirmed(fact),
+    };
+  });
   if (!fields.some((field) => field.unconfirmed)) return null;
   return { fields: [...fields.filter((f) => f.unconfirmed), ...fields.filter((f) => !f.unconfirmed)] };
 }
@@ -71,7 +75,21 @@ export function confirmPayload(fields, inputs) {
   return confirm;
 }
 
+// The user bubble for a `confirm` ("Values confirmed – Nettokaltmiete: 780,50 € / Monat"), in the
+// UI language and in the order sent; null when it names no lease fact. Values are shown as sent
+// (only plain strings and numbers: anything else did not come from the card).
+export function confirmedValuesText(confirm) {
+  const parts = [];
+  for (const [name, value] of Object.entries(confirm)) {
+    const fact = leaseFact(name);
+    if (!fact || !["string", "number"].includes(typeof value)) continue;
+    const { label, unit } = labelAndUnit(fact);
+    parts.push(`${label}: ${value}${unit ? ` ${unit}` : ""}`);
+  }
+  return parts.length > 0 ? t("chat.confirmedValues", { summary: parts.join(", ") }) : null;
+}
+
 // The input mode for a fact's field (text, decimal or numeric keyboard).
 export function inputModeFor(name) {
-  return LEASE_FACTS.find((fact) => fact.name === name)?.input ?? "text";
+  return leaseFact(name)?.input ?? "text";
 }

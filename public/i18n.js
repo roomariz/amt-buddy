@@ -124,6 +124,7 @@ const de = {
     steps: "Arbeitsschritte",
     working: "Amt-Buddy arbeitet …",
     confirmedValues: "Werte bestätigt – {summary}",
+    leaseUploaded: "Mietvertrag hochgeladen",
   },
   form: {
     heading: "Ist diese Adresse offiziell?",
@@ -366,6 +367,7 @@ const en = {
     steps: "Steps",
     working: "Amt-Buddy is working …",
     confirmedValues: "Values confirmed – {summary}",
+    leaseUploaded: "Lease uploaded",
   },
   form: {
     heading: "Is this address official?",
