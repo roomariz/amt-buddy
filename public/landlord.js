@@ -179,6 +179,7 @@ function renderApplicantDetail() {
     for (const { label, value } of items) fact(list, label, value);
     applicantDetailBody.append(list);
   };
+  applicantDetailBody.append(shortlistButton(selectedApplicantId, "detail"));
   facts(view.facts);
 
   heading("documents");
@@ -378,6 +379,7 @@ function redrawShortlistAndButtons() {
     renderShortlist();
     renderPoolOverview();
     renderRanking();
+    renderApplicantDetail();
   });
 }
 
@@ -417,8 +419,8 @@ function changeShortlist(request) {
   return shortlistQueue;
 }
 
-// "Add to Shortlist" for the ranking and the Recommendation cards (`place`); "On the Shortlist"
-// once added.
+// "Add to Shortlist" for the ranking, the Recommendation cards and the profile panel (`place`);
+// "On the Shortlist" once added.
 function shortlistButton(applicantId, place) {
   const added = isShortlisted(shortlist, applicantId);
   const button = el("button", "landlord-link-btn shortlist-add", t(added ? "landlord.shortlist.added" : "landlord.shortlist.add"));
