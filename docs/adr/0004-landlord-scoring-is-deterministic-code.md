@@ -1,0 +1,7 @@
+# Landlord scoring is deterministic code; the model only explains and edits criteria
+
+Every Match score, subscore, Requirement exclusion and rank on the landlord side is computed by `rankApplicants` (`src/landlord/scorer.js`): a pure function of the anonymised Applicant profiles, the Listing and the Selection criteria, with ties broken by applicant id. The Landlord Orchestrator never scores an applicant itself; it reads scores through Tools (`get_ranking`, `get_applicant_profile`) and changes the ranking only by editing the Selection criteria (`update_selection_criteria`), after which the same code ranks again. We chose this over letting the model rank or adjust scores because a landlord must be able to reproduce and defend a selection under the AGG, the ranking has to be testable with plain table tests, and every number the chat quotes must come from a Tool result (ADR 0003); a model-produced score would be none of these.
+
+## Consequences
+
+Scoring rules (subscore mappings, default weights, Requirements) change only in code, with tests. Weights are relative: the scorer accepts any non-negative weights and normalises them, so the chat and the dashboard can speak in points out of 100 while the scorer stays the one source of truth. The scorer never sees names or contact details: the dashboard joins names in after scoring, for display only. Preferences the scorer cannot express (e.g. "someone who stays long-term") stay free-text Landlord preferences until code supports them; the model does not approximate them with its own judgement.

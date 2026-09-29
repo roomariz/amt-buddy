@@ -8,6 +8,7 @@ import { createLandlordStore } from "../../src/landlord/store.js";
 import { createFakeBerlinWfs } from "../helpers/fake-berlin-wfs.js";
 import { fetchDashboard, saveListing, signIn } from "../../public/landlord/api.js";
 import { listingRequest } from "../../public/landlord/listing.js";
+import { rankingRows } from "../../public/landlord/ranking.js";
 
 async function start() {
   const app = createApp({
@@ -39,6 +40,24 @@ test("sign in, save the Listing from the form and read it back on the dashboard"
   assert.equal(saved.listing.rentCheck.aboveCap, true);
   assert.deepEqual(dashboard.listing, saved.listing);
   assert.deepEqual(dashboard.rentCheck, saved.listing.rentCheck);
+});
+
+test("after saving the Listing the dashboard ranks the pool, and the table can filter it", async (t) => {
+  const { fetchImpl, close } = await start();
+  t.after(close);
+  const { landlordId } = await signIn({ fetchImpl, name: "Erika" });
+
+  const before = await fetchDashboard({ fetchImpl, landlordId });
+  await saveListing({ fetchImpl, landlordId, request: listingRequest(FORM) });
+  const after = await fetchDashboard({ fetchImpl, landlordId });
+
+  assert.equal(before.hint.code, "listing_required");
+  assert.deepEqual(before.ranked, []);
+  assert.equal(after.hint, null);
+  assert.ok(after.ranked.length > 0);
+  assert.ok(after.ranked.every(({ name }) => typeof name === "string" && name));
+  const complete = rankingRows(after.ranked, { completeOnly: true });
+  assert.ok(complete.length > 0 && complete.length < after.ranked.length);
 });
 
 test("form fields the server rejects come back as problems by field", async (t) => {

@@ -306,7 +306,33 @@ The Rent check runs `evaluateMietspiegel` with the asking rent as contract rent 
 
 ### `GET /api/v1/landlord/:landlordId/dashboard`
 
-→ `200 { "data": { "listing": { … } | null, "rentCheck": { … } | null } }`. Later landlord features add fields (pool statistics, ranking, Shortlist, …).
+→ `200 { "data": { "listing", "rentCheck", "criteria", "ranked", "excluded", "hint", "poolErrors" } }`. Later landlord features add fields (pool statistics, Recommendations, Shortlist, …).
+
+- `listing` / `rentCheck`: the saved Listing and its Rent check, or `null`.
+- `criteria`: the Selection criteria used: `weights` (relative, per criterion: `affordability` 30, `schufa` 20, `documents` 15, `credibility` 15, `employment` 15, `previousLandlord` 5; normalised to sum to 100 %) and `requirements` (`schufaCleanOnly`, `completeDocumentsOnly`, `maxRentToIncome`, `noPets`, `noSmoking`, `latestMoveIn`, all off; `occupancyCompliant` on). Not tunable yet.
+- `ranked`: the Applicant pool scored for the Listing (`rankApplicants`, `src/landlord/scorer.js`; ADR 0004), best first, ties by applicant id:
+
+```json
+{
+  "applicantId": "A-007",
+  "rank": 1,
+  "matchScore": 94.2,
+  "rentToIncome": 0.1842,
+  "breakdown": { "affordability": { "subscore": 1, "weight": 30 }, "schufa": { "subscore": 1, "weight": 20 }, "…": {} },
+  "name": "Lena Schmidt",
+  "documents": { "schufa": "present", "incomeProof": "present", "previousLandlord": "not_required", "arrears": false, "complete": true }
+}
+```
+
+  `documents` holds each Application document's Document check status, `arrears` (the previous landlord confirms rent arrears) and `complete`.
+
+  `subscore` is 0–1, `weight` the criterion's share of the Match score in %. Subscores: affordability 1 at a rent-to-income ratio of at most 25 %, 0 at 40 % or more, linear in between; SCHUFA clean 1, minor entries 0.5, negative or missing 0; documents the share of required documents present and valid; credibility the Credibility score / 100; employment permanent or civil servant 1, fixed-term or self-employed 0.6, student with guarantor 0.5, other 0.3; previous landlord no arrears 1, first-time renter 0.5, missing or unusable 0.3, arrears 0.
+- `excluded`: applicants who fail a Requirement, by id: `{ applicantId, excludedBy, reasons: [{ requirement, message, …values }], name, documents }`. `excludedBy` is the first failed Requirement; the values depend on it (e.g. `occupancyCompliant`: `householdSize`, `requiredAreaSqm` under § 7 WoAufG Bln, `livingAreaSqm`; `maxRentToIncome`: `rentToIncome`, `limit`).
+- `name` is joined in for display only; the scorer never sees names or contact details.
+- `hint`: `{ "code": "listing_required", "message" }` without a Listing (then `ranked` and `excluded` are empty), otherwise `null`.
+- `poolErrors`: `[{ file, reason }]`, the pool files that could not be read as an application.
+
+The server reads the Applicant pool once at start from `APPLICANT_POOL_DIR` (default: the committed pool in `data/applicants`), as of `APPLICANT_POOL_TODAY` (default: `POOL_DATE`, the day the committed pool was generated, so its SCHUFA-Auskünfte do not expire).
 
 ### `POST /api/v1/landlord/:landlordId/chat`
 

@@ -1,15 +1,16 @@
 /**
- * Amt-Buddy /landlord page: sign in with a name, enter the Listing, see its Rent check, and chat
- * with the Landlord Orchestrator.
+ * Amt-Buddy /landlord page: sign in with a name, enter the Listing, see its Rent check and the
+ * ranked applicants, and chat with the Landlord Orchestrator.
  *
- * The logic lives in ./landlord/ (server calls, the form and range-bar view model, the stored
- * sign-in); this file only wires it to the DOM. Server text is always set as textContent.
+ * The logic lives in ./landlord/ (server calls, the form and range-bar view model, the ranking
+ * table, the stored sign-in); this file only wires it to the DOM. Server text is always set as textContent.
  */
 
 import { fetchDashboard, saveListing, signIn } from "./landlord/api.js";
 import { runLandlordTurn } from "./landlord/chat.js";
 import { renderMarkdown } from "./chat/markdown.js";
 import { listingFormValues, listingRequest, rentCheckView } from "./landlord/listing.js";
+import { breakdownBars, documentFlags, exclusionText, formatNumber, formatPercent, rankingRows } from "./landlord/ranking.js";
 import { forgetLandlord, rememberLandlord, storedLandlord } from "./landlord/session.js";
 import { getLanguage, onLanguageChange, startI18n, t } from "./i18n.js";
 
@@ -32,6 +33,17 @@ const chatMessages = $("#landlord-chat-messages");
 const chatForm = $("#landlord-chat-form");
 const chatInput = $("#landlord-chat-input");
 const chatSendButton = $("#btn-landlord-chat-send");
+const rankingSection = $("#ranking");
+const rankingHint = $("#ranking-hint");
+const rankingBody = $("#ranking-body");
+const rankingSort = $("#ranking-sort");
+const rankingCompleteOnly = $("#ranking-complete-only");
+const rankingCount = $("#ranking-count");
+const rankingRowsBody = $("#ranking-rows");
+const rankingEmpty = $("#ranking-empty");
+const rankingPoolErrors = $("#ranking-pool-errors");
+const excludedBlock = $("#excluded");
+const excludedList = $("#excluded-list");
 
 function localStore() {
   try {
@@ -43,6 +55,7 @@ function localStore() {
 
 let landlord = storedLandlord(localStore());
 let listing = null;
+let ranking = null; // { ranked, excluded, hint, poolErrors } from the dashboard
 
 const money = (amount) =>
   new Intl.NumberFormat(getLanguage() === "en" ? "en-GB" : "de-DE", { style: "currency", currency: "EUR" }).format(amount);
@@ -69,7 +82,10 @@ function renderSignedIn() {
   signOutButton.hidden = !signedIn;
   nameLabel.hidden = !signedIn;
   nameLabel.textContent = signedIn ? t("landlord.signedInAs", { name: landlord.name }) : "";
-  if (!signedIn) rentCheckSection.hidden = true;
+  if (!signedIn) {
+    rentCheckSection.hidden = true;
+    rankingSection.hidden = true;
+  }
 }
 
 function fillForm(values) {
@@ -162,18 +178,96 @@ function renderRentCheck() {
   }
 }
 
+// --- the ranked applicants -----------------------------------------------------------------------
+
+function breakdownCell(entry) {
+  const bars = el("div", "ranking-bars");
+  for (const bar of breakdownBars(entry)) {
+    const label = t("landlord.ranking.bar", {
+      criterion: t(`landlord.ranking.criteria.${bar.criterion}`),
+      percent: bar.percent,
+      weight: bar.weight,
+    });
+    const node = el("div", "ranking-bar");
+    node.title = label;
+    node.setAttribute("role", "img");
+    node.setAttribute("aria-label", label);
+    const fill = el("div", "ranking-bar-fill");
+    fill.style.height = `${bar.percent}%`;
+    node.append(fill);
+    bars.append(node);
+  }
+  return bars;
+}
+
+function flagsCell(documents) {
+  const flags = el("div", "ranking-flags");
+  for (const flag of documentFlags(documents)) {
+    const text = `${t(`landlord.ranking.document.${flag.document}`)}: ${t(`landlord.ranking.documentStatus.${flag.status}`)}`;
+    flags.append(el("span", `ranking-flag${flag.ok ? "" : " is-problem"}`, text));
+  }
+  return flags;
+}
+
+function renderRanking() {
+  rankingSection.hidden = !ranking;
+  if (!ranking) return;
+  rankingHint.hidden = !ranking.hint;
+  if (ranking.hint) rankingHint.textContent = t("landlord.ranking.hint");
+  rankingPoolErrors.hidden = ranking.poolErrors.length === 0;
+  rankingPoolErrors.textContent = t("landlord.ranking.poolErrors", { count: ranking.poolErrors.length });
+  rankingBody.hidden = Boolean(ranking.hint);
+  if (ranking.hint) return;
+
+  rankingCount.textContent = t("landlord.ranking.count", { ranked: ranking.ranked.length, excluded: ranking.excluded.length });
+  const rows = rankingRows(ranking.ranked, { sort: rankingSort.value, completeOnly: rankingCompleteOnly.checked });
+  rankingRowsBody.replaceChildren(
+    ...rows.map((entry) => {
+      const row = el("tr");
+      const cell = (content, className) => {
+        const td = el("td", className);
+        if (content instanceof Node) td.append(content);
+        else td.textContent = content;
+        row.append(td);
+      };
+      cell(String(entry.rank));
+      cell(entry.name);
+      cell(formatNumber(entry.matchScore), "ranking-score");
+      cell(breakdownCell(entry));
+      cell(formatPercent(entry.rentToIncome));
+      cell(flagsCell(entry.documents));
+      return row;
+    }),
+  );
+  rankingEmpty.hidden = rows.length > 0;
+
+  excludedBlock.hidden = ranking.excluded.length === 0;
+  excludedList.replaceChildren(
+    ...ranking.excluded.map((entry) => {
+      const item = el("li");
+      item.append(el("span", "excluded-name", entry.name), el("span", "", entry.reasons.map(exclusionText).join(" ")));
+      return item;
+    }),
+  );
+}
+
+rankingSort.addEventListener("change", renderRanking);
+rankingCompleteOnly.addEventListener("change", renderRanking);
+
 // --- actions -----------------------------------------------------------------------------------
 
 function signOut() {
   forgetLandlord(localStore());
   landlord = null;
   listing = null;
+  ranking = null;
   fillForm(listingFormValues(null));
   chatMessages.replaceChildren();
   showFieldProblems();
   showError(listingError, null);
   renderSignedIn();
   renderRentCheck();
+  renderRanking();
   signInName.focus();
 }
 
@@ -185,8 +279,11 @@ async function loadDashboard() {
       return;
     }
     listing = dashboard.listing;
+    const { ranked, excluded, hint, poolErrors } = dashboard;
+    ranking = { ranked, excluded, hint, poolErrors };
     fillForm(listingFormValues(listing));
     renderRentCheck();
+    renderRanking();
   } catch (error) {
     showError(listingError, error.message);
   }
@@ -221,6 +318,8 @@ listingForm.addEventListener("submit", async (event) => {
     else {
       listing = result.listing;
       renderRentCheck();
+      // The ranking depends on the rent and the size: fetch it again.
+      await loadDashboard();
     }
   } catch (error) {
     showError(listingError, error.message);
@@ -289,6 +388,7 @@ signOutButton.addEventListener("click", signOut);
 onLanguageChange(() => {
   renderSignedIn();
   renderRentCheck();
+  renderRanking();
 });
 
 startI18n();

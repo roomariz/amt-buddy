@@ -38,8 +38,8 @@ export async function saveListing({ fetchImpl, landlordId, request }) {
   throw new Error(t("landlord.errors.failed"));
 }
 
-// The dashboard → { listing, rentCheck }, or { signedOut: true } when the server does not know
-// the landlord.
+// The dashboard → { listing, rentCheck, criteria, ranked, excluded, hint, poolErrors }, or
+// { signedOut: true } when the server does not know the landlord.
 export async function fetchDashboard({ fetchImpl, landlordId }) {
   const { status, body } = await call(fetchImpl, landlordPath(landlordId, "dashboard"));
   if (status === 200 && body?.data) return body.data;

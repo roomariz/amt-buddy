@@ -98,6 +98,54 @@
             </p>
           </section>
 
+          <!-- The ranked applicants and the Excluded section; drawn by landlord.js -->
+          <section id="ranking" class="landlord-card" aria-labelledby="ranking-title" hidden>
+            <h2 id="ranking-title" data-i18n="landlord.ranking.title">Bewerber-Ranking</h2>
+            <p class="landlord-intro" data-i18n="landlord.ranking.intro">
+              Jeder Bewerber bekommt aus festen Kriterien einen Match-Score von 0 bis 100: Bezahlbarkeit, SCHUFA, Unterlagen, Glaubwürdigkeit, Beschäftigung und Vorvermieter. Der Name wird nur angezeigt, er zählt nicht.
+            </p>
+            <p id="ranking-hint" class="landlord-note" hidden></p>
+            <p id="ranking-pool-errors" class="landlord-note" hidden></p>
+            <div id="ranking-body">
+              <div class="ranking-controls">
+                <label class="ranking-control">
+                  <span data-i18n="landlord.ranking.sort">Sortieren nach</span>
+                  <select id="ranking-sort">
+                    <option value="score" data-i18n="landlord.ranking.sortBy.score">Match-Score</option>
+                    <option value="name" data-i18n="landlord.ranking.sortBy.name">Name</option>
+                    <option value="rentToIncome" data-i18n="landlord.ranking.sortBy.rentToIncome">Miete / Einkommen</option>
+                  </select>
+                </label>
+                <label class="ranking-control ranking-check">
+                  <input type="checkbox" id="ranking-complete-only" />
+                  <span data-i18n="landlord.ranking.completeOnly">Nur vollständige Unterlagen</span>
+                </label>
+                <span id="ranking-count" class="ranking-count" aria-live="polite"></span>
+              </div>
+              <div class="ranking-table-wrap">
+                <table class="ranking-table">
+                  <thead>
+                    <tr>
+                      <th scope="col" data-i18n="landlord.ranking.rank">Platz</th>
+                      <th scope="col" data-i18n="landlord.ranking.name">Name</th>
+                      <th scope="col" data-i18n="landlord.ranking.score">Score</th>
+                      <th scope="col" data-i18n="landlord.ranking.breakdown">Aufschlüsselung</th>
+                      <th scope="col" data-i18n="landlord.ranking.rentToIncome">Miete / Einkommen</th>
+                      <th scope="col" data-i18n="landlord.ranking.documents">Unterlagen</th>
+                    </tr>
+                  </thead>
+                  <tbody id="ranking-rows"></tbody>
+                </table>
+              </div>
+              <p id="ranking-empty" class="landlord-hint" hidden data-i18n="landlord.ranking.empty">Kein Bewerber passt zu diesem Filter.</p>
+              <div id="excluded" hidden>
+                <h3 class="ranking-subtitle" data-i18n="landlord.ranking.excludedTitle">Ausgeschlossen</h3>
+                <p class="landlord-hint ranking-excluded-intro" data-i18n="landlord.ranking.excludedIntro">Diese Bewerber erfüllen eine Ihrer Anforderungen nicht.</p>
+                <ul id="excluded-list" class="excluded-list"></ul>
+              </div>
+            </div>
+          </section>
+
           <!-- The chat with the Landlord Orchestrator; drawn by landlord.js -->
           <section id="landlord-chat" class="landlord-card" aria-labelledby="landlord-chat-title" hidden>
             <h2 id="landlord-chat-title" data-i18n="landlord.chat.title">Chat mit Amt-Buddy</h2>

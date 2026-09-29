@@ -230,7 +230,7 @@ function checkPreviousLandlord(text, applicantName, firstTimeRenter) {
 }
 
 // Document statuses that count towards a complete application.
-const COMPLETE_STATUSES = new Set(["present", "not_required"]);
+export const COMPLETE_STATUSES = new Set(["present", "not_required"]);
 
 // The Document check of one application → { schufaStatus, documentCheck }.
 function documentCheckOf(declared, sections, today) {
