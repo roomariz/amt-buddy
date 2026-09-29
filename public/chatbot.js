@@ -38,6 +38,8 @@ const modeLabel = $("#chat-mode-label");
 const liveRegion = $("#chat-live");
 
 const MAX_FILE_BYTES = 15 * 1024 * 1024; // the upload endpoint's limit
+// Matches the stylesheet's breakpoint, where the sidebar lies over the page instead of beside it.
+const narrowScreen = window.matchMedia("(max-width: 768px)");
 
 function localStore() {
   try {
@@ -58,6 +60,11 @@ let openReviewCard = null; // the latest review card, until it is sent or a newe
 let chatMode = null; // "orchestrator", "rule_based" or null (unknown)
 
 // --- small DOM helpers -------------------------------------------------------------------------
+
+function setSidebarOpen(open) {
+  gptSidebar?.classList.toggle("collapsed", !open);
+  sidebarToggleBtn?.setAttribute("aria-expanded", String(open));
+}
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -379,12 +386,27 @@ chatUserInput.addEventListener("keydown", (event) => {
   }
 });
 
-btnNewChat?.addEventListener("click", resetToNewChat);
-
-sidebarToggleBtn?.addEventListener("click", () => {
-  const collapsed = gptSidebar?.classList.toggle("collapsed");
-  sidebarToggleBtn.setAttribute("aria-expanded", String(!collapsed));
+btnNewChat?.addEventListener("click", () => {
+  resetToNewChat();
+  if (narrowScreen.matches) setSidebarOpen(false);
 });
+
+sidebarToggleBtn?.addEventListener("click", () => setSidebarOpen(gptSidebar?.classList.contains("collapsed")));
+
+// On a narrow screen the open sidebar lies over the page and covers the toggle, so a tap
+// outside it or Escape closes it.
+document.addEventListener("click", (event) => {
+  if (!narrowScreen.matches || gptSidebar?.classList.contains("collapsed")) return;
+  if (!gptSidebar.contains(event.target) && !sidebarToggleBtn?.contains(event.target)) setSidebarOpen(false);
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape" || !narrowScreen.matches || gptSidebar?.classList.contains("collapsed")) return;
+  setSidebarOpen(false);
+  sidebarToggleBtn?.focus();
+});
+
+narrowScreen.addEventListener("change", () => setSidebarOpen(!narrowScreen.matches));
 
 chatUploadBtn?.addEventListener("click", () => chatFileInput.click());
 
@@ -442,7 +464,7 @@ document.addEventListener("click", (event) => {
 
 startI18n();
 onLanguageChange(renderChatMode);
-sidebarToggleBtn?.setAttribute("aria-expanded", "true");
 sidebarToggleBtn?.setAttribute("aria-controls", "gpt-sidebar");
+setSidebarOpen(!narrowScreen.matches);
 showChatMode();
 chatUserInput.focus();
