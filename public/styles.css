@@ -1312,6 +1312,16 @@ footer a { color: inherit; }
 
 .landlord-btn:disabled { opacity: 0.5; cursor: default; }
 
+.criteria-controls { border: 0; padding: 0; margin: 0; min-width: 0; display: grid; gap: 16px; }
+.criteria-controls legend { margin-bottom: 12px; font-weight: 600; }
+.criteria-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.criteria-weight { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+.criteria-weight input { grid-column: 1 / -1; width: 100%; min-width: 0; padding: 0; }
+.criteria-weight output { font-variant-numeric: tabular-nums; }
+.criteria-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; }
+.criteria-controls input[aria-invalid="true"] { outline: 2px solid #b3261e; }
+@media (max-width: 560px) { .criteria-grid { grid-template-columns: 1fr; } }
+
 .landlord-facts { margin: 0 0 16px; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
 
 .landlord-fact { display: block; padding: 10px 12px; border-radius: 10px; background: #f7f7f7; }

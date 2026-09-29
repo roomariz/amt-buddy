@@ -98,6 +98,88 @@
             </p>
           </section>
 
+          <section id="selection-criteria" class="landlord-card" aria-labelledby="criteria-title" hidden>
+            <h2 id="criteria-title" data-i18n="landlord.criteria.title">Auswahlkriterien</h2>
+            <p class="landlord-intro" data-i18n="landlord.criteria.intro">Passen Sie die Gewichtung an. Beim Speichern werden die Gewichte auf insgesamt 100 % umgerechnet und das Ranking aktualisiert.</p>
+            <form id="criteria-form" class="landlord-form">
+              <fieldset id="criteria-controls" class="criteria-controls">
+                <legend data-i18n="landlord.criteria.weights">Gewichtung</legend>
+                <div class="criteria-grid">
+                  <label class="criteria-weight" for="criteria-affordability">
+                    <span data-i18n="landlord.ranking.criteria.affordability">Bezahlbarkeit</span>
+                    <output id="criteria-value-affordability" for="criteria-affordability"></output>
+                    <input id="criteria-affordability" name="affordability" type="range" min="0" max="100" step="any" />
+                  </label>
+                  <label class="criteria-weight" for="criteria-schufa">
+                    <span data-i18n="landlord.ranking.criteria.schufa">SCHUFA</span>
+                    <output id="criteria-value-schufa" for="criteria-schufa"></output>
+                    <input id="criteria-schufa" name="schufa" type="range" min="0" max="100" step="any" />
+                  </label>
+                  <label class="criteria-weight" for="criteria-documents">
+                    <span data-i18n="landlord.ranking.criteria.documents">Unterlagen</span>
+                    <output id="criteria-value-documents" for="criteria-documents"></output>
+                    <input id="criteria-documents" name="documents" type="range" min="0" max="100" step="any" />
+                  </label>
+                  <label class="criteria-weight" for="criteria-credibility">
+                    <span data-i18n="landlord.ranking.criteria.credibility">Glaubwürdigkeit</span>
+                    <output id="criteria-value-credibility" for="criteria-credibility"></output>
+                    <input id="criteria-credibility" name="credibility" type="range" min="0" max="100" step="any" />
+                  </label>
+                  <label class="criteria-weight" for="criteria-employment">
+                    <span data-i18n="landlord.ranking.criteria.employment">Beschäftigung</span>
+                    <output id="criteria-value-employment" for="criteria-employment"></output>
+                    <input id="criteria-employment" name="employment" type="range" min="0" max="100" step="any" />
+                  </label>
+                  <label class="criteria-weight" for="criteria-previousLandlord">
+                    <span data-i18n="landlord.ranking.criteria.previousLandlord">Vorvermieter</span>
+                    <output id="criteria-value-previousLandlord" for="criteria-previousLandlord"></output>
+                    <input id="criteria-previousLandlord" name="previousLandlord" type="range" min="0" max="100" step="any" />
+                  </label>
+                </div>
+                <h3 class="ranking-subtitle" data-i18n="landlord.criteria.requirements">Anforderungen</h3>
+                <div class="criteria-grid">
+                  <label class="ranking-control ranking-check">
+                    <input type="checkbox" name="schufaCleanOnly" />
+                    <span data-i18n="landlord.criteria.schufaCleanOnly">Nur saubere SCHUFA</span>
+                  </label>
+                  <label class="ranking-control ranking-check">
+                    <input type="checkbox" name="completeDocumentsOnly" />
+                    <span data-i18n="landlord.criteria.completeDocumentsOnly">Nur vollständige Unterlagen</span>
+                  </label>
+                  <label class="ranking-control ranking-check">
+                    <input type="checkbox" name="noPets" />
+                    <span data-i18n="landlord.criteria.noPets">Keine Haustiere</span>
+                  </label>
+                  <label class="ranking-control ranking-check">
+                    <input type="checkbox" name="noSmoking" />
+                    <span data-i18n="landlord.criteria.noSmoking">Nichtraucher</span>
+                  </label>
+                  <label class="ranking-control ranking-check">
+                    <input type="checkbox" name="occupancyCompliant" />
+                    <span data-i18n="landlord.criteria.occupancyCompliant">Haushalt passt zur Wohnfläche</span>
+                  </label>
+                </div>
+                <div class="landlord-row">
+                  <label class="landlord-field">
+                    <span data-i18n="landlord.criteria.maxRentToIncome">Miete höchstens in % des Einkommens (optional)</span>
+                    <input name="maxRentToIncome" inputmode="decimal" aria-describedby="criteria-optional-hint" />
+                  </label>
+                  <label class="landlord-field">
+                    <span data-i18n="landlord.criteria.latestMoveIn">Einzug spätestens am (optional)</span>
+                    <input name="latestMoveIn" type="date" aria-describedby="criteria-optional-hint" />
+                  </label>
+                </div>
+                <p id="criteria-optional-hint" class="landlord-hint" data-i18n="landlord.criteria.optionalHint">Leere Felder setzen keine Grenze.</p>
+                <div class="criteria-actions">
+                  <button type="submit" class="landlord-btn" data-i18n="landlord.criteria.save">Kriterien speichern</button>
+                  <button type="button" id="btn-reset-criteria" class="landlord-link-btn" data-i18n="landlord.criteria.reset">Standardwerte wiederherstellen</button>
+                </div>
+              </fieldset>
+              <p id="criteria-error" class="landlord-error" role="alert" hidden></p>
+              <p id="criteria-status" class="landlord-hint" role="status"></p>
+            </form>
+          </section>
+
           <!-- The pool overview: pool summary, stat tiles and Recommendations; drawn by landlord.js -->
           <section id="pool-overview" class="landlord-card" aria-labelledby="pool-overview-title" aria-live="polite" hidden>
             <h2 id="pool-overview-title" data-i18n="landlord.poolOverview.title">Ihre Bewerber auf einen Blick</h2>
@@ -112,7 +194,7 @@
           <section id="ranking" class="landlord-card" aria-labelledby="ranking-title" hidden>
             <h2 id="ranking-title" tabindex="-1" data-i18n="landlord.ranking.title">Bewerber-Ranking</h2>
             <p class="landlord-intro" data-i18n="landlord.ranking.intro">
-              Jeder Bewerber bekommt aus festen Kriterien einen Match-Score von 0 bis 100: Bezahlbarkeit, SCHUFA, Unterlagen, Glaubwürdigkeit, Beschäftigung und Vorvermieter. Der Name wird nur angezeigt, er zählt nicht.
+              Jeder Bewerber bekommt aus Ihren Auswahlkriterien einen Match-Score von 0 bis 100: Bezahlbarkeit, SCHUFA, Unterlagen, Glaubwürdigkeit, Beschäftigung und Vorvermieter. Der Name wird nur angezeigt, er zählt nicht.
             </p>
             <p id="ranking-hint" class="landlord-note" hidden></p>
             <p id="ranking-pool-errors" class="landlord-note" hidden></p>

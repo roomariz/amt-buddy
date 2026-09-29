@@ -4,6 +4,7 @@ import { buildListing, ListingInputError } from "./listing.js";
 import { getApplicantProfile } from "./applicant-profile.js";
 import { detectLanguage, landlordReply } from "./orchestrator/replies.js";
 import { DEFAULT_CRITERIA, rankApplicants } from "./scorer.js";
+import { CriteriaInputError, updateSelectionCriteria } from "./criteria.js";
 import { normalizeLandlordName } from "./store.js";
 
 const MAX_NAME_LENGTH = 100;
@@ -130,16 +131,17 @@ export function createLandlordApi({ getStore, getApplicantPool = () => EMPTY_POO
   }
 
   // GET /api/v1/landlord/:landlordId/dashboard → { listing, rentCheck, criteria, ranked, excluded,
-  // stats, recommendations, hint, poolErrors }. Criteria are the defaults until they can be tuned.
+  // stats, recommendations, hint, poolErrors }.
   async function dashboard(response, landlordId) {
     const listing = getStore().getListing(landlordId);
     const pool = await getApplicantPool();
-    const criteria = DEFAULT_CRITERIA;
+    const criteria = getStore().getCriteria(landlordId);
     sendJson(response, 200, {
       data: {
         listing,
         rentCheck: listing?.rentCheck ?? null,
         criteria,
+        defaultCriteria: DEFAULT_CRITERIA,
         ...rankingFor(listing, pool, criteria),
         poolErrors: pool.errors,
       },
@@ -155,7 +157,7 @@ export function createLandlordApi({ getStore, getApplicantPool = () => EMPTY_POO
       applicants: pool.applicants,
       listing: getStore().getListing(landlordId),
       applicantId,
-      criteria: DEFAULT_CRITERIA,
+      criteria: getStore().getCriteria(landlordId),
     });
     if (!result) {
       sendError(response, 404, "applicant_not_found", "No applicant with this id.");
@@ -213,6 +215,18 @@ export function createLandlordApi({ getStore, getApplicantPool = () => EMPTY_POO
     "GET dashboard": (request, response, landlordId) => dashboard(response, landlordId),
     "PUT listing": saveListing,
     "POST chat": chat,
+    "PUT criteria": async (request, response, landlordId) => {
+      const body = await readBody(request, response);
+      if (!body) return;
+      try {
+        updateSelectionCriteria({ store: getStore(), landlordId, input: body.input });
+      } catch (error) {
+        if (!(error instanceof CriteriaInputError)) throw error;
+        sendError(response, 422, "validation_error", error.message, error.details);
+        return;
+      }
+      await dashboard(response, landlordId);
+    },
   };
 
   return {
@@ -223,7 +237,7 @@ export function createLandlordApi({ getStore, getApplicantPool = () => EMPTY_POO
         await signIn(request, response);
         return true;
       }
-      const match = /^([^/]+)\/(dashboard|listing|chat)$/.exec(path);
+      const match = /^([^/]+)\/(dashboard|listing|chat|criteria)$/.exec(path);
       const applicantMatch = /^([^/]+)\/applicants\/([^/]+)$/.exec(path);
       const handler = match && routes[`${request.method} ${match[2]}`];
       if (!handler && !(request.method === "GET" && applicantMatch)) {

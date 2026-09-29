@@ -12,6 +12,7 @@ class FakeNode {
   addEventListener(type, listener) { this.listeners.set(type, listener); }
   querySelectorAll() { return []; }
   replaceChildren() { this.textContent = ""; }
+  reset() {}
   focus() { this.focused = true; }
   click() { this.listeners.get("click")?.({ preventDefault() {} }); }
 }

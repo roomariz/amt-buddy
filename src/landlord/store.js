@@ -3,9 +3,10 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
+import { DEFAULT_CRITERIA } from "./scorer.js";
 
 // The landlord's state in SQLite (Node's built-in node:sqlite). Later landlord tickets add
-// their own tables (criteria, preference notes, shortlist) next to these two.
+// their own tables (preference notes, shortlist) next to landlords, listings and criteria.
 const SCHEMA = `
   CREATE TABLE IF NOT EXISTS landlords (
     id TEXT PRIMARY KEY,
@@ -17,6 +18,10 @@ const SCHEMA = `
     landlord_id TEXT PRIMARY KEY REFERENCES landlords(id),
     listing TEXT NOT NULL,
     updated TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS criteria (
+    landlord_id TEXT PRIMARY KEY REFERENCES landlords(id),
+    criteria TEXT NOT NULL
   );
 `;
 
@@ -39,6 +44,8 @@ const toLandlord = (row) => (row ? { landlordId: row.id, name: row.name } : null
 // - getLandlord(landlordId) → { landlordId, name }, or null when there is none.
 // - saveListing(landlordId, listing) → listing: replaces the landlord's one Listing.
 // - getListing(landlordId) → the Listing, or null when none was saved.
+// - getCriteria(landlordId): saved Selection criteria, or a fresh copy of the defaults.
+// - saveCriteria(landlordId, criteria): stores validated Selection criteria.
 // - close(): closes the database.
 export function createLandlordStore({ path = ":memory:" } = {}) {
   if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
@@ -54,6 +61,11 @@ export function createLandlordStore({ path = ":memory:" } = {}) {
      ON CONFLICT (landlord_id) DO UPDATE SET listing = excluded.listing, updated = excluded.updated`,
   );
   const selectListing = db.prepare("SELECT listing FROM listings WHERE landlord_id = ?");
+  const selectCriteria = db.prepare("SELECT criteria FROM criteria WHERE landlord_id = ?");
+  const upsertCriteria = db.prepare(
+    `INSERT INTO criteria (landlord_id, criteria) VALUES (?, ?)
+     ON CONFLICT (landlord_id) DO UPDATE SET criteria = excluded.criteria`,
+  );
 
   return {
     signIn(name) {
@@ -77,6 +89,14 @@ export function createLandlordStore({ path = ":memory:" } = {}) {
     },
     close() {
       db.close();
+    },
+    getCriteria(landlordId) {
+      const row = selectCriteria.get(landlordId);
+      return row ? JSON.parse(row.criteria) : structuredClone(DEFAULT_CRITERIA);
+    },
+    saveCriteria(landlordId, criteria) {
+      upsertCriteria.run(landlordId, JSON.stringify(criteria));
+      return criteria;
     },
   };
 }

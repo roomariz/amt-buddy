@@ -306,10 +306,11 @@ The Rent check runs `evaluateMietspiegel` with the asking rent as contract rent 
 
 ### `GET /api/v1/landlord/:landlordId/dashboard`
 
-→ `200 { "data": { "listing", "rentCheck", "criteria", "ranked", "excluded", "stats", "recommendations", "hint", "poolErrors" } }`. Later landlord features add fields (Shortlist, …).
+→ `200 { "data": { "listing", "rentCheck", "criteria", "defaultCriteria", "ranked", "excluded", "stats", "recommendations", "hint", "poolErrors" } }`. Later landlord features add fields (Shortlist, …).
 
 - `listing` / `rentCheck`: the saved Listing and its Rent check, or `null`.
-- `criteria`: the Selection criteria used: `weights` (relative, per criterion: `affordability` 30, `schufa` 20, `documents` 15, `credibility` 15, `employment` 15, `previousLandlord` 5; normalised to sum to 100 %) and `requirements` (`schufaCleanOnly`, `completeDocumentsOnly`, `maxRentToIncome`, `noPets`, `noSmoking`, `latestMoveIn`, all off; `occupancyCompliant` on). Not tunable yet.
+- `criteria`: the Selection criteria used: `weights` (relative, per criterion: `affordability` 30, `schufa` 20, `documents` 15, `credibility` 15, `employment` 15, `previousLandlord` 5; normalised to sum to 100 %) and `requirements` (`schufaCleanOnly`, `completeDocumentsOnly`, `maxRentToIncome`, `noPets`, `noSmoking`, `latestMoveIn`, all off; `occupancyCompliant` on). Saved per landlord; new landlords get these defaults.
+- `defaultCriteria`: the defaults above, used by the page to reset all weights and Requirements.
 - `ranked`: the Applicant pool scored for the Listing (`rankApplicants`, `src/landlord/scorer.js`; ADR 0004), best first, ties by applicant id:
 
 ```json
@@ -359,6 +360,31 @@ The Rent check runs `evaluateMietspiegel` with the asking rent as contract rent 
 
 The server reads the Applicant pool once at start from `APPLICANT_POOL_DIR` (default: the committed pool in `data/applicants`), as of `APPLICANT_POOL_TODAY` (default: `POOL_DATE`, the day the committed pool was generated, so its SCHUFA-Auskünfte do not expire).
 
+### `PUT /api/v1/landlord/:landlordId/criteria`
+
+Save partial changes to Selection criteria and return the same dashboard shape as `GET dashboard`.
+
+```json
+{ "weights": { "employment": 30 }, "requirements": { "schufaCleanOnly": true, "maxRentToIncome": 0.33 } }
+```
+
+Omitted weights and Requirements retain their saved values. Weights must be finite,
+non-negative numbers with at least one positive value after merging; they are
+normalised to sum to 100 on save. Boolean Requirements accept only `true` or
+`false`. `maxRentToIncome` is a ratio above 0 and at most 1, or `null` to disable
+it. `latestMoveIn` is a valid calendar date (`YYYY-MM-DD`), or `null` to disable it.
+Unknown fields are rejected. Invalid input returns `422 validation_error` with
+`details` naming the fields, leaving the saved criteria unchanged. An unknown
+landlord returns `404 landlord_not_found`.
+
+Criteria are kept in SQLite across reloads, returning sign-ins and server restarts.
+The response recalculates the ranking, exclusions, statistics and Recommendations.
+To reset, send the dashboard's complete `defaultCriteria` object to this endpoint.
+The page displays the income limit as a percentage (33 → API ratio 0.33).
+
+The reusable `updateSelectionCriteria({ store, landlordId, input })` function in
+`src/landlord/criteria.js` validates, merges and saves, returning `{ previous,
+criteria }` for the later chat Tool integration.
 ### `GET /api/v1/landlord/:landlordId/applicants/:applicantId`
 
 → `200 { "data": { "profile", "score", "rentToIncome", "contact" } }`. An unknown applicant returns `404 applicant_not_found`; an unknown landlord returns `404 landlord_not_found`.
