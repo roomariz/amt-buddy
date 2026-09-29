@@ -1467,3 +1467,10 @@ footer a { color: inherit; }
 .recommendation-score { font-size: 0.85rem; font-weight: 600; color: #1f5f2e; }
 .recommendation-rank { font-size: 0.75rem; color: #5d5d5d; }
 .recommendation-reason { margin: 6px 0 0; font-size: 0.9rem; line-height: 1.45; }
+
+
+.applicant-clarification { margin-top: 22px; padding: 18px; border: 1px solid #b7c8ba; border-radius: 10px; background: #f4f8f4; }
+.applicant-clarification h3 { margin-top: 0; }
+.clarification-draft { margin-top: 14px; }
+.clarification-draft summary { cursor: pointer; font-weight: 600; }
+.clarification-draft textarea { display: block; box-sizing: border-box; width: 100%; margin: 10px 0; padding: 12px; border: 1px solid #89988b; border-radius: 8px; font: inherit; line-height: 1.5; resize: vertical; color: #171714; background: white; }

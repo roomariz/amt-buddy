@@ -107,7 +107,7 @@ const CREDIBILITY_PENALTIES = {
   income_mismatch: 30,
   previous_landlord_missing: 15,
   previous_landlord_unreadable: 15,
-  name_mismatch: 30,
+  name_mismatch: 0, // Clarification is separate from the evidence used for scoring.
   rent_arrears: 15,
 };
 
@@ -141,14 +141,19 @@ const failed = (document, status, code, reason, extra = {}) => ({
   issues: [issue(document, code, reason)],
 });
 
-const nameKey = (name) => String(name).trim().replace(/\s+/g, " ").toLocaleLowerCase("de-DE");
+// This only recognises presentation variants; it is not identity verification. Preserve
+// word boundaries and order so missing or different name parts still request clarification.
+// Only fold Latin diacritics: marks in other scripts can be distinct letters/vowels.
+const nameKey = (name) => String(name).normalize("NFD").replace(/(\p{Script=Latin})\p{M}+/gu, "$1")
+  .toLocaleLowerCase("de-DE").trim().replace(/^(?:(?:dr|prof)\.?\s+)+/u, "")
+  .replace(/[’‘]/gu, "'").replace(/\p{Pd}/gu, " ").replace(/\s+/gu, " ").trim();
 
-// Why the document is not the applicant's (a `Name:` line with another name, or none), or null.
+// A name discrepancy asks for clarification, without claiming the document belongs to
+// another person or exposing either name in the anonymised Applicant profile.
 function nameProblem(text, documentName, applicantName) {
   const names = fieldValues(text, "Name");
-  if (names.length === 0) return `The ${documentName} names nobody.`;
-  const other = names.find((name) => nameKey(name) !== nameKey(applicantName));
-  return other ? `The ${documentName} is in the name of ${other}, not ${applicantName}.` : null;
+  return !names.length || names.some((name) => !nameKey(name) || nameKey(name) !== nameKey(applicantName))
+    ? `The name on the ${documentName} needs clarification. This does not affect scoring.` : null;
 }
 
 // The first word of a document value, lower-case ("Negativ – 2 Forderungen" → "negativ").
@@ -160,9 +165,9 @@ function schufaStatusOf(entries = "") {
   return { keine: "clean", "geringfügig": "minor_entries", negativ: "negative" }[firstWord(entries)] ?? null;
 }
 
-// → { schufaStatus, result, issues }. The status of a report that is missing, unreadable or in
-// another person's name is "missing"; an expired report's status is still read.
-function checkSchufa(text, applicantName, today) {
+// → { schufaStatus, result, issues }. Missing or unreadable reports have status "missing".
+// An expired report's findings are still read; name clarification is assessed separately.
+function checkSchufa(text, today) {
   const withStatus = (schufaStatus, check) => ({ schufaStatus, ...check });
   if (!text) return withStatus("missing", failed("schufa", "missing", "schufa_missing", "No SCHUFA-Auskunft."));
   const [issuedOn] = fieldValues(text, "Ausstellungsdatum");
@@ -175,8 +180,6 @@ function checkSchufa(text, applicantName, today) {
     const reason = `The SCHUFA-Auskunft is dated ${issuedOn}, after today.`;
     return withStatus("missing", failed("schufa", "inconsistent", "schufa_unreadable", reason));
   }
-  const wrongName = nameProblem(text, "SCHUFA-Auskunft", applicantName);
-  if (wrongName) return withStatus("missing", failed("schufa", "inconsistent", "name_mismatch", wrongName));
   if (issuedOn < monthsBefore(today, SCHUFA_MAX_AGE_MONTHS)) {
     const reason = `The SCHUFA-Auskunft was issued on ${issuedOn}, more than ${SCHUFA_MAX_AGE_MONTHS} months ago.`;
     return withStatus(schufaStatus, failed("schufa", "expired", "schufa_expired", reason));
@@ -188,10 +191,8 @@ function checkSchufa(text, applicantName, today) {
 const parseEuro = (text) => Number(text.replace(/\s*(EUR|€)\s*$/, "").replaceAll(".", "").replace(",", "."));
 
 // The income proof's average net pay (`Netto:` lines) must be within 10 % of the declared income.
-function checkIncomeProof(text, applicantName, declaredIncome) {
+function checkIncomeProof(text, declaredIncome) {
   if (!text) return failed("incomeProof", "missing", "income_proof_missing", "No income proof.");
-  const wrongName = nameProblem(text, "income proof", applicantName);
-  if (wrongName) return failed("incomeProof", "inconsistent", "name_mismatch", wrongName);
   const amounts = fieldValues(text, "Netto").map(parseEuro);
   if (amounts.length === 0 || amounts.some((amount) => !Number.isFinite(amount))) {
     return failed("incomeProof", "inconsistent", "income_mismatch", "The income proof states no readable net pay (Netto).");
@@ -208,7 +209,7 @@ function checkIncomeProof(text, applicantName, declaredIncome) {
 // `Mietrückstände:` line says whether rent arrears are open ("nein" / "ja – …"): with arrears the
 // document is present and valid (`arrears: true`), but the Document check has a `rent_arrears` issue.
 // `arrears` is null whenever there is no usable confirmation.
-function checkPreviousLandlord(text, applicantName, firstTimeRenter) {
+function checkPreviousLandlord(text, firstTimeRenter) {
   const noArrears = { arrears: null };
   if (!text && firstTimeRenter) {
     return { result: { status: "not_required", reason: "First-time renter: there is no previous landlord.", ...noArrears }, issues: [] };
@@ -217,8 +218,6 @@ function checkPreviousLandlord(text, applicantName, firstTimeRenter) {
     const reason = "No previous-landlord confirmation, although the applicant rented before.";
     return failed("previousLandlord", "missing", "previous_landlord_missing", reason, noArrears);
   }
-  const wrongName = nameProblem(text, "previous-landlord confirmation", applicantName);
-  if (wrongName) return failed("previousLandlord", "inconsistent", "name_mismatch", wrongName, noArrears);
   const answer = firstWord(fieldValues(text, "Mietrückstände")[0] ?? "");
   if (answer === "nein") return passed({ arrears: false });
   if (answer === "ja") {
@@ -235,10 +234,15 @@ export const COMPLETE_STATUSES = new Set(["present", "not_required"]);
 // The Document check of one application → { schufaStatus, documentCheck }.
 function documentCheckOf(declared, sections, today) {
   const { name } = declared;
-  const schufa = checkSchufa(sections[DOCUMENT_HEADINGS.schufa], name, today);
-  const incomeProof = checkIncomeProof(sections[DOCUMENT_HEADINGS.incomeProof], name, declared.netHouseholdIncome);
-  const previousLandlord = checkPreviousLandlord(sections[DOCUMENT_HEADINGS.previousLandlord], name, declared.firstTimeRenter);
-  const issues = [...schufa.issues, ...incomeProof.issues, ...previousLandlord.issues];
+  const schufa = checkSchufa(sections[DOCUMENT_HEADINGS.schufa], today);
+  const incomeProof = checkIncomeProof(sections[DOCUMENT_HEADINGS.incomeProof], declared.netHouseholdIncome);
+  const previousLandlord = checkPreviousLandlord(sections[DOCUMENT_HEADINGS.previousLandlord], declared.firstTimeRenter);
+  const nameIssues = Object.entries(DOCUMENT_HEADINGS).flatMap(([document, heading]) => {
+    const text = sections[heading];
+    const reason = text && nameProblem(text, heading, name);
+    return reason ? [issue(document, "name_mismatch", reason)] : [];
+  });
+  const issues = [...schufa.issues, ...incomeProof.issues, ...previousLandlord.issues, ...nameIssues];
   return {
     schufaStatus: schufa.schufaStatus,
     documentCheck: {
@@ -326,7 +330,7 @@ function toApplicant(declared, sections, today) {
 //   profile: { id, householdSize, household: { adults, children, childrenUpToSix },
 //     netHouseholdIncome, employmentType (EMPLOYMENT_TYPES), schufaStatus ("clean" |
 //     "minor_entries" | "negative" | "missing": also for a report that is unreadable, dated after
-//     today or in another person's name), moveInDate, pets, smoking, credibilityScore (0–100),
+//     today), moveInDate, pets, smoking, credibilityScore (0–100),
 //     documentCheck: { schufa, incomeProof, previousLandlord, complete, issues } }.
 //   Each document is { status: "present" | "missing" | "expired" | "inconsistent" | "not_required",
 //   reason }; previousLandlord also has `arrears` (true / false / null: no usable confirmation).

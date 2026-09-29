@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { createApp } from "../../src/app.js";
 import { createLandlordStore } from "../../src/landlord/store.js";
 import { createFakeBerlinWfs } from "../helpers/fake-berlin-wfs.js";
-import { fetchApplicantProfile, fetchDashboard, saveCriteria, saveListing, signIn } from "../../public/landlord/api.js";
+import { requestClarification, fetchApplicantProfile, fetchDashboard, saveCriteria, saveListing, signIn } from "../../public/landlord/api.js";
 import { criteriaFormValues, criteriaRequest } from "../../public/landlord/criteria.js";
 import { listingRequest } from "../../public/landlord/listing.js";
 import { rankingRows } from "../../public/landlord/ranking.js";
@@ -170,4 +170,28 @@ test("a server that cannot be reached is an error with a readable reason", async
   await assert.rejects(signIn({ fetchImpl: down, name: "Erika" }), /./);
   await assert.rejects(fetchDashboard({ fetchImpl: down, landlordId: "l-1" }), /./);
   await assert.rejects(saveListing({ fetchImpl: down, landlordId: "l-1", request: {} }), /./);
+});
+
+
+test("the page can simulate a clarification and display copyable drafts in either language", async (t) => {
+  const { fetchImpl, close } = await start();
+  t.after(close);
+  const { applicantDetailView } = await import("../../public/landlord/applicant-detail.js");
+  const { setLanguage } = await import("../../public/i18n.js");
+  t.after(() => setLanguage("de"));
+  const { landlordId } = await signIn({ fetchImpl, name: "Erika" });
+  const detail = await requestClarification({ fetchImpl, landlordId, applicantId: "A-002" });
+  for (const lang of ["de", "en"]) {
+    setLanguage(lang);
+    const view = applicantDetailView(detail).clarification;
+    assert.equal(view.canRequest, false);
+    assert.ok(view.status && view.deadline);
+    assert.equal(view.drafts.length, 2);
+    for (const draft of view.drafts) {
+      assert.ok(draft.text.includes(detail.contact.name));
+      assert.ok(draft.text.includes(view.deadline));
+      assert.doesNotMatch(draft.text, /landlord\.|Diego Rossi|mailto:|wa.me/);
+    }
+  }
+  assert.deepEqual((await fetchApplicantProfile({ fetchImpl, landlordId, applicantId: "A-002" })).clarification, detail.clarification);
 });

@@ -19,6 +19,13 @@ const SCHEMA = `
     listing TEXT NOT NULL,
     updated TEXT NOT NULL
   );
+  CREATE TABLE IF NOT EXISTS clarification_requests (
+    landlord_id TEXT NOT NULL REFERENCES landlords(id),
+    applicant_id TEXT NOT NULL,
+    requested_at TEXT NOT NULL,
+    deadline TEXT NOT NULL,
+    PRIMARY KEY (landlord_id, applicant_id)
+  );
   CREATE TABLE IF NOT EXISTS criteria (
     landlord_id TEXT PRIMARY KEY REFERENCES landlords(id),
     criteria TEXT NOT NULL
@@ -46,8 +53,10 @@ const toLandlord = (row) => (row ? { landlordId: row.id, name: row.name } : null
 // - getListing(landlordId) → the Listing, or null when none was saved.
 // - getCriteria(landlordId): saved Selection criteria, or a fresh copy of the defaults.
 // - saveCriteria(landlordId, criteria): stores validated Selection criteria.
+// - getClarification(landlordId, applicantId): simulated request with its current deadline status.
+// - requestClarification(landlordId, applicantId): records once; retries preserve the first deadline.
 // - close(): closes the database.
-export function createLandlordStore({ path = ":memory:" } = {}) {
+export function createLandlordStore({ path = ":memory:", now = () => new Date() } = {}) {
   if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
   const db = new DatabaseSync(path);
   db.exec("PRAGMA foreign_keys = ON;");
@@ -67,7 +76,24 @@ export function createLandlordStore({ path = ":memory:" } = {}) {
      ON CONFLICT (landlord_id) DO UPDATE SET criteria = excluded.criteria`,
   );
 
+  const selectClarification = db.prepare("SELECT requested_at, deadline FROM clarification_requests WHERE landlord_id = ? AND applicant_id = ?");
+  const insertClarification = db.prepare("INSERT OR IGNORE INTO clarification_requests (landlord_id, applicant_id, requested_at, deadline) VALUES (?, ?, ?, ?)");
+  function getClarification(landlordId, applicantId) {
+    const row = selectClarification.get(landlordId, applicantId);
+    return row ? {
+      requestedAt: row.requested_at, deadline: row.deadline, simulated: true,
+      status: now().toISOString() >= row.deadline ? "overdue" : "pending",
+    } : null;
+  }
+
   return {
+    getClarification,
+    requestClarification(landlordId, applicantId) {
+      const requestedAt = now();
+      const deadline = new Date(requestedAt.getTime() + 7 * 24 * 60 * 60 * 1000);
+      insertClarification.run(landlordId, applicantId, requestedAt.toISOString(), deadline.toISOString());
+      return getClarification(landlordId, applicantId);
+    },
     signIn(name) {
       const key = nameKey(name);
       const existing = selectByKey.get(key);

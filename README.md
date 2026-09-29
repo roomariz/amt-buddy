@@ -159,3 +159,10 @@ More documentation:
 - [docs/api.md](docs/api.md): the plain JSON endpoints (address check, lease
   reading, rule-based chat, the landlord side), with request and response examples.
 - [CONTEXT.md](CONTEXT.md): the project's vocabulary.
+
+
+### Demo: name clarification (#61)
+
+On `/landlord`, save a Listing and open **Olga Rossi (A-002)** from the ranking. In **Name clarification · Demo**, choose **Simulate clarification request**. The profile shows a saved pending request, a seven-day response deadline, and copyable email and WhatsApp drafts in the selected DE/EN language. No message is sent. The request survives reloads and server restarts when using the normal SQLite database; after the deadline it becomes overdue without a score penalty or automatic exclusion. There is no applicant reply or upload flow in this demo.
+
+Names with common presentation differences are compared conservatively. Remaining name discrepancies are clarification issues, not scoring penalties; other document findings still apply. See [the API contract](docs/api.md) for persistence, status and error behavior.

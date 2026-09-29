@@ -48,6 +48,9 @@ async function* notConfiguredTurn(message) {
   yield { type: "done" };
 }
 
+const clarificationDocuments = ({ profile }) => [...new Set(profile.documentCheck.issues
+  .filter(({ code }) => code === "name_mismatch").map(({ document }) => document))];
+
 const EMPTY_POOL = { applicants: [], errors: [] };
 
 const LISTING_REQUIRED = {
@@ -163,7 +166,31 @@ export function createLandlordApi({ getStore, getApplicantPool = () => EMPTY_POO
       return;
     }
     const { contact } = pool.applicants.find(({ id }) => id === applicantId);
-    sendJson(response, 200, { data: { ...result, contact } });
+    const documents = clarificationDocuments(pool.applicants.find(({ id }) => id === applicantId));
+    const clarification = documents.length ? { documents, request: getStore().getClarification(landlordId, applicantId) } : null;
+    sendJson(response, 200, { data: { ...result, contact, clarification } });
+  }
+
+  // Simulation only: records the request; no messaging provider is called.
+  async function requestClarification(request, response, landlordId, applicantId) {
+    const body = await readBody(request, response);
+    if (!body) return;
+    if (!isPlainObject(body.input) || Object.keys(body.input).length) {
+      sendError(response, 422, "validation_error", "The simulated request accepts an empty object only.");
+      return;
+    }
+    const { applicants } = await getApplicantPool();
+    const applicant = applicants.find(({ id }) => id === applicantId);
+    if (!applicant) {
+      sendError(response, 404, "applicant_not_found", "No applicant with this id.");
+      return;
+    }
+    if (!clarificationDocuments(applicant).length) {
+      sendError(response, 409, "clarification_not_needed", "No name clarification is needed for this applicant.");
+      return;
+    }
+    getStore().requestClarification(landlordId, applicantId);
+    await applicantDetail(response, landlordId, applicantId);
   }
 
   // PUT /api/v1/landlord/:landlordId/listing { address, livingAreaSqm, rooms, askingRent, buildingYear? }
@@ -237,9 +264,10 @@ export function createLandlordApi({ getStore, getApplicantPool = () => EMPTY_POO
         return true;
       }
       const match = /^([^/]+)\/(dashboard|listing|chat|criteria)$/.exec(path);
-      const applicantMatch = /^([^/]+)\/applicants\/([^/]+)$/.exec(path);
+      const applicantMatch = /^([^/]+)\/applicants\/([^/]+)(\/clarification)?$/.exec(path);
+      const applicantHandler = applicantMatch && (applicantMatch[3] ? request.method === "POST" : request.method === "GET");
       const handler = match && routes[`${request.method} ${match[2]}`];
-      if (!handler && !(request.method === "GET" && applicantMatch)) {
+      if (!handler && !applicantHandler) {
         sendError(response, 404, "not_found", "No such landlord endpoint.");
         return true;
       }
@@ -248,7 +276,8 @@ export function createLandlordApi({ getStore, getApplicantPool = () => EMPTY_POO
         sendError(response, 404, "landlord_not_found", "No landlord with this id. Sign in again.");
         return true;
       }
-      if (applicantMatch) await applicantDetail(response, landlordId, decodeId(applicantMatch[2]));
+      if (applicantMatch?.[3]) await requestClarification(request, response, landlordId, decodeId(applicantMatch[2]));
+      else if (applicantMatch) await applicantDetail(response, landlordId, decodeId(applicantMatch[2]));
       else await handler(request, response, landlordId);
       return true;
     },

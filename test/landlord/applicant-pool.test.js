@@ -177,21 +177,19 @@ test("a previous-landlord confirmation stating rent arrears is flagged", async (
   assert.equal(profile.credibilityScore, 85);
 });
 
-test("a payslip in another person's name makes the income proof inconsistent", async () => {
+test("a payslip name discrepancy requests clarification without a score penalty or exposed names", async () => {
   const { profile } = (await readFixtures()).byId("A-other-name");
-
-  assert.equal(profile.documentCheck.incomeProof.status, "inconsistent");
-  assert.match(profile.documentCheck.incomeProof.reason, /Jonas Schmidt/);
-  assert.equal(profile.documentCheck.complete, false);
+  assert.equal(profile.documentCheck.incomeProof.status, "present");
+  assert.equal(profile.documentCheck.complete, true);
   assert.deepEqual(issueCodes({ profile }), ["name_mismatch"]);
-  assert.equal(profile.credibilityScore, 70);
+  assert.equal(profile.credibilityScore, 100);
+  assert.doesNotMatch(JSON.stringify(profile), /Jonas Schmidt|Lena Schmidt/);
 });
 
-test("a SCHUFA-Auskunft in another person's name does not count as the applicant's", async () => {
+test("a SCHUFA name discrepancy preserves the report's readable findings", async () => {
   const { profile } = (await readFixtures()).byId("A-other-name-schufa");
-
-  assert.equal(profile.documentCheck.schufa.status, "inconsistent");
-  assert.equal(profile.schufaStatus, "missing");
+  assert.equal(profile.documentCheck.schufa.status, "present");
+  assert.equal(profile.schufaStatus, "clean");
   assert.deepEqual(issueCodes({ profile }), ["name_mismatch"]);
 });
 

@@ -6,7 +6,7 @@
  * table, the stored sign-in); this file only wires it to the DOM. Server text is always set as textContent.
  */
 
-import { fetchApplicantProfile, fetchDashboard, saveCriteria, saveListing, signIn } from "./landlord/api.js";
+import { requestClarification, fetchApplicantProfile, fetchDashboard, saveCriteria, saveListing, signIn } from "./landlord/api.js";
 import { applicantDetailView } from "./landlord/applicant-detail.js";
 import { criteriaFormValues, criteriaRequest, WEIGHT_FIELDS } from "./landlord/criteria.js";
 import { runLandlordTurn } from "./landlord/chat.js";
@@ -84,6 +84,8 @@ let applicantDetail = null;
 let applicantDetailError = null;
 let detailRequest = 0;
 let detailOpener = null;
+let clarificationBusy = false;
+let clarificationError = null;
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -147,6 +149,8 @@ function closeApplicantDetail() {
   selectedApplicantId = null;
   applicantDetail = null;
   applicantDetailError = null;
+  clarificationBusy = false;
+  clarificationError = null;
   detailOpener = null;
   applicantDetailSection.hidden = true;
 }
@@ -186,6 +190,8 @@ function renderApplicantDetail() {
     applicantDetailBody.append(issues);
   } else applicantDetailBody.append(el("p", "landlord-hint", t("landlord.detail.noIssues")));
 
+  renderClarification(view.clarification);
+
   heading(view.exclusion ? "excluded" : "score");
   if (view.exclusion) applicantDetailBody.append(el("p", "landlord-note", view.exclusion));
   else if (view.matchScore === null) applicantDetailBody.append(el("p", "landlord-hint", t("landlord.detail.listingRequired")));
@@ -211,6 +217,85 @@ function renderApplicantDetail() {
   ]);
 }
 
+function renderClarification(view) {
+  if (!view) return;
+  const panel = el("section", "applicant-clarification");
+  panel.setAttribute("aria-labelledby", "clarification-title");
+  const title = el("h3", "", t("landlord.clarification.title"));
+  title.id = "clarification-title";
+  const status = el("p", "landlord-note", view.status);
+  status.setAttribute("role", "status");
+  panel.append(title, el("p", "", t("landlord.clarification.intro")), status);
+  const list = el("dl", "applicant-detail-facts");
+  fact(list, t("landlord.clarification.affected"), view.documents);
+  if (view.deadline) fact(list, t("landlord.clarification.deadline"), view.deadline);
+  panel.append(list, el("p", "landlord-hint", t("landlord.clarification.noPenalty")));
+  if (view.canRequest) {
+    const button = el("button", "landlord-btn", t(`landlord.clarification.${clarificationBusy ? "saving" : "simulate"}`));
+    button.type = "button";
+    button.disabled = clarificationBusy;
+    button.addEventListener("click", simulateClarification);
+    panel.append(button);
+  }
+  if (clarificationError) {
+    const error = el("p", "landlord-error", clarificationError);
+    error.setAttribute("role", "alert");
+    panel.append(error);
+  }
+  for (const draft of view.drafts) {
+    const section = el("details", "clarification-draft");
+    section.open = draft.channel === "email";
+    const label = t(`landlord.clarification.${draft.channel}`);
+    section.append(el("summary", "", label), el("p", "", draft.recipient));
+    const text = el("textarea");
+    text.value = draft.text;
+    text.readOnly = true;
+    text.rows = 10;
+    text.setAttribute("aria-label", label);
+    const button = el("button", "landlord-btn", t("landlord.clarification.copy"));
+    button.type = "button";
+    const feedback = el("p", "landlord-hint");
+    feedback.setAttribute("role", "status");
+    button.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(draft.text);
+        feedback.textContent = t("landlord.clarification.copied");
+      } catch {
+        text.focus();
+        text.select();
+        feedback.textContent = t("landlord.clarification.copyFailed");
+      }
+    });
+    section.append(text, button, feedback);
+    panel.append(section);
+  }
+  applicantDetailBody.append(panel);
+}
+
+async function simulateClarification() {
+  if (!landlord || !selectedApplicantId || clarificationBusy) return;
+  const request = detailRequest;
+  const landlordId = landlord.landlordId;
+  const applicantId = selectedApplicantId;
+  clarificationBusy = true;
+  clarificationError = null;
+  renderApplicantDetail();
+  try {
+    const result = await requestClarification({ fetchImpl: fetch, landlordId, applicantId });
+    if (request !== detailRequest) return;
+    if (result.signedOut) return signOut();
+    if (result.notFound) clarificationError = t("landlord.detail.unavailable");
+    else applicantDetail = result;
+  } catch (error) {
+    if (request === detailRequest) clarificationError = error.message;
+  } finally {
+    if (request === detailRequest) {
+      clarificationBusy = false;
+      renderApplicantDetail();
+    }
+  }
+}
+
 async function openApplicant(applicantId, opener) {
   if (!landlord) return;
   const request = ++detailRequest;
@@ -218,6 +303,8 @@ async function openApplicant(applicantId, opener) {
   selectedApplicantId = applicantId;
   applicantDetail = null;
   applicantDetailError = null;
+  clarificationBusy = false;
+  clarificationError = null;
   renderApplicantDetail();
   applicantDetailSection.scrollIntoView({ block: "start" });
   applicantDetailTitle.focus();

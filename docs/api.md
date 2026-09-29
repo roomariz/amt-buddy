@@ -387,11 +387,35 @@ The reusable `updateSelectionCriteria({ store, landlordId, input })` function in
 criteria }` for the later chat Tool integration.
 ### `GET /api/v1/landlord/:landlordId/applicants/:applicantId`
 
-→ `200 { "data": { "profile", "score", "rentToIncome", "contact" } }`. An unknown applicant returns `404 applicant_not_found`; an unknown landlord returns `404 landlord_not_found`.
+→ `200 { "data": { "profile", "score", "rentToIncome", "contact", "clarification" } }`. An unknown applicant returns `404 applicant_not_found`; an unknown landlord returns `404 landlord_not_found`.
 
 - `profile` is the Applicant pool's anonymised profile: household size and counts, net household income, employment type, SCHUFA status, move-in date, pets, smoking, Credibility score, and the complete Document check. Each document has a status and reason; `documentCheck.issues` lists consistency and other document issues.
 - `score` is the current Listing's entry from `rankApplicants`: either `{ applicantId, rank, matchScore, breakdown, rentToIncome }` or `{ applicantId, excludedBy, reasons }`. It is `null` before a Listing is saved. `rentToIncome` is also returned at the top level for excluded applicants; it is `null` without a Listing.
 - `contact` contains only `{ name, email, phone }` for page display. The reusable lookup in `src/landlord/applicant-profile.js` leaves contact out for the later chat Tool. Protected source fields and raw document text are never returned.
+
+### `POST /api/v1/landlord/:landlordId/applicants/:applicantId/clarification`
+
+Body: `{}`. Returns `200 { "data": { "profile", "score", "rentToIncome", "contact", "clarification" } }`, the refreshed applicant detail. This is a **simulation**: no email, WhatsApp message, or external request is sent.
+
+The `clarification` field is also included by the applicant-detail GET. It is `null` when there are no name discrepancies; otherwise:
+
+```json
+{
+  "documents": ["incomeProof"],
+  "request": {
+    "requestedAt": "2026-09-29T12:00:00.000Z",
+    "deadline": "2026-10-06T12:00:00.000Z",
+    "simulated": true,
+    "status": "pending"
+  }
+}
+```
+
+`request` is `null` before the simulation. A request persists per landlord and applicant in SQLite. The demo deadline is seven days (168 hours) from creation. At or after the deadline, status is `overdue`; the request stays open, with no automatic rejection or score reduction. Repeated POSTs return the original request without extending its deadline. The UI provides German/English email and WhatsApp drafts with this deadline and a copy button. No applicant response, proof upload, extension, or identity verification is implemented in this demo.
+
+Unknown landlord/applicant → `404 landlord_not_found` / `404 applicant_not_found`; no name discrepancy → `409 clarification_not_needed`; any body other than an empty object → `422 validation_error`.
+
+Name comparison recognises presentation variants (Dr./Prof. titles, case, spacing, Latin diacritics, hyphens and typographic apostrophes). Missing or different name parts request clarification. This comparison does not verify identity. A `name_mismatch` issue has a neutral message without either person's name and costs zero Credibility points. It does not change document completeness, discard readable SCHUFA or arrears findings, or trigger a Requirement exclusion. Independent issues such as missing documents, expired SCHUFA or inconsistent income continue to apply. The reusable model-facing Applicant profile omits name-discrepancy issues. The HTTP endpoint joins clarification metadata and contact for the UI only; drafts are formatted in the page.
 
 ### `POST /api/v1/landlord/:landlordId/chat`
 
