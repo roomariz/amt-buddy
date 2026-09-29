@@ -185,7 +185,12 @@ export function buildGraph({ models, tools, log, toolTimeoutMs }) {
       } else if (SUB_AGENTS[agent]) {
         // Gating in code: whatever lacks its required facts does not run; the rest does.
         const { run, needsFacts } = gateSubAgent(agent, toolCall.args ?? {}, tenancy, inputs);
-        if (needsFacts) emit({ type: "agent_step", agent: SUB_AGENTS[agent].label, status: "needs_facts" });
+        if (needsFacts) {
+          emit({ type: "agent_step", agent: SUB_AGENTS[agent].label, status: "needs_facts" });
+          // The report comes from code, like a Tool result, so the figures it carries
+          // (e.g. the date in the new-build question) are grounded.
+          turnEvidence.push({ source: "gating", result: needsFacts });
+        }
         if (run) {
           let evidence;
           ({ report, updates, evidence } = await delegateToSubAgent(agent, run, tenancy, { threadId, inputs }));

@@ -1,3 +1,4 @@
+import { RENT_CAP_LEGAL_BASIS } from "../berlin-mietspiegel.js";
 import { SUB_AGENTS } from "./sub-agents.js";
 import { isUnconfirmed } from "./tenancy.js";
 
@@ -6,13 +7,36 @@ const REQUIRED_FACTS = {
   official_data: ["address"],
 };
 
+// The year from which a flat never rented before may be a new build exempt from the Rent cap
+// (first used after 1 October 2014, § 556f BGB).
+const NEW_BUILD_YEAR = 2014;
+
+// Whether the building year is known to be before NEW_BUILD_YEAR: a plain year, a closed
+// period ending before it ("1991 - 2002") or "bis <year>". Open-ended periods ("nach 1945",
+// "ab 2010") and an unknown year are not.
+function builtBeforeNewBuildYear(buildingYear) {
+  const value = buildingYear?.value;
+  if (typeof value === "number") return value < NEW_BUILD_YEAR;
+  const text = String(value ?? "").trim();
+  const end = text.match(/^\d{4}\s*[-–]\s*(\d{4})$/) ?? text.match(/^bis\s*(\d{4})$/i);
+  return end ? Number(end[1]) < NEW_BUILD_YEAR : false;
+}
+
+// Previous-rental facts the Rent cap verdict needs: whether the flat was rented before and,
+// for a flat never rented that could be a new build, whether it was first used after 2014.
+function previousRentalRequirements(tenancy) {
+  if (!tenancy.contractRent) return [];
+  const neverRented = tenancy.rentedBefore?.value === false;
+  return neverRented && !builtBeforeNewBuildYear(tenancy.buildingYear) ? ["rentedBefore", "firstUsedAfter2014"] : ["rentedBefore"];
+}
+
 // Tenancy facts each Compliance check needs, given the Tenancy. An unconfirmed contract
 // rent also blocks a Mietspiegel check even though the rent is optional there, so no
 // Compliance verdict rests on an Unconfirmed fact. A known contract rent (confirmed or not)
-// gets a Rent cap verdict, which needs to know whether the flat was rented before.
+// gets a Rent cap verdict, which needs the previous-rental facts.
 const CHECK_REQUIREMENTS = {
   mietspiegel: (tenancy) => ({
-    required: ["residentialLocation", "buildingYear", "livingAreaSqm", ...(tenancy.contractRent ? ["rentedBefore"] : [])],
+    required: ["residentialLocation", "buildingYear", "livingAreaSqm", ...previousRentalRequirements(tenancy)],
     mustBeConfirmed: ["contractRent"],
   }),
   occupancy: () => ({ required: ["livingAreaSqm", "rooms", "occupants", "childrenUpToSix"], mustBeConfirmed: [] }),
@@ -47,14 +71,17 @@ export function gateSubAgent(agent, args, tenancy, inputs = {}) {
   });
   const runnable = gated.filter((entry) => !isBlocked(entry)).map((entry) => entry.check);
   const blocked = gated.filter(isBlocked);
+  const missing = union(blocked.map((entry) => entry.missing));
   return {
     run: runnable.length > 0 ? { ...args, checks: runnable } : null,
     needsFacts:
       blocked.length > 0
         ? {
             checks: blocked.map((entry) => entry.check),
-            missing: union(blocked.map((entry) => entry.missing)),
+            missing,
             unconfirmed: union(blocked.map((entry) => entry.unconfirmed)),
+            // The new-build question quotes 1 October 2014; the legal text grounds it.
+            ...(missing.includes("firstUsedAfter2014") && { legalBasis: RENT_CAP_LEGAL_BASIS }),
           }
         : null,
   };

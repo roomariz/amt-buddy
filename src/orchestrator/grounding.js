@@ -1,7 +1,7 @@
 import { parseNumber } from "./numbers.js";
 
 // Grounding check (ADR 0003): every number in an answer must be traceable to a
-// Tool result of this turn, a Tenancy fact, or the user's own message.
+// Tool result (or a gating needs_facts report) of this turn, a Tenancy fact, or the user's own message.
 
 // A number in German or English notation, or a date ("2024-05-15", "01.05.2013").
 const NUMBER_PATTERN = /\d{4}-\d{2}-\d{2}|\d+(?:[.,]\d+)*/g;
