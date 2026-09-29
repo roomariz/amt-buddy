@@ -48,11 +48,19 @@ _Avoid_: Score, grade, Merkmal
 An estimate of the flat's reference rent within the Mietspiegel range, weighted by all five Feature group ratings. It is based on the Orientierungshilfe, which is not part of the qualified Mietspiegel, so the range stays the reference and the contract rent is compared with the range.
 _Avoid_: Exact rent, precise Mietspiegel value
 
+**Rented before**:
+Whether the flat was rented out before the current lease, a Tenancy fact the tenant states (yes/no). A tenant who does not know is recorded as rented before. It belongs to the flat, so a changed address clears it.
+_Avoid_: Previous tenancy, occupied before
+
 ### Answers
 
 **Compliance verdict**:
 A conclusion about whether the Tenancy meets a Berlin rule: its contract rent relative to the Mietspiegel reference range, or its living area per person under § 7 WoAufG Bln. Every Compliance verdict carries the legal disclaimer.
 _Avoid_: Result, finding, judgement
+
+**Rent cap (Mietpreisbremse)**:
+The Compliance verdict on the contract rent under §§ 556d–556g BGB: at the start of a lease the rent may be at most the local reference rent + 10 %. The reference rent is the Adjusted reference rent when all five Feature group ratings are known, otherwise the Mietspiegel median. For a flat rented before whose previous rent is unknown, the verdict is conditional, because a higher previous rent (Vormiete) could justify a higher rent. It assumes the contract rent is the rent agreed at the start of the lease and sits next to the unchanged range comparison.
+_Avoid_: Rent limit, rent brake, Kappungsgrenze (that is the cap on rent increases)
 
 **Grounded claim**:
 A number or Compliance verdict in an answer that can be traced to a Tool result of the current turn, a Tenancy fact, or the tenant's own message in that turn. Only Grounded claims may reach the user.

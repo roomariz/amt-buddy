@@ -65,3 +65,16 @@ test("calculate_mietspiegel takes optional feature group ratings, all five or no
   // upper span, 9.45 + 0.4 × 1.65 €/m² and 472.50 + 0.4 × 82.50 € a month.
   assert.deepEqual(result.adjustedReferenceRent, { weightPercent: 40, rentPerSqm: 10.11, monthlyRent: 505.5 });
 });
+
+test("calculate_mietspiegel takes an optional 'rented before' and then adds a rent cap", async () => {
+  const { schema, output } = TOOL_CONTRACTS.calculate_mietspiegel;
+  const base = { residentialLocation: "gut", buildingAgeOrYear: "1921 - 1930", livingAreaSqm: 50, contractRent: 780 };
+
+  assert.equal(schema.parse({ ...base, rentedBefore: false }).rentedBefore, false);
+  assert.throws(() => schema.parse({ ...base, rentedBefore: "yes" }), "a boolean, not text");
+
+  const { tools } = createStubTools();
+  const result = await assertToolsMatchContracts(tools).get("calculate_mietspiegel").invoke({ ...base, rentedBefore: true });
+  assert.doesNotThrow(() => output.parse(result));
+  assert.equal(result.rentCap.capMonthlyRent, 519.75);
+});

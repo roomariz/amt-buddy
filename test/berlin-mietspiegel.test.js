@@ -179,3 +179,71 @@ test("reports missing living area or missing building age", () => {
   });
   assert.equal(noAge.status, "missing_building_age");
 });
+
+// Field D4 (gut, 1919–1949, 50 m²): median 472.50 € a month, so Mietspiegel + 10 % = 519.75 €.
+const rentCapFlat = { residentialLocation: "gut", buildingAgeOrYear: "1919–1949", livingAreaSqm: 50 };
+
+test("rented before without a previous rent: the cap is Mietspiegel + 10 %, conditionally", () => {
+  const { rentCap } = evaluateMietspiegel({ ...rentCapFlat, contractRent: 780, rentedBefore: true });
+
+  assert.equal(rentCap.basis, "mietspiegel_plus_10");
+  assert.equal(rentCap.capPercent, 10);
+  assert.equal(rentCap.referenceMonthlyRent, 472.5);
+  assert.equal(rentCap.baseCapMonthlyRent, 519.75);
+  assert.equal(rentCap.capMonthlyRent, 519.75);
+  assert.equal(rentCap.conditional, true);
+  assert.equal(rentCap.status, "above_cap");
+  assert.equal(rentCap.differenceFromCap, 260.25);
+});
+
+test("never rented: the cap is Mietspiegel + 10 %, unconditionally", () => {
+  const { rentCap } = evaluateMietspiegel({ ...rentCapFlat, contractRent: 500, rentedBefore: false });
+
+  assert.equal(rentCap.basis, "mietspiegel_plus_10");
+  assert.equal(rentCap.capMonthlyRent, 519.75);
+  assert.equal(rentCap.conditional, false);
+  assert.equal(rentCap.status, "within_cap");
+  assert.equal(rentCap.differenceFromCap, -19.75);
+});
+
+test("a contract rent equal to the cap is within the cap", () => {
+  const { rentCap } = evaluateMietspiegel({ ...rentCapFlat, contractRent: 519.75, rentedBefore: true });
+
+  assert.equal(rentCap.status, "within_cap");
+  assert.equal(rentCap.differenceFromCap, 0);
+});
+
+test("with all five ratings the cap is based on the Adjusted reference rent", () => {
+  // Adjusted reference rent 489 € a month (see above): 489 × 1.10 = 537.90 €.
+  const { rentCap } = evaluateMietspiegel({ ...rentCapFlat, contractRent: 540, rentedBefore: false, featureGroups });
+
+  assert.equal(rentCap.referenceMonthlyRent, 489);
+  assert.equal(rentCap.baseCapMonthlyRent, 537.9);
+  assert.equal(rentCap.capMonthlyRent, 537.9);
+  assert.equal(rentCap.status, "above_cap");
+  assert.equal(rentCap.differenceFromCap, 2.1);
+});
+
+test("there is no rent cap without 'rented before' or without a contract rent", () => {
+  const withoutRentedBefore = evaluateMietspiegel({ ...rentCapFlat, contractRent: 780 });
+  const withoutContractRent = evaluateMietspiegel({ ...rentCapFlat, rentedBefore: true });
+
+  assert.equal(Object.hasOwn(withoutRentedBefore, "rentCap"), false);
+  assert.equal(Object.hasOwn(withoutContractRent, "rentCap"), false);
+  assert.deepEqual(
+    evaluateMietspiegel({ ...rentCapFlat, contractRent: 780, rentedBefore: true }).contractRentComparison,
+    withoutRentedBefore.contractRentComparison,
+    "the range comparison is unchanged",
+  );
+});
+
+test("the rent cap's legal texts name the 10 %, 1 October 2014 and 1 June 2015", () => {
+  const { rentCap } = evaluateMietspiegel({ ...rentCapFlat, contractRent: 780, rentedBefore: true });
+
+  assert.match(rentCap.legalBasis, /§§ 556d–556g BGB/);
+  assert.match(rentCap.legalBasis, /10 %/);
+  assert.match(rentCap.legalBasis, /1 October 2014/);
+  assert.match(rentCap.legalBasis, /§ 556g BGB/);
+  assert.match(rentCap.notChecked, /1 June 2015/);
+  assert.match(rentCap.notChecked, /start of the lease/);
+});

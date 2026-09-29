@@ -354,6 +354,7 @@ test("one turn chains Official Data and Compliance into a Mietspiegel verdict on
                 { fact: "address", value: "Berliner Str. 155" },
                 { fact: "livingAreaSqm", value: 50 },
                 { fact: "contractRent", value: 780 },
+                { fact: "rentedBefore", value: true },
               ],
             },
           },
@@ -391,6 +392,7 @@ test("one turn chains Official Data and Compliance into a Mietspiegel verdict on
     buildingAgeOrYear: "1921 - 1930",
     livingAreaSqm: 50,
     contractRent: 780,
+    rentedBefore: true,
   });
   const complianceTask = models.subAgent.calls[3].map((m) => m.content).join("\n");
   assert.match(complianceTask, /Checks: mietspiegel/, "the Compliance Sub-agent is told which checks to run");
@@ -512,6 +514,7 @@ test("a Compliance request with one check short of facts still runs the other ch
                 { fact: "address", value: "Berliner Str. 155" },
                 { fact: "livingAreaSqm", value: 50 },
                 { fact: "contractRent", value: 780 },
+                { fact: "rentedBefore", value: true },
                 { fact: "rooms", value: 2 },
               ],
             },
@@ -563,6 +566,7 @@ test("a correction replaces the fact and the check re-runs with the new value", 
                 { fact: "address", value: "Berliner Str. 155" },
                 { fact: "livingAreaSqm", value: 50 },
                 { fact: "contractRent", value: 780 },
+                { fact: "rentedBefore", value: true },
               ],
             },
           },
@@ -672,8 +676,11 @@ test("a Tool argument with no Tenancy fact behind it is dropped, not taken from 
     subAgent: [...OFFICIAL_DATA_SCRIPT, mietspiegelCall(999), "Calculated."],
   });
 
-  await collect(orchestrator.send({ threadId: "t25", message: "Berliner Str. 155, 50 m². What is the reference rent?" }));
+  const events = await collect(
+    orchestrator.send({ threadId: "t25", message: "Berliner Str. 155, 50 m². What is the reference rent?" }),
+  );
 
+  assert.equal(stepsOf(events).includes("ComplianceAgent:needs_facts"), false, "without a contract rent nothing new is asked");
   assert.deepEqual(calls.at(-1), {
     name: "calculate_mietspiegel",
     args: { residentialLocation: "gut", buildingAgeOrYear: "1921 - 1930", livingAreaSqm: 50 },
@@ -699,7 +706,7 @@ test("an uploaded lease fills the Tenancy, and its unconfirmed contract rent blo
       askLeaseAnalysis,
       askOfficialData,
       askMietspiegel,
-      "I read a Nettokaltmiete (net cold rent) of 780 € in your lease, but I'm not sure. Is that right?",
+      "I read a Nettokaltmiete (net cold rent) of 780 € in your lease, but I'm not sure. Is that right? And was the flat rented out before you moved in?",
     ],
     subAgent: [...LEASE_SCRIPT, ...OFFICIAL_DATA_SCRIPT],
   });
@@ -730,9 +737,9 @@ test("an uploaded lease fills the Tenancy, and its unconfirmed contract rent blo
   assert.deepEqual(complianceReport, {
     status: "needs_facts",
     checks: ["mietspiegel"],
-    missing: [],
+    missing: ["rentedBefore"],
     unconfirmed: ["contractRent"],
-  });
+  }, "the unconfirmed rent and the missing 'rented before' are reported together");
   assert.match(answerOf(events), /780 € in your lease/);
 });
 
@@ -740,7 +747,7 @@ test("confirming the unconfirmed contract rent skips Intent classification and c
   const { orchestrator, models, calls } = setup({
     router: [{ intents: ["document", "mietspiegel"], language: "en" }],
     supervisor: [
-      askLeaseAnalysis,
+      { toolCalls: [recordFacts([{ fact: "rentedBefore", value: "yes" }]), ...askLeaseAnalysis.toolCalls] },
       askOfficialData,
       askMietspiegel,
       "I read a Nettokaltmiete (net cold rent) of 780 € in your lease, but I'm not sure. Is that right?",
@@ -754,7 +761,9 @@ test("confirming the unconfirmed contract rent skips Intent classification and c
       "Mietspiegel calculated; contract rent above the upper threshold.",
     ],
   });
-  await collect(orchestrator.send({ threadId: "t51", message: "Here is my lease, am I overpaying?", documentId: "doc-1" }));
+  await collect(
+    orchestrator.send({ threadId: "t51", message: "Here is my lease, the flat was rented before. Am I overpaying?", documentId: "doc-1" }),
+  );
 
   const events = await collect(orchestrator.send({ threadId: "t51", confirm: { contractRent: 780 } }));
 
@@ -1013,8 +1022,11 @@ const FLAT_FACTS = [
   { fact: "address", value: "Berliner Str. 155" },
   { fact: "livingAreaSqm", value: 50 },
   { fact: "contractRent", value: 780 },
+  { fact: "rentedBefore", value: true },
 ];
 const mietspiegelArgs = (contractRent) => mietspiegelCall(contractRent).toolCalls[0].args;
+// The arguments calculate_mietspiegel receives for FLAT_FACTS: pinned to the Tenancy.
+const pinnedMietspiegelArgs = (contractRent) => ({ ...mietspiegelArgs(contractRent), rentedBefore: true });
 const lastMietspiegelReport = (models) => JSON.parse(models.supervisor.calls.at(-1).at(-1).content).results[0].result;
 
 test("feature group ratings given over two turns complete the adjusted reference rent", async () => {
@@ -1054,7 +1066,7 @@ test("feature group ratings given over two turns complete the adjusted reference
     "ComplianceAgent:started",
     "ComplianceAgent:finished",
   ]);
-  assert.deepEqual(calls[2].args, mietspiegelArgs(780));
+  assert.deepEqual(calls[2].args, pinnedMietspiegelArgs(780));
   assert.match(answerOf(first), /five short questions/);
   // Partial ratings are stored as the user's facts and run nothing.
   assert.deepEqual(stepsOf(second), []);
@@ -1069,7 +1081,7 @@ test("feature group ratings given over two turns complete the adjusted reference
   );
   // Complete ratings reach calculate_mietspiegel, and its adjusted rent reaches the answer.
   assert.deepEqual(calls.at(-1).args, {
-    ...mietspiegelArgs(780),
+    ...pinnedMietspiegelArgs(780),
     featureGroups: {
       bathroom: "positive",
       kitchen: "positive",
@@ -1129,7 +1141,7 @@ test("with four of five ratings no feature groups are passed, whatever the model
 
   await collect(orchestrator.send({ threadId: "t61", message: "Berliner Str. 155, 50 m², 780 €; bath, kitchen, flat, building all better" }));
 
-  assert.deepEqual(calls.at(-1), { name: "calculate_mietspiegel", args: mietspiegelArgs(780) });
+  assert.deepEqual(calls.at(-1), { name: "calculate_mietspiegel", args: pinnedMietspiegelArgs(780) });
 });
 
 test("correcting one rating changes only that fact and the adjusted rent on re-run", async () => {
@@ -1193,6 +1205,66 @@ test("a new address clears the feature group ratings", async () => {
   const events = await collect(orchestrator.send({ threadId: "t63", message: "I moved to Karl-Marx-Allee 1" }));
 
   const tenancy = await orchestrator.getTenancy("t63");
-  assert.deepEqual(Object.keys(tenancy).toSorted(), ["address", "contractRent", "livingAreaSqm"]);
+  assert.deepEqual(
+    Object.keys(tenancy).toSorted(),
+    ["address", "contractRent", "livingAreaSqm"],
+    "the ratings and 'rented before' describe the old flat",
+  );
   assert.deepEqual(events.find((e) => e.type === "tenancy").tenancy, tenancy);
+});
+
+test("a rent check asks whether the flat was rented before, and 'yes' gives a conditional rent cap verdict", async () => {
+  const { orchestrator, models, calls } = setup({
+    router: [
+      { intents: ["address", "mietspiegel"], language: "en" },
+      { intents: ["mietspiegel"], language: "en" },
+    ],
+    supervisor: [
+      {
+        toolCalls: [
+          recordFacts(FLAT_FACTS.filter(({ fact }) => fact !== "rentedBefore")),
+          ...askOfficialData.toolCalls,
+          ...askMietspiegel.toolCalls,
+        ],
+      },
+      "Was the flat rented out before you moved in?",
+      { toolCalls: [recordFacts([{ fact: "rentedBefore", value: "yes" }]), ...askMietspiegel.toolCalls] },
+      "Your Nettokaltmiete (net cold rent) of 780 € is above the Mietspiegel range of 410–555 €. " +
+        "Mietpreisbremse (rent cap): the cap is Mietspiegel + 10 %, i.e. 519,75 €, and your rent is 260,25 € above it. " +
+        "As the flat was rented before, a higher previous rent (Vormiete) could justify a higher rent; you can ask your landlord to disclose it (§ 556g BGB). " +
+        "This assumes 780 € is the rent agreed at the start of the lease. Not checked: leases concluded before 1 June 2015, modernisation, Staffelmiete and Indexmiete.",
+    ],
+    subAgent: [
+      ...OFFICIAL_DATA_SCRIPT,
+      // The model passes the opposite of what the tenant said; the Tenancy is pinned instead.
+      { toolCalls: [{ name: "calculate_mietspiegel", args: { ...mietspiegelArgs(780), rentedBefore: false } }] },
+      "Calculated; above the rent cap, conditional.",
+    ],
+  });
+
+  const first = await collect(orchestrator.send({ threadId: "t70", message: "Berliner Str. 155, 50 m², 780 € cold. Too much?" }));
+
+  assert.deepEqual(stepsOf(first), ["OfficialDataAgent:started", "OfficialDataAgent:finished", "ComplianceAgent:needs_facts"]);
+  assert.equal(calls.some((c) => c.name === "calculate_mietspiegel"), false, "no Mietspiegel call yet");
+  assert.deepEqual(JSON.parse(models.supervisor.calls[1].at(-1).content), {
+    status: "needs_facts",
+    checks: ["mietspiegel"],
+    missing: ["rentedBefore"],
+    unconfirmed: [],
+  });
+
+  const second = await collect(orchestrator.send({ threadId: "t70", message: "yes" }));
+
+  assert.deepEqual((await orchestrator.getTenancy("t70")).rentedBefore, { value: true, source: "user" });
+  assert.deepEqual(stepsOf(second), ["ComplianceAgent:started", "ComplianceAgent:finished"]);
+  assert.deepEqual(calls.at(-1), { name: "calculate_mietspiegel", args: pinnedMietspiegelArgs(780) });
+  const { rentCap } = lastMietspiegelReport(models);
+  assert.equal(rentCap.conditional, true);
+  assert.equal(rentCap.capMonthlyRent, 519.75);
+  const answer = answerOf(second);
+  assert.match(answer, /519,75 €/);
+  assert.match(answer, /10 %/);
+  assert.match(answer, /1 June 2015/);
+  assert.match(answer, /not legal advice/);
+  assert.equal(models.supervisor.remaining, 0, "no grounding rewrite was needed");
 });

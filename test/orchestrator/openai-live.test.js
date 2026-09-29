@@ -45,7 +45,8 @@ test("live: a German Mietspiegel question gets a full check against the real mod
   const events = await collect(
     orchestrator.send({
       threadId: "live-mietspiegel",
-      message: "Berliner Straße 155, 10715 Berlin, 50 m², Nettokaltmiete 780 €. Zahle ich zu viel?",
+      message:
+        "Berliner Straße 155, 10715 Berlin, 50 m², Nettokaltmiete 780 €, die Wohnung war vorher vermietet. Zahle ich zu viel?",
     }),
   );
 
@@ -61,7 +62,7 @@ test("live: confirming the lease's unconfirmed rent re-runs the Mietspiegel chec
   const threadId = "live-lease-confirm";
 
   const upload = await collect(
-    orchestrator.send({ threadId, documentId: "lease-1", message: "Hier ist mein Mietvertrag. Zahle ich zu viel Miete?" }),
+    orchestrator.send({ threadId, documentId: "lease-1", message: "Hier ist mein Mietvertrag, die Wohnung war vorher vermietet. Zahle ich zu viel Miete?" }),
   );
   assert.equal(upload.at(-1).type, "done", JSON.stringify(upload.at(-1)));
   assert.ok(!complianceFinished(upload), "no verdict on the Unconfirmed contract rent");

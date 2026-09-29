@@ -7,6 +7,15 @@ import { FEATURE_GROUPS, FEATURE_RATINGS } from "./tool-contracts.js";
 export const FEATURE_GROUP_RATINGS = Object.fromEntries(FEATURE_GROUPS.map((group) => [group, `${group}Rating`]));
 export const RATING_FACTS = Object.values(FEATURE_GROUP_RATINGS);
 
+// Previous-rental facts for the Rent cap (Mietpreisbremse): whether the flat was rented
+// out before. Stated yes/no; they belong to the flat, like the Feature group ratings.
+export const PREVIOUS_RENTAL_FACTS = ["rentedBefore"];
+const BOOLEAN_FACTS = new Set(PREVIOUS_RENTAL_FACTS);
+const BOOLEAN_WORDS = { yes: true, ja: true, true: true, no: false, nein: false, false: false };
+
+// Facts that describe the flat and go when the flat changes.
+const FLAT_DESCRIBING_FACTS = [...RATING_FACTS, ...PREVIOUS_RENTAL_FACTS];
+
 // Facts the user (or a lease) can state about their Tenancy.
 export const STATED_FACTS = [
   "address",
@@ -17,6 +26,7 @@ export const STATED_FACTS = [
   "occupants",
   "childrenUpToSix",
   ...RATING_FACTS,
+  ...PREVIOUS_RENTAL_FACTS,
 ];
 
 // Facts only official data supplies; they belong to the current address.
@@ -43,6 +53,11 @@ function coerce(name, value) {
     return parseNumber(String(value).trim()) ?? undefined;
   }
   if (name === "buildingYear") return coerceBuildingYear(value);
+  if (BOOLEAN_FACTS.has(name)) {
+    if (typeof value === "boolean") return value;
+    const word = String(value).trim().toLowerCase();
+    return Object.hasOwn(BOOLEAN_WORDS, word) ? BOOLEAN_WORDS[word] : undefined;
+  }
   if (RATING_FACTS.includes(name)) {
     const rating = String(value).trim().toLowerCase();
     return FEATURE_RATINGS.includes(rating) ? rating : undefined;
@@ -59,14 +74,14 @@ function coerceBuildingYear(value) {
   return /\d{4}/.test(text) ? text : undefined;
 }
 
-// Official facts belong to the address; Feature group ratings to the flat, so
+// Official facts belong to the address; Feature group ratings and previous-rental facts to the flat, so
 // they go only when the flat changes (`flatChanged`): a known address is replaced,
 // not when the first address is stated or a stated one is canonicalised.
 // Before verification a respelled address cannot be told apart from a new flat.
 function clearAddressDerivedFacts(tenancy, { flatChanged }) {
   for (const name of OFFICIAL_ONLY_FACTS) delete tenancy[name];
   if (tenancy.buildingYear?.source === "official") delete tenancy.buildingYear;
-  if (flatChanged) for (const name of RATING_FACTS) delete tenancy[name];
+  if (flatChanged) for (const name of FLAT_DESCRIBING_FACTS) delete tenancy[name];
 }
 
 function rank(fact) {

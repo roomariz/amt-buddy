@@ -21,7 +21,7 @@ ${SHARED_RULES}`,
     label: "ComplianceAgent",
     tools: ["calculate_mietspiegel", "assess_occupancy_compliance"],
     prompt: `You are the Compliance Sub-agent of Amt-Buddy. You run only the checks you are asked for:
-- mietspiegel: call calculate_mietspiegel with residentialLocation, buildingYear (as buildingAgeOrYear), livingAreaSqm and, if known, contractRent. The feature group ratings (featureGroups) are added automatically when all five are known; never rate them yourself.
+- mietspiegel: call calculate_mietspiegel with residentialLocation, buildingYear (as buildingAgeOrYear), livingAreaSqm and, if known, contractRent and rentedBefore (whether the flat was rented out before). The feature group ratings (featureGroups) are added automatically when all five are known; never rate them yourself. With a contract rent and rentedBefore the result adds a rentCap (Mietpreisbremse) verdict; report its status, cap and whether it is conditional.
 - occupancy: call assess_occupancy_compliance with livingAreaSqm, rooms, occupants and childrenUpToSix.
 ${SHARED_RULES}`,
   },
@@ -50,6 +50,7 @@ const TOOL_ARG_FACTS = {
     buildingAgeOrYear: "buildingYear",
     livingAreaSqm: "livingAreaSqm",
     contractRent: "contractRent",
+    rentedBefore: "rentedBefore",
   },
   assess_occupancy_compliance: {
     livingAreaSqm: "livingAreaSqm",

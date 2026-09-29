@@ -27,9 +27,9 @@ export const SUPERVISOR_TOOLS = [
   {
     name: "record_tenancy_facts",
     description:
-      `Record Tenancy facts the user stated or corrected in this conversation, e.g. 'the rent is 720' or 'we are 4 people'. Feature group ratings (${RATING_FACTS.join(", ")}) take 'positive' (better than usual), 'neutral' (average) or 'negative' (worse than usual).`,
+      `Record Tenancy facts the user stated or corrected in this conversation, e.g. 'the rent is 720' or 'we are 4 people'. Feature group ratings (${RATING_FACTS.join(", ")}) take 'positive' (better than usual), 'neutral' (average) or 'negative' (worse than usual). rentedBefore (whether the flat was rented out before) takes true or false; if the user does not know, record true.`,
     schema: z.object({
-      facts: z.array(z.object({ fact: z.enum(STATED_FACTS), value: z.union([z.string(), z.number()]) })).min(1),
+      facts: z.array(z.object({ fact: z.enum(STATED_FACTS), value: z.union([z.string(), z.number(), z.boolean()]) })).min(1),
     }),
   },
 ];
@@ -70,6 +70,7 @@ Rules:
 - If the user uploaded a new lease this turn, ask the Lease Analysis agent to read it first; what the user stated always takes precedence over the lease. A needs_facts report missing "documentId" means: ask the user to upload their lease.
 - When the user confirms facts ("[Confirmed Tenancy facts]"), re-run the checks that were waiting for them.
 - A Mietspiegel check needs the Official Data agent first: it supplies the Wohnlage (residentialLocation) and building age. Tell the Compliance agent which checks to run.
+- Rent cap (Mietpreisbremse): a Mietspiegel check with a contract rent needs to know whether the flat was rented out before (rentedBefore). If a report says it is missing, ask the user in their language whether the flat was rented out before they moved in; if they do not know, record rentedBefore as true. Present the range comparison as before, then the rentCap verdict from the result: within or above the cap, with capMonthlyRent (Mietspiegel + 10 %) and differenceFromCap. If rentCap.conditional is true, say that a higher previous rent (Vormiete) could justify a higher rent and that the tenant can ask the landlord to disclose it (§ 556g BGB). State that the contract rent is taken as the rent agreed at the start of the lease, and name what was not checked (rentCap.notChecked). Quote the 10 % and the dates only as given in rentCap.legalBasis and rentCap.notChecked.
 - Feature group ratings are an optional follow-up; never wait for them before a Mietspiegel check. After a Mietspiegel answer without an adjustedReferenceRent, you may offer a more precise estimate: five short questions, in the user's language, whether the bathroom, kitchen, flat, building and surroundings are better than usual, average or worse. Record each answer as its rating (the user may answer some now, some later, or correct one). Once all five ratings are known, re-run the Mietspiegel check. Present an adjustedReferenceRent as an estimate based on the Orientierungshilfe (orientation guide), which is not part of the qualified Mietspiegel: the reference range stays the reference, and the contract rent is compared with the range, not with the estimate.
 - If a Sub-agent reports needs_facts (or a done report carries needsFacts for checks that could not run), run whatever else can run (e.g. the Official Data agent can supply Wohnlage and building year from an address), then ask the user only for the facts no Sub-agent can supply. Ask the user to confirm UNCONFIRMED facts; never treat them as known.
 - If a Sub-agent reports failed or a result with an upstream error, say the official service is not responding right now. If a result has an input error, ask the user to check that value. If a Sub-agent is unavailable, say so honestly. Never give a Compliance verdict from guessed or incomplete data.
