@@ -46,3 +46,14 @@ export async function fetchDashboard({ fetchImpl, landlordId }) {
   if (status === 404) return { signedOut: true };
   throw new Error(t("landlord.errors.failed"));
 }
+
+// Save changed Selection criteria → the refreshed dashboard, or validation problems.
+export async function saveCriteria({ fetchImpl, landlordId, request }) {
+  const { status, body } = await call(fetchImpl, landlordPath(landlordId, "criteria"), { method: "PUT", body: request });
+  if (status === 200 && body?.data) return { dashboard: body.data };
+  if (status === 404) return { signedOut: true };
+  if (status === 422 && Array.isArray(body?.error?.details)) {
+    return { problems: Object.fromEntries(body.error.details.map((detail) => [detail.field, detail.code])) };
+  }
+  throw new Error(t("landlord.errors.failed"));
+}

@@ -41,6 +41,95 @@ const WUEHLISCH_LISTING = { address: "Wühlischstraße 30, 10245 Berlin", living
 const signIn = async (server, name = "Erika Muster") =>
   (await server.post("/api/v1/landlord/sessions", { name })).body.data.landlordId;
 
+test("saving a weight merges the other criteria, normalises to 100 and returns the new ranking", async (t) => {
+  const server = await start();
+  t.after(server.close);
+  const id = await signIn(server);
+  const base = `/api/v1/landlord/${id}`;
+  await server.put(`${base}/listing`, WUEHLISCH_LISTING);
+  const before = (await server.get(`${base}/dashboard`)).body.data;
+  const { status, body } = await server.put(`${base}/criteria`, { weights: { affordability: 130 } });
+
+  assert.equal(status, 200);
+  assert.deepEqual(body.data.criteria.weights, { affordability: 65, schufa: 10, documents: 7.5, credibility: 7.5, employment: 7.5, previousLandlord: 2.5 });
+  assert.deepEqual(body.data.criteria.requirements, before.criteria.requirements);
+  assert.notDeepEqual(body.data.ranked, before.ranked);
+  assert.ok(body.data.ranked.every((entry) => entry.breakdown.affordability.weight === 65));
+  assert.deepEqual((await server.get(`${base}/dashboard`)).body.data, body.data);
+});
+
+test("invalid criteria return 422 without overwriting the saved criteria", async (t) => {
+  const server = await start();
+  t.after(server.close);
+  const id = await signIn(server);
+  const base = `/api/v1/landlord/${id}`;
+  const before = (await server.get(`${base}/dashboard`)).body.data.criteria;
+  const invalid = [
+    null, [], { weights: null }, { weights: [] }, { requirements: null },
+    { weights: { affordability: -1 } }, { weights: { schufa: "20" } },
+    { weights: { nationality: 10 } }, { requirements: { religion: true } }, { unexpected: true },
+    { weights: { affordability: 0, schufa: 0, documents: 0, credibility: 0, employment: 0, previousLandlord: 0 } },
+    { requirements: { noPets: "true" } }, { requirements: { occupancyCompliant: null } },
+    { requirements: { maxRentToIncome: 0 } }, { requirements: { maxRentToIncome: 1.1 } },
+    { requirements: { latestMoveIn: "2026-02-30" } }, { requirements: { latestMoveIn: "tomorrow" } },
+  ];
+  for (const input of invalid) {
+    const { status, body } = await server.put(`${base}/criteria`, input);
+    assert.equal(status, 422, JSON.stringify(input));
+    assert.equal(body.error.code, "validation_error");
+    assert.ok(body.error.details.length > 0);
+    assert.deepEqual((await server.get(`${base}/dashboard`)).body.data.criteria, before);
+  }
+  assert.equal((await server.put("/api/v1/landlord/unknown/criteria", {})).status, 404);
+});
+
+test("saved requirements merge, refresh stats and recommendations, and can be cleared", async (t) => {
+  const server = await start();
+  t.after(server.close);
+  const id = await signIn(server);
+  const base = `/api/v1/landlord/${id}`;
+  await server.put(`${base}/listing`, WUEHLISCH_LISTING);
+  const before = (await server.get(`${base}/dashboard`)).body.data;
+  await server.put(`${base}/criteria`, { requirements: { schufaCleanOnly: true } });
+  const changed = (await server.put(`${base}/criteria`, { requirements: { maxRentToIncome: 0.25, latestMoveIn: "2026-12-31" } })).body.data;
+  assert.equal(changed.criteria.requirements.schufaCleanOnly, true);
+  assert.equal(changed.stats.maxRentToIncome, 0.25);
+  assert.ok(changed.stats.canAfford < before.stats.canAfford);
+  assert.ok(changed.excluded.length > before.excluded.length);
+  assert.ok(changed.ranked.every(({ rentToIncome }) => rentToIncome <= 0.25));
+  assert.deepEqual(changed.recommendations.map(({ applicantId }) => applicantId), changed.ranked.slice(0, 2).map(({ applicantId }) => applicantId));
+  const reset = await server.put(`${base}/criteria`, before.criteria);
+  assert.deepEqual(reset.body.data, before);
+});
+
+test("criteria survive a restart and returning sign-in without changing another landlord's defaults", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "amt-buddy-criteria-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const path = join(directory, "landlord.sqlite");
+  const firstStore = createLandlordStore({ path });
+  const first = await start({ store: firstStore });
+  let id;
+  let saved;
+  try {
+    id = await signIn(first);
+    saved = (await first.put(`/api/v1/landlord/${id}/criteria`, {
+      weights: { affordability: 130 }, requirements: { noSmoking: true, noPets: true },
+    })).body.data.criteria;
+  } finally {
+    await first.close();
+    firstStore.close();
+  }
+  const secondStore = createLandlordStore({ path });
+  const second = await start({ store: secondStore });
+  t.after(async () => { await second.close(); secondStore.close(); });
+  assert.equal(await signIn(second, "ERIKA MUSTER"), id);
+  assert.deepEqual((await second.get(`/api/v1/landlord/${id}/dashboard`)).body.data.criteria, saved);
+  const otherId = await signIn(second, "Another landlord");
+  const other = (await second.get(`/api/v1/landlord/${otherId}/dashboard`)).body.data.criteria;
+  assert.equal(other.weights.affordability, 30);
+  assert.equal(other.requirements.noSmoking, false);
+});
+
 test("signing in with a new name creates a landlord", async (t) => {
   const server = await start();
   t.after(server.close);

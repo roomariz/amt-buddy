@@ -127,6 +127,19 @@ const de = {
   },
   landlord: {
     title: "Amt-Buddy Vermieter",
+    criteria: {
+      title: "Auswahlkriterien",
+      intro: "Passen Sie die Gewichtung an. Beim Speichern werden die Gewichte auf insgesamt 100 % umgerechnet und das Ranking aktualisiert.",
+      weights: "Gewichtung", requirements: "Anforderungen",
+      schufaCleanOnly: "Nur saubere SCHUFA", completeDocumentsOnly: "Nur vollständige Unterlagen",
+      noPets: "Keine Haustiere", noSmoking: "Nichtraucher", occupancyCompliant: "Haushalt passt zur Wohnfläche",
+      maxRentToIncome: "Miete höchstens in % des Einkommens (optional)", latestMoveIn: "Einzug spätestens am (optional)",
+      optionalHint: "Leere Felder setzen keine Grenze.", save: "Kriterien speichern", reset: "Standardwerte wiederherstellen",
+      saving: "Kriterien werden gespeichert …", saved: "Kriterien gespeichert. Das Dashboard ist aktualisiert.",
+      invalid: "Bitte prüfen Sie die markierten Kriterien. Gewichte müssen mindestens 0 sein, die Einkommensgrenze über 0 und höchstens 100 %, das Datum gültig.",
+      positiveTotal: "Mindestens ein Gewicht muss größer als 0 sein.",
+    },
+
     toChat: "Zum Mieter-Chat",
     signOut: "Abmelden",
     signedInAs: "Angemeldet als {name}",
@@ -217,7 +230,7 @@ const de = {
     ranking: {
       title: "Bewerber-Ranking",
       intro:
-        "Jeder Bewerber bekommt aus festen Kriterien einen Match-Score von 0 bis 100: Bezahlbarkeit, SCHUFA, Unterlagen, Glaubwürdigkeit, Beschäftigung und Vorvermieter. Der Name wird nur angezeigt, er zählt nicht.",
+        "Jeder Bewerber bekommt aus Ihren Auswahlkriterien einen Match-Score von 0 bis 100: Bezahlbarkeit, SCHUFA, Unterlagen, Glaubwürdigkeit, Beschäftigung und Vorvermieter. Der Name wird nur angezeigt, er zählt nicht.",
       hint: "Speichern Sie zuerst Ihre Wohnung: Die Bewerber werden für ihre Miete und Größe gerankt.",
       count: "{ranked} Bewerber im Ranking, {excluded} ausgeschlossen",
       sort: "Sortieren nach",
@@ -386,6 +399,19 @@ const en = {
   },
   landlord: {
     title: "Amt-Buddy Landlord",
+    criteria: {
+      title: "Selection criteria",
+      intro: "Adjust the weights. Saving scales them to a total of 100% and updates the ranking.",
+      weights: "Weights", requirements: "Requirements",
+      schufaCleanOnly: "Clean SCHUFA only", completeDocumentsOnly: "Complete documents only",
+      noPets: "No pets", noSmoking: "No smoking", occupancyCompliant: "Household fits the living area",
+      maxRentToIncome: "Maximum rent as % of income (optional)", latestMoveIn: "Latest move-in date (optional)",
+      optionalHint: "Leave these fields empty to set no limit.", save: "Save criteria", reset: "Restore defaults",
+      saving: "Saving criteria …", saved: "Criteria saved. The dashboard is up to date.",
+      invalid: "Check the marked criteria. Weights must be at least 0, the income limit above 0 and at most 100%, and the date valid.",
+      positiveTotal: "At least one weight must be above zero.",
+    },
+
     toChat: "Tenant chat",
     signOut: "Sign out",
     signedInAs: "Signed in as {name}",
@@ -475,7 +501,7 @@ const en = {
     ranking: {
       title: "Applicant ranking",
       intro:
-        "Every applicant gets a Match score from 0 to 100 from fixed criteria: affordability, SCHUFA, documents, credibility, employment and previous landlord. The name is only shown; it does not count.",
+        "Every applicant gets a Match score from 0 to 100 from your selection criteria: affordability, SCHUFA, documents, credibility, employment and previous landlord. The name is only shown; it does not count.",
       hint: "Save your flat first: the applicants are ranked for its rent and size.",
       count: "{ranked} applicants ranked, {excluded} excluded",
       sort: "Sort by",

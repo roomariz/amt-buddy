@@ -6,7 +6,8 @@
  * table, the stored sign-in); this file only wires it to the DOM. Server text is always set as textContent.
  */
 
-import { fetchDashboard, saveListing, signIn } from "./landlord/api.js";
+import { fetchDashboard, saveCriteria, saveListing, signIn } from "./landlord/api.js";
+import { criteriaFormValues, criteriaRequest, WEIGHT_FIELDS } from "./landlord/criteria.js";
 import { runLandlordTurn } from "./landlord/chat.js";
 import { renderMarkdown } from "./chat/markdown.js";
 import { listingFormValues, listingRequest, rentCheckView } from "./landlord/listing.js";
@@ -50,6 +51,12 @@ const poolOverviewSummary = $("#pool-overview-summary");
 const poolOverviewTiles = $("#pool-overview-tiles");
 const recommendationList = $("#recommendation-cards");
 const recommendationsEmpty = $("#recommendations-empty");
+const criteriaSection = $("#selection-criteria");
+const criteriaForm = $("#criteria-form");
+const criteriaControls = $("#criteria-controls");
+const criteriaError = $("#criteria-error");
+const criteriaStatus = $("#criteria-status");
+const resetCriteriaButton = $("#btn-reset-criteria");
 
 function localStore() {
   try {
@@ -63,6 +70,9 @@ let landlord = storedLandlord(localStore());
 let listing = null;
 let ranking = null; // { ranked, excluded, hint, poolErrors } from the dashboard
 let poolOverview = null; // { stats, recommendations } from the dashboard; stats is null without a Listing
+let defaultCriteria = null;
+let criteriaStatusKey = null;
+let criteriaErrorKey = null;
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -90,6 +100,7 @@ function renderSignedIn() {
     rentCheckSection.hidden = true;
     rankingSection.hidden = true;
     poolOverviewSection.hidden = true;
+    criteriaSection.hidden = true;
   }
 }
 
@@ -299,6 +310,10 @@ function signOut() {
   listing = null;
   ranking = null;
   poolOverview = null;
+  defaultCriteria = null;
+  criteriaForm.reset();
+  criteriaStatusKey = null;
+  clearCriteriaProblems();
   fillForm(listingFormValues(null));
   chatMessages.replaceChildren();
   showFieldProblems();
@@ -311,24 +326,96 @@ function signOut() {
 }
 
 async function loadDashboard() {
+  const landlordId = landlord.landlordId;
   try {
-    const dashboard = await fetchDashboard({ fetchImpl: fetch, landlordId: landlord.landlordId });
+    const dashboard = await fetchDashboard({ fetchImpl: fetch, landlordId });
+    if (landlord?.landlordId !== landlordId) return;
     if (dashboard.signedOut) {
       signOut();
       return;
     }
-    listing = dashboard.listing;
-    const { ranked, excluded, hint, poolErrors, stats, recommendations } = dashboard;
-    ranking = { ranked, excluded, hint, poolErrors };
-    poolOverview = { stats, recommendations };
-    fillForm(listingFormValues(listing));
-    renderRentCheck();
-    renderPoolOverview();
-    renderRanking();
+    applyDashboard(dashboard);
+    fillForm(listingFormValues(dashboard.listing));
   } catch (error) {
     showError(listingError, error.message);
   }
 }
+
+function applyDashboard(dashboard) {
+  listing = dashboard.listing;
+  const { ranked, excluded, hint, poolErrors, stats, recommendations } = dashboard;
+  ranking = { ranked, excluded, hint, poolErrors };
+  poolOverview = { stats, recommendations };
+  defaultCriteria = dashboard.defaultCriteria;
+  for (const [key, value] of Object.entries(criteriaFormValues(dashboard.criteria))) {
+    const input = criteriaForm.elements[key];
+    if (input.type === "checkbox") input.checked = value;
+    else input.value = value;
+  }
+  criteriaSection.hidden = false;
+  renderCriteriaText();
+  renderRentCheck();
+  renderPoolOverview();
+  renderRanking();
+}
+
+function renderCriteriaText() {
+  for (const key of WEIGHT_FIELDS) {
+    $(`#criteria-value-${key}`).textContent = formatNumber(Number(criteriaForm.elements[key].value));
+  }
+  criteriaStatus.textContent = criteriaStatusKey ? t(criteriaStatusKey) : "";
+  showError(criteriaError, criteriaErrorKey ? t(criteriaErrorKey) : null);
+}
+
+function clearCriteriaProblems() {
+  criteriaErrorKey = null;
+  for (const input of criteriaForm.querySelectorAll("input")) input.removeAttribute("aria-invalid");
+  renderCriteriaText();
+}
+
+async function submitCriteria(request) {
+  if (!landlord || criteriaControls.disabled) return;
+  const landlordId = landlord.landlordId;
+  clearCriteriaProblems();
+  criteriaStatusKey = "landlord.criteria.saving";
+  criteriaControls.disabled = true;
+  renderCriteriaText();
+  try {
+    const result = await saveCriteria({ fetchImpl: fetch, landlordId, request });
+    if (landlord?.landlordId !== landlordId) return;
+    criteriaStatusKey = null;
+    if (result.signedOut) signOut();
+    else if (result.problems) {
+      criteriaErrorKey = Object.values(result.problems).includes("positive_total")
+        ? "landlord.criteria.positiveTotal" : "landlord.criteria.invalid";
+      for (const field of Object.keys(result.problems)) {
+        const keys = field === "weights" ? WEIGHT_FIELDS : [field.split(".").at(-1)];
+        for (const key of keys) criteriaForm.elements[key]?.setAttribute("aria-invalid", "true");
+      }
+    } else {
+      criteriaStatusKey = "landlord.criteria.saved";
+      applyDashboard(result.dashboard);
+    }
+  } catch {
+    if (landlord?.landlordId === landlordId) {
+      criteriaStatusKey = null;
+      criteriaErrorKey = "landlord.errors.failed";
+    }
+  } finally {
+    criteriaControls.disabled = false;
+    renderCriteriaText();
+  }
+}
+
+criteriaForm.addEventListener("input", () => {
+  criteriaStatusKey = null;
+  clearCriteriaProblems();
+});
+criteriaForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  submitCriteria(criteriaRequest(Object.fromEntries(new FormData(criteriaForm))));
+});
+resetCriteriaButton.addEventListener("click", () => submitCriteria(defaultCriteria));
 
 signInForm.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -427,6 +514,7 @@ chatInput.addEventListener("keydown", (event) => {
 signOutButton.addEventListener("click", signOut);
 
 onLanguageChange(() => {
+  renderCriteriaText();
   renderSignedIn();
   renderRentCheck();
   renderPoolOverview();
