@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { createApp } from "../../src/app.js";
 import { createLandlordStore } from "../../src/landlord/store.js";
 import { createFakeBerlinWfs } from "../helpers/fake-berlin-wfs.js";
-import { fetchDashboard, saveListing, signIn } from "../../public/landlord/api.js";
+import { fetchApplicantProfile, fetchDashboard, saveListing, signIn } from "../../public/landlord/api.js";
 import { listingRequest } from "../../public/landlord/listing.js";
 import { rankingRows } from "../../public/landlord/ranking.js";
 import { poolSummary, recommendationCards, statTiles } from "../../public/landlord/pool-overview.js";
@@ -59,6 +59,24 @@ test("after saving the Listing the dashboard ranks the pool, and the table can f
   assert.ok(after.ranked.every(({ name }) => typeof name === "string" && name));
   const complete = rankingRows(after.ranked, { completeOnly: true });
   assert.ok(complete.length > 0 && complete.length < after.ranked.length);
+});
+
+test("a ranked row can request its applicant detail with contact and the same score", async (t) => {
+  const { fetchImpl, close } = await start();
+  t.after(close);
+  const { landlordId } = await signIn({ fetchImpl, name: "Erika" });
+  await saveListing({ fetchImpl, landlordId, request: listingRequest(FORM) });
+  const dashboard = await fetchDashboard({ fetchImpl, landlordId });
+  const row = rankingRows(dashboard.ranked)[0];
+
+  const detail = await fetchApplicantProfile({ fetchImpl, landlordId, applicantId: row.applicantId });
+
+  assert.equal(detail.profile.id, row.applicantId);
+  assert.equal(detail.score.matchScore, row.matchScore);
+  assert.equal(detail.score.rentToIncome, row.rentToIncome);
+  assert.deepEqual(detail.score.breakdown, row.breakdown);
+  assert.ok(detail.contact.name && detail.contact.email && detail.contact.phone);
+  assert.equal((await fetchApplicantProfile({ fetchImpl, landlordId, applicantId: "absent" })).notFound, true);
 });
 
 test("with a Listing saved, the page opens with the pool summary, the stat tiles and the Recommendation cards", async (t) => {

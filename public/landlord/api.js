@@ -46,3 +46,12 @@ export async function fetchDashboard({ fetchImpl, landlordId }) {
   if (status === 404) return { signedOut: true };
   throw new Error(t("landlord.errors.failed"));
 }
+
+// One Applicant profile for page display. An unknown applicant is distinct from a lost sign-in.
+export async function fetchApplicantProfile({ fetchImpl, landlordId, applicantId }) {
+  const { status, body } = await call(fetchImpl, landlordPath(landlordId, `applicants/${encodeURIComponent(applicantId)}`));
+  if (status === 200 && body?.data) return body.data;
+  if (status === 404 && body?.error?.code === "applicant_not_found") return { notFound: true };
+  if (status === 404 && body?.error?.code === "landlord_not_found") return { signedOut: true };
+  throw new Error(t("landlord.errors.failed"));
+}

@@ -1,6 +1,7 @@
 import { readJson, sendError, sendJson } from "../http-json.js";
 import { streamEvents } from "../http-sse.js";
 import { buildListing, ListingInputError } from "./listing.js";
+import { getApplicantProfile } from "./applicant-profile.js";
 import { detectLanguage, landlordReply } from "./orchestrator/replies.js";
 import { DEFAULT_CRITERIA, rankApplicants } from "./scorer.js";
 import { normalizeLandlordName } from "./store.js";
@@ -145,6 +146,24 @@ export function createLandlordApi({ getStore, getApplicantPool = () => EMPTY_POO
     });
   }
 
+  // GET /api/v1/landlord/:landlordId/applicants/:applicantId → profile and its current score,
+  // with contact details joined only for the UI. Unknown applicant → 404.
+  async function applicantDetail(response, landlordId, applicantId) {
+    const pool = await getApplicantPool();
+    const result = getApplicantProfile({
+      applicants: pool.applicants,
+      listing: getStore().getListing(landlordId),
+      applicantId,
+      criteria: DEFAULT_CRITERIA,
+    });
+    if (!result) {
+      sendError(response, 404, "applicant_not_found", "No applicant with this id.");
+      return;
+    }
+    const { contact } = pool.applicants.find(({ id }) => id === applicantId);
+    sendJson(response, 200, { data: { ...result, contact } });
+  }
+
   // PUT /api/v1/landlord/:landlordId/listing { address, livingAreaSqm, rooms, askingRent, buildingYear? }
   // → the saved Listing with its Rent check (or a `note` saying why there is none).
   async function saveListing(request, response, landlordId) {
@@ -204,17 +223,19 @@ export function createLandlordApi({ getStore, getApplicantPool = () => EMPTY_POO
         return true;
       }
       const match = /^([^/]+)\/(dashboard|listing|chat)$/.exec(path);
+      const applicantMatch = /^([^/]+)\/applicants\/([^/]+)$/.exec(path);
       const handler = match && routes[`${request.method} ${match[2]}`];
-      if (!handler) {
+      if (!handler && !(request.method === "GET" && applicantMatch)) {
         sendError(response, 404, "not_found", "No such landlord endpoint.");
         return true;
       }
-      const landlordId = decodeId(match[1]);
+      const landlordId = decodeId((match ?? applicantMatch)[1]);
       if (!landlordId || !getStore().getLandlord(landlordId)) {
         sendError(response, 404, "landlord_not_found", "No landlord with this id. Sign in again.");
         return true;
       }
-      await handler(request, response, landlordId);
+      if (applicantMatch) await applicantDetail(response, landlordId, decodeId(applicantMatch[2]));
+      else await handler(request, response, landlordId);
       return true;
     },
   };
