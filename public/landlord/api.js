@@ -38,12 +38,39 @@ export async function saveListing({ fetchImpl, landlordId, request }) {
   throw new Error(t("landlord.errors.failed"));
 }
 
-// The dashboard → { listing, rentCheck, criteria, ranked, excluded, stats, recommendations, hint, poolErrors }, or
+// The dashboard → { listing, rentCheck, criteria, ranked, excluded, stats, recommendations, hint, shortlist, poolErrors }, or
 // { signedOut: true } when the server does not know the landlord.
 export async function fetchDashboard({ fetchImpl, landlordId }) {
   const { status, body } = await call(fetchImpl, landlordPath(landlordId, "dashboard"));
   if (status === 200 && body?.data) return body.data;
   if (status === 404) return { signedOut: true };
+  throw new Error(t("landlord.errors.failed"));
+}
+
+const shortlistPath = (landlordId, applicantId) => landlordPath(landlordId, `shortlist/${encodeURIComponent(applicantId)}`);
+
+// Adds an applicant to the Shortlist or changes their status (and, when given, note) → { entry },
+// { problems: { field: message } } when the server rejects a value, { notFound: true } for an
+// applicant the pool does not know, or { signedOut: true }.
+export async function saveShortlistEntry({ fetchImpl, landlordId, applicantId, status, note }) {
+  const body = note === undefined ? { status } : { status, note };
+  const response = await call(fetchImpl, shortlistPath(landlordId, applicantId), { method: "PUT", body });
+  if (response.status === 200 && response.body?.data) return { entry: response.body.data };
+  if (response.status === 404 && response.body?.error?.code === "landlord_not_found") return { signedOut: true };
+  if (response.status === 404 && response.body?.error?.code === "applicant_not_found") return { notFound: true };
+  if (response.status === 422 && Array.isArray(response.body?.error?.details)) {
+    return { problems: Object.fromEntries(response.body.error.details.map((detail) => [detail.field, detail.message])) };
+  }
+  throw new Error(t("landlord.errors.failed"));
+}
+
+// Takes an applicant off the Shortlist → { entry } (status "removed"), { notFound: true } for an
+// applicant the pool does not know, or { signedOut: true }.
+export async function removeShortlistEntry({ fetchImpl, landlordId, applicantId }) {
+  const { status, body } = await call(fetchImpl, shortlistPath(landlordId, applicantId), { method: "DELETE" });
+  if (status === 200 && body?.data) return { entry: body.data };
+  if (status === 404 && body?.error?.code === "landlord_not_found") return { signedOut: true };
+  if (status === 404 && body?.error?.code === "applicant_not_found") return { notFound: true };
   throw new Error(t("landlord.errors.failed"));
 }
 

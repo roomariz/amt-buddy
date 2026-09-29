@@ -1,12 +1,13 @@
 /**
  * Amt-Buddy /landlord page: sign in with a name, enter the Listing, see its Rent check and the
- * pool stats, the Recommendations and the ranked applicants, and chat with the Landlord Orchestrator.
+ * pool stats, the Recommendations, the Shortlist and the ranked applicants, and chat with the
+ * Landlord Orchestrator.
  *
  * The logic lives in ./landlord/ (server calls, the form and range-bar view model, the ranking
  * table, the stored sign-in); this file only wires it to the DOM. Server text is always set as textContent.
  */
 
-import { fetchApplicantProfile, fetchDashboard, saveCriteria, saveListing, signIn } from "./landlord/api.js";
+import { fetchApplicantProfile, fetchDashboard, removeShortlistEntry, saveCriteria, saveListing, saveShortlistEntry, signIn } from "./landlord/api.js";
 import { applicantDetailView } from "./landlord/applicant-detail.js";
 import { criteriaFormValues, criteriaRequest, WEIGHT_FIELDS } from "./landlord/criteria.js";
 import { runLandlordTurn } from "./landlord/chat.js";
@@ -15,6 +16,7 @@ import { listingFormValues, listingRequest, rentCheckView } from "./landlord/lis
 import { breakdownBars, documentFlags, exclusionText, formatMoney, formatNumber, formatPercent, rankingRows } from "./landlord/ranking.js";
 import { poolSummary, recommendationCards, recommendationsEmptyText, statTiles } from "./landlord/pool-overview.js";
 import { forgetLandlord, rememberLandlord, storedLandlord } from "./landlord/session.js";
+import { applyShortlistChange, isShortlisted, shortlistRows, statusOptions } from "./landlord/shortlist.js";
 import { onLanguageChange, startI18n, t } from "./i18n.js";
 
 const $ = (selector) => document.querySelector(selector);
@@ -52,6 +54,10 @@ const poolOverviewSummary = $("#pool-overview-summary");
 const poolOverviewTiles = $("#pool-overview-tiles");
 const recommendationList = $("#recommendation-cards");
 const recommendationsEmpty = $("#recommendations-empty");
+const shortlistSection = $("#shortlist");
+const shortlistError = $("#shortlist-error");
+const shortlistList = $("#shortlist-list");
+const shortlistEmpty = $("#shortlist-empty");
 const criteriaSection = $("#selection-criteria");
 const criteriaForm = $("#criteria-form");
 const criteriaControls = $("#criteria-controls");
@@ -76,6 +82,7 @@ let landlord = storedLandlord(localStore());
 let listing = null;
 let ranking = null; // { ranked, excluded, hint, poolErrors } from the dashboard
 let poolOverview = null; // { stats, recommendations } from the dashboard; stats is null without a Listing
+let shortlist = []; // the Shortlist from the dashboard
 let defaultCriteria = null;
 let criteriaStatusKey = null;
 let criteriaErrorKey = null;
@@ -111,6 +118,7 @@ function renderSignedIn() {
     rentCheckSection.hidden = true;
     rankingSection.hidden = true;
     poolOverviewSection.hidden = true;
+    shortlistSection.hidden = true;
     criteriaSection.hidden = true;
   }
 }
@@ -341,13 +349,133 @@ function renderPoolOverview() {
         name,
         el("span", "recommendation-score", t("landlord.poolOverview.score", { score: card.matchScore })),
       );
-      item.append(head, el("span", "recommendation-rank", t("landlord.poolOverview.rank", { rank: card.rank })), el("p", "recommendation-reason", card.reason));
+      item.append(
+        head,
+        el("span", "recommendation-rank", t("landlord.poolOverview.rank", { rank: card.rank })),
+        el("p", "recommendation-reason", card.reason),
+        shortlistButton(card.applicantId, "recommendation"),
+      );
       return item;
     }),
   );
   const emptyText = recommendationsEmptyText(poolOverview.stats, poolOverview.recommendations);
   recommendationsEmpty.hidden = !emptyText;
   recommendationsEmpty.textContent = emptyText ?? "";
+}
+
+// --- the Shortlist -------------------------------------------------------------------------------
+
+// Redraws with `render` and gives the focus back to the control that had it (same data-focus-key),
+// so saving from the keyboard does not drop the focus to the page.
+function keepingFocus(render) {
+  const key = document.activeElement?.dataset?.focusKey;
+  render();
+  if (key) document.querySelector(`[data-focus-key="${CSS.escape(key)}"]`)?.focus();
+}
+
+function redrawShortlistAndButtons() {
+  keepingFocus(() => {
+    renderShortlist();
+    renderPoolOverview();
+    renderRanking();
+  });
+}
+
+// Shortlist changes run one after another, in the order the landlord made them, so a note saved
+// on blur and a Remove clicked right after cannot reach the server the other way round.
+let shortlistQueue = Promise.resolve();
+
+// Sends one Shortlist change and applies the server's answer to the page's Shortlist; the rest of
+// the dashboard (and the Listing form with any unsaved edits) is left alone.
+function changeShortlist(request) {
+  shortlistQueue = shortlistQueue.then(async () => {
+    if (!landlord) return;
+    showError(shortlistError, null);
+    let result;
+    try {
+      result = await request({ fetchImpl: fetch, landlordId: landlord.landlordId });
+    } catch (error) {
+      result = { error: error.message };
+    }
+    if (result.signedOut) {
+      signOut();
+      return;
+    }
+    if (!result.entry) {
+      const message = result.error ?? (result.notFound ? t("landlord.shortlist.notFound") : Object.values(result.problems).join(" "));
+      showError(shortlistError, message);
+      // Put the controls back to what is saved.
+      keepingFocus(renderShortlist);
+      return;
+    }
+    const wasListed = isShortlisted(shortlist, result.entry.applicantId);
+    shortlist = applyShortlistChange(shortlist, result.entry, ranking);
+    // A status or note change is already on screen; only adding or removing redraws.
+    if (wasListed !== isShortlisted(shortlist, result.entry.applicantId)) redrawShortlistAndButtons();
+    else shortlistList.querySelector(`[data-applicant-id="${CSS.escape(result.entry.applicantId)}"]`)?.setAttribute("class", `shortlist-entry is-${result.entry.status}`);
+  });
+  return shortlistQueue;
+}
+
+// "Add to Shortlist" for the ranking and the Recommendation cards (`place`); "On the Shortlist"
+// once added.
+function shortlistButton(applicantId, place) {
+  const added = isShortlisted(shortlist, applicantId);
+  const button = el("button", "landlord-link-btn shortlist-add", t(added ? "landlord.shortlist.added" : "landlord.shortlist.add"));
+  button.type = "button";
+  button.disabled = added;
+  button.dataset.focusKey = `add:${place}:${applicantId}`;
+  button.addEventListener("click", () =>
+    changeShortlist((call) => saveShortlistEntry({ ...call, applicantId, status: "to_invite" })),
+  );
+  return button;
+}
+
+function renderShortlist() {
+  shortlistSection.hidden = !ranking;
+  if (!ranking) return;
+  const rows = shortlistRows(shortlist);
+  shortlistEmpty.hidden = rows.length > 0;
+  shortlistList.replaceChildren(
+    ...rows.map((row) => {
+      const item = el("li", `shortlist-entry is-${row.status}`);
+      item.dataset.applicantId = row.applicantId;
+      const head = el("div", "shortlist-head");
+      head.append(el("span", "shortlist-name", row.name), el("span", "shortlist-score", row.score));
+
+      const status = el("select", "shortlist-status");
+      status.dataset.focusKey = `status:${row.applicantId}`;
+      status.setAttribute("aria-label", `${t("landlord.shortlist.statusLabel")}: ${row.name}`);
+      for (const { value, label } of statusOptions()) {
+        const option = el("option", "", label);
+        option.value = value;
+        option.selected = value === row.status;
+        status.append(option);
+      }
+      status.addEventListener("change", () =>
+        changeShortlist((call) => saveShortlistEntry({ ...call, applicantId: row.applicantId, status: status.value })),
+      );
+
+      const note = el("input", "shortlist-note");
+      note.dataset.focusKey = `note:${row.applicantId}`;
+      note.value = row.note;
+      note.maxLength = 500;
+      note.placeholder = t("landlord.shortlist.notePlaceholder");
+      note.setAttribute("aria-label", `${t("landlord.shortlist.noteLabel")}: ${row.name}`);
+      note.addEventListener("change", () =>
+        changeShortlist((call) => saveShortlistEntry({ ...call, applicantId: row.applicantId, status: status.value, note: note.value })),
+      );
+
+      const remove = el("button", "landlord-link-btn shortlist-remove", t("landlord.shortlist.remove"));
+      remove.type = "button";
+      remove.addEventListener("click", () => changeShortlist((call) => removeShortlistEntry({ ...call, applicantId: row.applicantId })));
+
+      const controls = el("div", "shortlist-controls");
+      controls.append(status, note, remove);
+      item.append(head, controls);
+      return item;
+    }),
+  );
 }
 
 // --- the ranked applicants -----------------------------------------------------------------------
@@ -408,6 +536,7 @@ function renderRanking() {
       cell(breakdownCell(entry));
       cell(formatPercent(entry.rentToIncome));
       cell(flagsCell(entry.documents));
+      cell(shortlistButton(entry.applicantId, "ranking"));
       return row;
     }),
   );
@@ -437,6 +566,7 @@ function signOut() {
   listing = null;
   ranking = null;
   poolOverview = null;
+  shortlist = [];
   defaultCriteria = null;
   criteriaForm.reset();
   criteriaStatusKey = null;
@@ -448,6 +578,7 @@ function signOut() {
   renderSignedIn();
   renderRentCheck();
   renderPoolOverview();
+  renderShortlist();
   renderRanking();
   signInName.focus();
 }
@@ -474,6 +605,7 @@ function applyDashboard(dashboard) {
   const { ranked, excluded, hint, poolErrors, stats, recommendations } = dashboard;
   ranking = { ranked, excluded, hint, poolErrors };
   poolOverview = { stats, recommendations };
+  shortlist = dashboard.shortlist;
   defaultCriteria = dashboard.defaultCriteria;
   for (const [key, value] of Object.entries(criteriaFormValues(dashboard.criteria))) {
     const input = criteriaForm.elements[key];
@@ -484,6 +616,7 @@ function applyDashboard(dashboard) {
   renderCriteriaText();
   renderRentCheck();
   renderPoolOverview();
+  renderShortlist();
   renderRanking();
 }
 
@@ -646,6 +779,7 @@ onLanguageChange(() => {
   renderSignedIn();
   renderRentCheck();
   renderPoolOverview();
+  renderShortlist();
   renderRanking();
   renderApplicantDetail();
 });

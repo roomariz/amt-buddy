@@ -306,7 +306,7 @@ The Rent check runs `evaluateMietspiegel` with the asking rent as contract rent 
 
 ### `GET /api/v1/landlord/:landlordId/dashboard`
 
-→ `200 { "data": { "listing", "rentCheck", "criteria", "defaultCriteria", "ranked", "excluded", "stats", "recommendations", "hint", "poolErrors" } }`. Later landlord features add fields (Shortlist, …).
+→ `200 { "data": { "listing", "rentCheck", "criteria", "defaultCriteria", "ranked", "excluded", "stats", "recommendations", "hint", "shortlist", "poolErrors" } }`. Later landlord features add fields.
 
 - `listing` / `rentCheck`: the saved Listing and its Rent check, or `null`.
 - `criteria`: the Selection criteria used: `weights` (relative, per criterion: `affordability` 30, `schufa` 20, `documents` 15, `credibility` 15, `employment` 15, `previousLandlord` 5; normalised to sum to 100 %) and `requirements` (`schufaCleanOnly`, `completeDocumentsOnly`, `maxRentToIncome`, `noPets`, `noSmoking`, `latestMoveIn`, all off; `occupancyCompliant` on). Saved per landlord; new landlords get these defaults.
@@ -356,9 +356,30 @@ The Rent check runs `evaluateMietspiegel` with the asking rent as contract rent 
   `strengths`: up to three criteria with a subscore of at least 0.75, strongest first (ties by weight); `weakness`: the criterion with the lowest subscore below 0.6 (ties by weight), or `null`. Without a strength, the reason names the Match score instead.
 - `name` is joined in for display only; the scorer never sees names or contact details.
 - `hint`: `{ "code": "listing_required", "message" }` without a Listing (then `ranked` and `excluded` are empty), otherwise `null`.
+- `shortlist`: the landlord's Shortlist, in the order the entries were added: `[{ applicantId, name, status, note, added, rank, matchScore, excluded }]`. `rank` and `matchScore` come from `ranked`; both are `null` without a Listing or when the applicant is excluded (`excluded: true`). `name` is `null` for an applicant no longer in the pool.
 - `poolErrors`: `[{ file, reason }]`, the pool files that could not be read as an application.
 
 The server reads the Applicant pool once at start from `APPLICANT_POOL_DIR` (default: the committed pool in `data/applicants`), as of `APPLICANT_POOL_TODAY` (default: `POOL_DATE`, the day the committed pool was generated, so its SCHUFA-Auskünfte do not expire).
+
+### `PUT /api/v1/landlord/:landlordId/shortlist/:applicantId`
+
+Adds the applicant to the Shortlist, or changes their entry. Nothing is sent to the applicant; the status only tracks what the landlord still has to do.
+
+```json
+{ "status": "to_invite", "note": "Stable income, call on Monday" }
+```
+
+→ `200 { "data": { "applicantId": "A-007", "status": "to_invite", "note": "Stable income, call on Monday" } }`.
+
+- `status`: `to_invite`, `invited` or `declined`.
+- `note`: optional, at most 500 characters after trimming. Left out, the entry keeps its note (so a status change does not wipe it); `null` or blank clears it.
+- An invalid `status` or `note` is a `422 validation_error`. Adding an applicant id that is not in the Applicant pool is a `404 applicant_not_found`; an entry already on the Shortlist can still be changed after its applicant has left the pool (e.g. another `APPLICANT_POOL_DIR`). Nothing is saved on an error.
+
+The same logic (`updateShortlist`, `src/landlord/shortlist.js`) backs the chat Tool `update_shortlist`, so its checks hold there too.
+
+### `DELETE /api/v1/landlord/:landlordId/shortlist/:applicantId`
+
+Takes the applicant off the Shortlist → `200 { "data": { "applicantId": "A-007", "status": "removed", "note": null } }`. Removing an applicant who is not on the Shortlist changes nothing and is not an error; one who is neither on the Shortlist nor in the pool is a `404 applicant_not_found`. An entry whose applicant has left the pool can always be removed.
 
 ### `PUT /api/v1/landlord/:landlordId/criteria`
 

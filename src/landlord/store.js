@@ -6,7 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 import { DEFAULT_CRITERIA } from "./scorer.js";
 
 // The landlord's state in SQLite (Node's built-in node:sqlite). Later landlord tickets add
-// their own tables (preference notes, shortlist) next to landlords, listings and criteria.
+// their own tables (preference notes) next to landlords, listings, criteria and shortlist.
 const SCHEMA = `
   CREATE TABLE IF NOT EXISTS landlords (
     id TEXT PRIMARY KEY,
@@ -22,6 +22,15 @@ const SCHEMA = `
   CREATE TABLE IF NOT EXISTS criteria (
     landlord_id TEXT PRIMARY KEY REFERENCES landlords(id),
     criteria TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS shortlist (
+    landlord_id TEXT NOT NULL REFERENCES landlords(id),
+    applicant_id TEXT NOT NULL,
+    status TEXT NOT NULL,
+    note TEXT,
+    added TEXT NOT NULL,
+    updated TEXT NOT NULL,
+    PRIMARY KEY (landlord_id, applicant_id)
   );
 `;
 
@@ -46,6 +55,10 @@ const toLandlord = (row) => (row ? { landlordId: row.id, name: row.name } : null
 // - getListing(landlordId) → the Listing, or null when none was saved.
 // - getCriteria(landlordId): saved Selection criteria, or a fresh copy of the defaults.
 // - saveCriteria(landlordId, criteria): stores validated Selection criteria.
+// - saveShortlistEntry(landlordId, { applicantId, status, note }): adds the entry or replaces its
+//   status and note; an entry keeps the time it was first added. No validation: see shortlist.js.
+// - removeShortlistEntry(landlordId, applicantId): removes the entry, if there is one.
+// - getShortlist(landlordId) → [{ applicantId, status, note, added, updated }], in the order added.
 // - close(): closes the database.
 export function createLandlordStore({ path = ":memory:" } = {}) {
   if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
@@ -65,6 +78,15 @@ export function createLandlordStore({ path = ":memory:" } = {}) {
   const upsertCriteria = db.prepare(
     `INSERT INTO criteria (landlord_id, criteria) VALUES (?, ?)
      ON CONFLICT (landlord_id) DO UPDATE SET criteria = excluded.criteria`,
+  );
+  const upsertShortlistEntry = db.prepare(
+    `INSERT INTO shortlist (landlord_id, applicant_id, status, note, added, updated) VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT (landlord_id, applicant_id) DO UPDATE SET status = excluded.status, note = excluded.note, updated = excluded.updated`,
+  );
+  const deleteShortlistEntry = db.prepare("DELETE FROM shortlist WHERE landlord_id = ? AND applicant_id = ?");
+  // rowid breaks ties between entries added within the same millisecond.
+  const selectShortlist = db.prepare(
+    "SELECT applicant_id, status, note, added, updated FROM shortlist WHERE landlord_id = ? ORDER BY added, rowid",
   );
 
   return {
@@ -86,6 +108,22 @@ export function createLandlordStore({ path = ":memory:" } = {}) {
     getListing(landlordId) {
       const row = selectListing.get(landlordId);
       return row ? JSON.parse(row.listing) : null;
+    },
+    saveShortlistEntry(landlordId, { applicantId, status, note }) {
+      const now = new Date().toISOString();
+      upsertShortlistEntry.run(landlordId, applicantId, status, note, now, now);
+    },
+    removeShortlistEntry(landlordId, applicantId) {
+      deleteShortlistEntry.run(landlordId, applicantId);
+    },
+    getShortlist(landlordId) {
+      return selectShortlist.all(landlordId).map((row) => ({
+        applicantId: row.applicant_id,
+        status: row.status,
+        note: row.note,
+        added: row.added,
+        updated: row.updated,
+      }));
     },
     close() {
       db.close();
