@@ -48,7 +48,7 @@ function htmlKeys(html) {
   return [...text, ...attrs];
 }
 
-for (const page of ["chatbot.html", "landlord.html"]) {
+for (const page of ["chatbot.html", "landlord.html", "landlord-chat.html"]) {
   test(`every i18n key in ${page} exists, and the page has a DE | EN switch`, async () => {
     const html = await readFile(new URL(`../public/${page}`, import.meta.url), "utf8");
     const keys = htmlKeys(html);
@@ -74,7 +74,7 @@ test("an unknown language is ignored and an unknown key shows as itself", () => 
 
 test("every text the landlord page's script looks up exists in both languages", async () => {
   const sources = await Promise.all(
-    ["landlord.js", "landlord/api.js"].map((file) => readFile(new URL(`../public/${file}`, import.meta.url), "utf8")),
+    ["landlord.js", "landlord-chat.js", "landlord/api.js", "landlord/board.js", "landlord/tips.js", "landlord/avatar.js", "landlord/rank-moves.js"].map((file) => readFile(new URL(`../public/${file}`, import.meta.url), "utf8")),
   );
   const keys = sources.flatMap((source) => [...source.matchAll(/\bt\("([^"]+)"/g)].map((m) => m[1]));
   assert.ok(keys.length > 5);

@@ -1490,3 +1490,245 @@ footer a { color: inherit; }
 .preferences-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
 .preferences-date { font-size: 0.8rem; color: #5d5d5d; }
 .preferences-delete { flex: none; }
+
+/* ==========================================
+   Chat-first landlord page (/landlord-chat.html)
+   Everything below is scoped to .lc-body, so the other pages keep their look. This page also has
+   a dark theme (the others are light only): the colours are tokens, redefined under
+   prefers-color-scheme: dark.
+   ========================================== */
+
+.lc-body {
+  --lc-bg: #ffffff;
+  --lc-surface: #ffffff;
+  --lc-surface-2: #f7f7f7;
+  --lc-surface-3: #f0f0f0;
+  --lc-border: #e5e5e5;
+  --lc-border-strong: #d0d0d0;
+  --lc-text: #0d0d0d;
+  --lc-muted: #5d5d5d;
+  --lc-faint: #9a9a9a;
+  --lc-accent: #0d0d0d;
+  --lc-accent-fg: #ffffff;
+  --lc-accent-hover: #3a3a3a;
+  --lc-focus: #171714;
+  --lc-error: #b3261e;
+  --lc-error-bg: #fae4df;
+  --lc-error-border: #f2c4ba;
+  --lc-good: #1f5f2e;
+  --lc-note-bg: #fff4d6;
+  --lc-note-fg: #5c4400;
+  --lc-link: #1a56b0;
+  --avatar-bg: #e8eef7;
+  --avatar-fg: #4a5b78;
+  color-scheme: light;
+  background: var(--lc-bg);
+  color: var(--lc-text);
+}
+
+@media (prefers-color-scheme: dark) {
+  .lc-body {
+    --lc-bg: #161616;
+    --lc-surface: #1e1e1e;
+    --lc-surface-2: #262626;
+    --lc-surface-3: #303030;
+    --lc-border: #343434;
+    --lc-border-strong: #4a4a4a;
+    --lc-text: #ececec;
+    --lc-muted: #a8a8a8;
+    --lc-faint: #767676;
+    --lc-accent: #ececec;
+    --lc-accent-fg: #111111;
+    --lc-accent-hover: #c8c8c8;
+    --lc-focus: #ffd84d;
+    --lc-error: #ff8a80;
+    --lc-error-bg: #3a1d1b;
+    --lc-error-border: #5a2a26;
+    --lc-good: #8fd19e;
+    --lc-note-bg: #3a3020;
+    --lc-note-fg: #f0d58a;
+    --lc-link: #8ab4f8;
+    --avatar-bg: #2c3a4f;
+    --avatar-fg: #c9d6ea;
+    color-scheme: dark;
+  }
+}
+
+/* Elements toggled with `hidden` here get a display of their own below. */
+.lc-body [hidden] { display: none !important; }
+
+.lc-body .gpt-main { height: 100dvh; background: var(--lc-bg); }
+
+/* The shared chrome, in the tokens */
+.lc-body .gpt-topbar { border-bottom-color: var(--lc-border); }
+.lc-body .topbar-title,
+.lc-body .lc-heading { color: var(--lc-text); }
+.lc-body .landlord-nav-link,
+.lc-body .landlord-link-btn,
+.lc-body .landlord-name { color: var(--lc-muted); }
+.lc-body .landlord-nav-link:hover,
+.lc-body .landlord-link-btn:hover { background: var(--lc-surface-3); color: var(--lc-text); }
+.lc-body .landlord-link-btn:disabled { background: none; color: var(--lc-muted); opacity: 0.5; cursor: default; }
+.lc-body .lang-switch { border-color: var(--lc-border-strong); color: var(--lc-muted); }
+.lc-body .lang-switch button:hover { background: var(--lc-surface-3); color: var(--lc-text); }
+.lc-body .lang-switch button[aria-pressed="true"] { background: var(--lc-accent); color: var(--lc-accent-fg); }
+.lc-body button:focus-visible,
+.lc-body a:focus-visible,
+.lc-body input:focus-visible,
+.lc-body textarea:focus-visible,
+.lc-body .lang-switch button:focus-visible { outline: 3px solid var(--lc-focus); outline-offset: 2px; }
+.lc-body .landlord-card { background: var(--lc-surface); border-color: var(--lc-border); }
+.lc-body .landlord-intro,
+.lc-body .landlord-hint { color: var(--lc-muted); }
+.lc-body .landlord-error { color: var(--lc-error); }
+.lc-body .landlord-note { background: var(--lc-note-bg); color: var(--lc-note-fg); }
+.lc-body .landlord-field input,
+.lc-body .landlord-chat-field textarea { background: var(--lc-surface); color: var(--lc-text); border-color: var(--lc-border-strong); }
+.lc-body .landlord-btn { background: var(--lc-accent); color: var(--lc-accent-fg); }
+.lc-body .landlord-btn:hover { background: var(--lc-accent-hover); }
+/* After :hover, so a disabled button does not light up (the global `button:hover` is red). */
+.lc-body .landlord-btn:disabled { background: var(--lc-accent); opacity: 0.5; cursor: default; }
+
+/* The board: three columns that fill the viewport; only the chat turns and the side columns scroll */
+.lc-board {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(260px, 320px) minmax(0, 1fr) minmax(220px, 280px);
+  /* One row exactly the board's height: taller columns scroll instead of growing the page. */
+  grid-template-rows: minmax(0, 1fr);
+  gap: 16px;
+  padding: 16px;
+}
+
+.lc-left,
+.lc-side { min-width: 0; min-height: 0; overflow-y: auto; }
+
+.lc-heading { margin: 0 0 10px; font-size: 1rem; font-weight: 700; }
+.lc-heading:focus { outline: none; }
+.lc-heading:focus-visible { outline: 3px solid var(--lc-focus); outline-offset: 2px; }
+.lc-left .lc-heading + .lc-error,
+.lc-side .lc-heading + .lc-error { margin-bottom: 10px; }
+.lc-tiles + .lc-pool-errors { margin-top: 10px; font-size: 0.8rem; }
+
+/* The Recommendation slots */
+.lc-slots { margin: 0 0 20px; padding: 0; list-style: none; display: grid; gap: 12px; }
+
+.lc-slot {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--lc-border);
+  border-radius: 14px;
+  background: var(--lc-surface);
+  color: var(--lc-text);
+  list-style: none;
+  overflow-wrap: anywhere;
+}
+
+.lc-slot.is-empty { color: var(--lc-muted); font-size: 0.9rem; line-height: 1.45; background: var(--lc-surface-2); }
+
+.lc-slot-head { display: flex; align-items: center; gap: 12px; }
+.lc-slot-who { min-width: 0; }
+.lc-slot-name { margin: 0; font-size: 1.05rem; }
+.lc-slot-meta { margin: 2px 0 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; color: var(--lc-muted); font-size: 0.82rem; }
+.lc-slot-score { font-weight: 600; color: var(--lc-good); }
+.lc-slot-reason { margin: 10px 0 0; font-size: 0.88rem; line-height: 1.45; }
+.lc-slot-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 12px; }
+.lc-slot-actions .landlord-btn { margin: 0; padding: 8px 14px; font-size: 0.85rem; }
+
+.lc-avatar { flex: none; display: inline-flex; line-height: 0; }
+.lc-avatar svg { display: block; }
+
+.lc-move { font-size: 0.78rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.lc-move.is-up { color: var(--lc-good); }
+.lc-move.is-down { color: var(--lc-error); }
+
+/* The Add to Shortlist flight; landlord-chat.js skips it under prefers-reduced-motion */
+.lc-flight {
+  position: fixed;
+  z-index: 50;
+  margin: 0;
+  box-sizing: border-box;
+  transform-origin: top left;
+  pointer-events: none;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+
+/* At a glance: compact stat tiles */
+.lc-tiles { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; }
+.lc-tile { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border: 1px solid var(--lc-border); border-radius: 10px; background: var(--lc-surface-2); min-width: 0; }
+.lc-tile-value { font-size: 1.2rem; font-weight: 700; line-height: 1.1; }
+.lc-tile-label { font-size: 0.72rem; color: var(--lc-muted); line-height: 1.3; overflow-wrap: anywhere; }
+.lc-tile.is-unavailable { cursor: help; }
+.lc-tile.is-unavailable .lc-tile-value { color: var(--lc-faint); }
+
+/* The chat: turns scroll, the prompt and the tip stay at the bottom */
+.lc-chat {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--lc-border);
+  border-radius: 16px;
+  background: var(--lc-surface);
+  overflow: hidden;
+}
+
+.lc-turns { flex: 1; min-height: 0; overflow-y: auto; margin: 0; padding: 16px; }
+.lc-body .landlord-chat-msg.is-user { background: var(--lc-surface-3); color: var(--lc-text); }
+.lc-body .landlord-chat-msg.is-answer { background: var(--lc-surface-2); border-color: var(--lc-border); color: var(--lc-text); }
+.lc-body .landlord-chat-msg.is-pending { color: var(--lc-muted); }
+.lc-body .landlord-chat-msg.is-error { background: var(--lc-error-bg); color: var(--lc-error); border-color: var(--lc-error-border); }
+.lc-body .landlord-chat-msg a { color: var(--lc-link); }
+
+.lc-prompt { flex: none; padding: 12px 16px 0; border-top: 1px solid var(--lc-border); }
+.lc-prompt .landlord-btn { margin: 0; }
+.lc-prompt textarea { min-height: 52px; max-height: 30vh; margin: 0; }
+
+.lc-tip { flex: none; display: flex; align-items: baseline; gap: 8px; padding: 8px 16px 12px; font-size: 0.82rem; line-height: 1.4; color: var(--lc-muted); }
+.lc-tip-label { flex: none; font-weight: 700; color: var(--lc-text); }
+.lc-tip-label::before { content: "💡 " / ""; }
+.lc-tip-body { min-width: 0; }
+.lc-body .lc-tip-text {
+  display: inline;
+  width: auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.lc-body button.lc-tip-text { cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+.lc-body button.lc-tip-text:hover { background: none; color: var(--lc-text); }
+
+/* The Shortlist sidebar */
+.lc-entries { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.lc-entry { display: flex; align-items: flex-start; gap: 10px; padding: 10px; border: 1px solid var(--lc-border); border-radius: 12px; background: var(--lc-surface); }
+.lc-entry.is-excluded { background: var(--lc-surface-2); }
+.lc-entry-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; overflow-wrap: anywhere; }
+.lc-entry-name { font-weight: 700; font-size: 0.92rem; }
+.lc-entry-place { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: baseline; font-size: 0.8rem; color: var(--lc-muted); }
+.lc-entry.is-excluded .lc-entry-place { color: var(--lc-error); }
+.lc-entry-status { font-size: 0.78rem; color: var(--lc-muted); }
+.lc-body .lc-entry-remove { flex: none; min-width: 32px; min-height: 32px; padding: 2px 8px; font-size: 1.1rem; line-height: 1; }
+
+/* Narrower than three columns: stack slots, chat, Shortlist; the board scrolls as a page */
+@media (max-width: 999px) {
+  .lc-board { display: flex; flex-direction: column; overflow-y: auto; }
+  .lc-left,
+  .lc-side,
+  .lc-chat { flex: none; overflow: visible; }
+  .lc-slots { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+  .lc-turns { flex: none; min-height: 200px; max-height: 60vh; }
+}
+
+@media (max-width: 600px) {
+  .lc-body .gpt-topbar { height: auto; min-height: 48px; flex-wrap: wrap; padding: 6px 16px; }
+  .lc-body .topbar-actions { flex-wrap: wrap; justify-content: flex-end; }
+  .lc-body .landlord-name { display: none; }
+  .lc-slots { grid-template-columns: minmax(0, 1fr); }
+  .lc-body .landlord-chat-msg { max-width: 100%; }
+}

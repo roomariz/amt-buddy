@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      data-i18n-attr="content:landlordChat.metaDescription"
+      content="Amt-Buddy für Vermieter als Chat: die zwei besten Bewerber im Blick, die Shortlist daneben, und die Auswahl im Gespräch anpassen."
+    />
+    <title data-i18n="landlordChat.metaTitle">Amt-Buddy · Vermieter-Chat</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body class="gpt-body lc-body">
+    <main class="gpt-main landlord-main lc-main">
+      <header class="gpt-topbar">
+        <a class="landlord-nav-link" href="/" data-i18n="landlord.toChat">Zum Mieter-Chat</a>
+        <div class="topbar-center">
+          <span class="topbar-title" data-i18n="landlordChat.title">Amt-Buddy Vermieter · Chat</span>
+        </div>
+        <div class="topbar-actions">
+          <a class="landlord-nav-link" href="/landlord.html" data-i18n="landlordChat.classicLink">Klassische Ansicht</a>
+          <span id="landlord-name" class="landlord-name" hidden></span>
+          <button type="button" id="btn-sign-out" class="landlord-link-btn" hidden data-i18n="landlord.signOut">Abmelden</button>
+          <div class="lang-switch" role="group" aria-label="Sprache" data-i18n-attr="aria-label:lang.label">
+            <button type="button" data-lang="de" lang="de" aria-label="Deutsch" aria-pressed="true">DE</button>
+            <span aria-hidden="true">|</span>
+            <button type="button" data-lang="en" lang="en" aria-label="English" aria-pressed="false">EN</button>
+          </div>
+        </div>
+      </header>
+
+      <!-- Sign-in: just a name, the same landlord session as /landlord.html -->
+      <div id="sign-in-wrap" class="gpt-scroll-container">
+        <div class="landlord-column">
+          <section id="sign-in" class="landlord-card" aria-labelledby="sign-in-title">
+            <h2 id="sign-in-title" data-i18n="landlord.signInTitle">Anmelden</h2>
+            <p class="landlord-intro" data-i18n="landlord.signInIntro">
+              Geben Sie Ihren Namen ein. Ein Passwort gibt es nicht: Mit demselben Namen finden Sie Ihre Wohnung beim nächsten Mal wieder.
+            </p>
+            <form id="sign-in-form" class="landlord-form" novalidate>
+              <label class="landlord-field">
+                <span data-i18n="landlord.name">Ihr Name</span>
+                <input id="sign-in-name" name="name" autocomplete="name" maxlength="100" required />
+              </label>
+              <p id="sign-in-error" class="landlord-error" role="alert" hidden></p>
+              <button type="submit" class="landlord-btn" data-i18n="landlord.signIn">Anmelden</button>
+            </form>
+          </section>
+        </div>
+      </div>
+
+      <!-- The board: slots and tiles, the chat, the Shortlist; drawn by landlord-chat.js -->
+      <div id="board" class="lc-board" hidden>
+        <section class="lc-left" aria-labelledby="slots-title">
+          <h2 id="slots-title" class="lc-heading" tabindex="-1" data-i18n="landlordChat.slotsTitle">Empfehlungen</h2>
+          <p id="board-error" class="landlord-error lc-error" role="alert" hidden></p>
+          <ul id="slots" class="lc-slots"></ul>
+          <h2 id="glance-title" class="lc-heading" data-i18n="landlordChat.glanceTitle">Auf einen Blick</h2>
+          <ul id="glance-tiles" class="lc-tiles" aria-labelledby="glance-title"></ul>
+          <p id="pool-errors" class="landlord-note lc-pool-errors" hidden></p>
+        </section>
+
+        <section class="lc-chat" aria-labelledby="chat-title">
+          <h2 id="chat-title" class="visually-hidden" data-i18n="landlord.chat.title">Chat mit Amt-Buddy</h2>
+          <ol id="chat-messages" class="landlord-chat-messages lc-turns" aria-live="polite">
+            <!-- Page text, not a model turn: it follows the language switch and survives sign-out. -->
+            <li
+              id="chat-welcome"
+              class="landlord-chat-msg is-answer"
+              data-i18n="landlordChat.welcome"
+              data-i18n-attr="aria-label:landlord.chat.amtBuddy"
+            ></li>
+          </ol>
+          <form id="chat-form" class="landlord-chat-form lc-prompt" novalidate>
+            <label class="landlord-field landlord-chat-field">
+              <span class="visually-hidden" data-i18n="landlord.chat.label">Ihre Nachricht</span>
+              <textarea id="chat-input" name="message" rows="2" maxlength="4000" placeholder="Wer ist mein bester Bewerber?" data-i18n-attr="placeholder:landlord.chat.placeholder"></textarea>
+            </label>
+            <button type="submit" id="btn-chat-send" class="landlord-btn" data-i18n="landlord.chat.send">Senden</button>
+          </form>
+          <!-- Not aria-live: a rotating text would interrupt screen readers every few seconds. -->
+          <div id="tip" class="lc-tip" hidden>
+            <span class="lc-tip-label" data-i18n="landlordChat.tipLabel">Tipp</span>
+            <span id="tip-body" class="lc-tip-body"></span>
+          </div>
+        </section>
+
+        <aside class="lc-side" aria-labelledby="shortlist-title">
+          <h2 id="shortlist-title" class="lc-heading" tabindex="-1" data-i18n="landlordChat.shortlistTitle">Shortlist</h2>
+          <p id="shortlist-error" class="landlord-error lc-error" role="alert" hidden></p>
+          <ul id="shortlist-list" class="lc-entries"></ul>
+          <p id="shortlist-empty" class="landlord-hint" hidden data-i18n="landlordChat.shortlistEmpty">
+            Noch niemand auf der Shortlist. Wählen Sie aus den Empfehlungen.
+          </p>
+        </aside>
+      </div>
+    </main>
+
+    <script type="module" src="/landlord-chat.js"></script>
+  </body>
+</html>
