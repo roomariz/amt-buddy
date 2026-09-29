@@ -85,6 +85,30 @@ remembered preferences back, also after a restart.
 The data is kept in `data/landlord.sqlite` (set `LANDLORD_DB_PATH` to use another
 file).
 
+### Chat-first page (prototype)
+
+<http://localhost:3000/landlord-chat.html> is an alternative to the dashboard:
+you work through the chat instead of forms and sliders. It uses the same sign-in
+and the same data, so both pages always agree.
+
+- **Two Recommendation slots** always show your two best-matching applicants, as
+  generic avatars (household shape only). **Add to Shortlist** moves an applicant
+  into the Shortlist beside the chat, and **Skip** brings the next one; either
+  way the next best applicant takes the freed slot.
+- **The ranking works from the first visit.** Until you tell the chat the asking
+  rent, affordability doesn't count; until you give the size and rooms, the
+  household-size check is off.
+- **Tell the chat about the flat** ("65 m², 2 rooms, 1,100 €, Wühlischstraße 30,
+  10245"). Once it knows the address, size, rooms and rent, it runs the
+  Mietspiegel check.
+- **Change what matters by saying so** ("give SCHUFA 30 % more importance").
+  - The code, not the model, recomputes the weights.
+  - No criterion goes above 50 %, and at least two stay above 0.
+  - The slots and the Shortlist ranks update, with arrows showing who moved.
+- **Tips below the input** rotate through what you can ask.
+
+See [ADR 0005](docs/adr/0005-rank-before-a-listing-and-relative-weight-changes.md).
+
 ## Checking your lease (Mietvertrag)
 
 Drop the file on the upload card, or attach it with **+** next to the input, and
