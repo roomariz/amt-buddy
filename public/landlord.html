@@ -262,6 +262,19 @@
             <div id="applicant-detail-body"></div>
           </section>
 
+          <!-- The remembered Landlord preferences, each deletable; drawn by landlord.js -->
+          <section id="preferences" class="landlord-card" aria-labelledby="preferences-title" hidden>
+            <h2 id="preferences-title" tabindex="-1" data-i18n="landlord.preferences.title">Gemerkte Wünsche</h2>
+            <p class="landlord-intro" data-i18n="landlord.preferences.intro">
+              Was Sie Amt-Buddy im Chat über Ihre Wünsche erzählt haben, merkt es sich für die nächsten Gespräche. Sie können jeden Eintrag löschen.
+            </p>
+            <p id="preferences-error" class="landlord-error" role="alert" hidden></p>
+            <ul id="preferences-list" class="preferences-list"></ul>
+            <p id="preferences-empty" class="landlord-hint" hidden data-i18n="landlord.preferences.empty">
+              Noch nichts gemerkt. Sagen Sie im Chat, was Ihnen wichtig ist, zum Beispiel „Ich suche jemanden, der lange bleibt“.
+            </p>
+          </section>
+
           <!-- The chat with the Landlord Orchestrator; drawn by landlord.js -->
           <section id="landlord-chat" class="landlord-card" aria-labelledby="landlord-chat-title" hidden>
             <h2 id="landlord-chat-title" data-i18n="landlord.chat.title">Chat mit Amt-Buddy</h2>

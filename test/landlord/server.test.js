@@ -706,3 +706,80 @@ test("the Shortlist survives re-creating the app on the same database file", asy
     [{ applicantId: "A-003", status: "invited", note: "Viewing Tuesday" }],
   );
 });
+
+// Landlord preferences: the notes are remembered by the chat (remember_preference); here they
+// are put in the store directly, and listed and deleted through the API.
+const notesOf = async (server, landlordId) => (await server.get(`/api/v1/landlord/${landlordId}/dashboard`)).body.data.notes;
+
+test("the dashboard lists the landlord's remembered preferences, oldest first, with or without a Listing", async (t) => {
+  const store = createLandlordStore({ path: ":memory:" });
+  const server = await start({ store });
+  t.after(server.close);
+  const landlordId = await signIn(server);
+  const other = await signIn(server, "Max Mustermann");
+  const first = store.addNote(landlordId, "Wants someone who stays long-term.");
+  const second = store.addNote(landlordId, "Prefers a quiet tenant.");
+
+  assert.deepEqual(await notesOf(server, landlordId), [first, second]);
+  assert.deepEqual(
+    Object.keys(first).sort(),
+    ["created", "note", "noteId"],
+  );
+  assert.deepEqual(await notesOf(server, other), []);
+  await server.put(`/api/v1/landlord/${landlordId}/listing`, WUEHLISCH_LISTING);
+  assert.deepEqual(await notesOf(server, landlordId), [first, second]);
+});
+
+test("DELETE a note removes it; an unknown note, or another landlord's, is a 404 and nothing changes", async (t) => {
+  const store = createLandlordStore({ path: ":memory:" });
+  const server = await start({ store });
+  t.after(server.close);
+  const landlordId = await signIn(server);
+  const other = await signIn(server, "Max Mustermann");
+  const kept = store.addNote(landlordId, "Wants someone who stays long-term.");
+  const gone = store.addNote(landlordId, "Prefers a quiet tenant.");
+  const othersNote = store.addNote(other, "No pets.");
+
+  const deleted = await server.del(`/api/v1/landlord/${landlordId}/notes/${gone.noteId}`);
+  const again = await server.del(`/api/v1/landlord/${landlordId}/notes/${gone.noteId}`);
+  const foreign = await server.del(`/api/v1/landlord/${landlordId}/notes/${othersNote.noteId}`);
+  const bare = await server.del(`/api/v1/landlord/${landlordId}/notes`);
+  const noLandlord = await server.del(`/api/v1/landlord/nobody/notes/${kept.noteId}`);
+
+  assert.equal(deleted.status, 200);
+  assert.deepEqual(deleted.body.data, { noteId: gone.noteId, deleted: true });
+  assert.equal(again.status, 404);
+  assert.equal(again.body.error.code, "note_not_found");
+  assert.equal(foreign.status, 404);
+  assert.equal(foreign.body.error.code, "note_not_found");
+  assert.equal(bare.status, 404);
+  assert.equal(noLandlord.body.error.code, "landlord_not_found");
+  assert.deepEqual(await notesOf(server, landlordId), [kept]);
+  assert.deepEqual(await notesOf(server, other), [othersNote]);
+});
+
+test("remembered preferences and their deletion survive re-creating the app on the same database file", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "amt-buddy-landlord-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const path = join(directory, "landlord.sqlite");
+  const restart = async () => {
+    const store = createLandlordStore({ path });
+    const server = await start({ store });
+    return { store, server, stop: async () => { await server.close(); store.close(); } };
+  };
+
+  const first = await restart();
+  const landlordId = await signIn(first.server);
+  const kept = first.store.addNote(landlordId, "Wants someone who stays long-term.");
+  const gone = first.store.addNote(landlordId, "Prefers a quiet tenant.");
+  await first.stop();
+
+  const second = await restart();
+  assert.deepEqual(await notesOf(second.server, landlordId), [kept, gone]);
+  assert.equal((await second.server.del(`/api/v1/landlord/${landlordId}/notes/${gone.noteId}`)).status, 200);
+  await second.stop();
+
+  const third = await restart();
+  t.after(third.stop);
+  assert.deepEqual(await notesOf(third.server, landlordId), [kept]);
+});

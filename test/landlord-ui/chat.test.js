@@ -47,7 +47,7 @@ test("a new turn is streaming with nothing to show and nothing changed", () => {
     phase: "streaming",
     answer: "",
     error: null,
-    changed: { criteria: false, shortlist: false },
+    changed: { criteria: false, shortlist: false, notes: false },
     signedOut: false,
   });
 });
@@ -61,8 +61,12 @@ test("tokens make the answer, criteria and shortlist events mark what changed, d
     { type: "done" },
   ]);
   assert.equal(state.answer, "**Done:** A-004 is shortlisted.");
-  assert.deepEqual(state.changed, { criteria: true, shortlist: true });
+  assert.deepEqual(state.changed, { criteria: true, shortlist: true, notes: false });
   assert.equal(state.phase, "done");
+});
+
+test("a notes event marks that a Landlord preference was remembered", () => {
+  assert.deepEqual(run([{ type: "notes" }, { type: "done" }]).changed, { criteria: false, shortlist: false, notes: true });
 });
 
 test("an error event ends the turn with a friendly text, and later events are ignored", () => {
@@ -110,7 +114,7 @@ test("a turn that changes the Shortlist reports it, so the page can reload the d
   const state = await runLandlordTurn({ fetchImpl, landlordId, message: "Shortlist A-001" });
 
   assert.equal(state.answer, "A-001 is on your Shortlist.");
-  assert.deepEqual(state.changed, { criteria: false, shortlist: true });
+  assert.deepEqual(state.changed, { criteria: false, shortlist: true, notes: false });
 });
 
 test("a message the server rejects is an error; an unknown landlord is signed out", async (t) => {
@@ -153,5 +157,6 @@ test("the dashboard is fetched again only after a turn that changed the criteria
   assert.equal(changedDashboard(run([{ type: "token", text: "A-007 leads." }, { type: "done" }])), false);
   assert.equal(changedDashboard(run([{ type: "criteria" }, { type: "done" }])), true);
   assert.equal(changedDashboard(run([{ type: "shortlist" }, { type: "done" }])), true);
+  assert.equal(changedDashboard(run([{ type: "notes" }, { type: "done" }])), true, "a remembered preference");
   assert.equal(changedDashboard(run([{ type: "shortlist" }, { type: "error" }])), true, "saved before the turn failed");
 });

@@ -1,13 +1,13 @@
 /**
  * Amt-Buddy /landlord page: sign in with a name, enter the Listing, see its Rent check and the
  * pool stats, the Recommendations, the Shortlist and the ranked applicants, and chat with the
- * Landlord Orchestrator.
+ * Landlord Orchestrator, which remembers the landlord's preferences (listed here, each deletable).
  *
  * The logic lives in ./landlord/ (server calls, the form and range-bar view model, the ranking
  * table, the stored sign-in); this file only wires it to the DOM. Server text is always set as textContent.
  */
 
-import { fetchApplicantProfile, fetchDashboard, removeShortlistEntry, saveCriteria, saveListing, saveShortlistEntry, signIn } from "./landlord/api.js";
+import { deleteNote, fetchApplicantProfile, fetchDashboard, removeShortlistEntry, saveCriteria, saveListing, saveShortlistEntry, signIn } from "./landlord/api.js";
 import { applicantDetailView } from "./landlord/applicant-detail.js";
 import { criteriaFormValues, criteriaRequest, WEIGHT_FIELDS } from "./landlord/criteria.js";
 import { applicantNames, changedDashboard, runLandlordTurn, withApplicantNames } from "./landlord/chat.js";
@@ -15,6 +15,7 @@ import { renderMarkdown } from "./chat/markdown.js";
 import { listingFormValues, listingRequest, rentCheckView } from "./landlord/listing.js";
 import { breakdownBars, documentFlags, exclusionText, formatMoney, formatNumber, formatPercent, rankingRows } from "./landlord/ranking.js";
 import { poolSummary, recommendationCards, recommendationsEmptyText, statTiles } from "./landlord/pool-overview.js";
+import { preferenceRows, withoutNote } from "./landlord/preferences.js";
 import { forgetLandlord, rememberLandlord, storedLandlord } from "./landlord/session.js";
 import { applyShortlistChange, isShortlisted, shortlistRows, statusOptions } from "./landlord/shortlist.js";
 import { onLanguageChange, startI18n, t } from "./i18n.js";
@@ -58,6 +59,10 @@ const shortlistSection = $("#shortlist");
 const shortlistError = $("#shortlist-error");
 const shortlistList = $("#shortlist-list");
 const shortlistEmpty = $("#shortlist-empty");
+const preferencesSection = $("#preferences");
+const preferencesError = $("#preferences-error");
+const preferencesList = $("#preferences-list");
+const preferencesEmpty = $("#preferences-empty");
 const criteriaSection = $("#selection-criteria");
 const criteriaForm = $("#criteria-form");
 const criteriaControls = $("#criteria-controls");
@@ -83,6 +88,7 @@ let listing = null;
 let ranking = null; // { ranked, excluded, hint, poolErrors } from the dashboard
 let poolOverview = null; // { stats, recommendations } from the dashboard; stats is null without a Listing
 let shortlist = []; // the Shortlist from the dashboard
+let notes = null; // the remembered Landlord preferences from the dashboard; null until it is loaded
 let namesById = new Map(); // applicant id → name, from the dashboard, for the chat answers
 let defaultCriteria = null;
 let criteriaStatusKey = null;
@@ -121,6 +127,7 @@ function renderSignedIn() {
     poolOverviewSection.hidden = true;
     shortlistSection.hidden = true;
     criteriaSection.hidden = true;
+    preferencesSection.hidden = true;
   }
 }
 
@@ -481,6 +488,56 @@ function renderShortlist() {
   );
 }
 
+// --- the remembered preferences ------------------------------------------------------------------
+
+// Deletes one remembered preference; the list drops it once the server confirms (or reports it
+// already gone).
+async function removeNote(noteId) {
+  if (!landlord) return;
+  const landlordId = landlord.landlordId;
+  showError(preferencesError, null);
+  let result;
+  try {
+    result = await deleteNote({ fetchImpl: fetch, landlordId, noteId });
+  } catch (error) {
+    showError(preferencesError, error.message);
+    return;
+  }
+  if (landlord?.landlordId !== landlordId) return;
+  if (result.signedOut) {
+    signOut();
+    return;
+  }
+  if (result.notFound) showError(preferencesError, t("landlord.preferences.notFound"));
+  notes = withoutNote(notes ?? [], noteId);
+  renderPreferences();
+  // Keep the keyboard focus in the list: on the next delete button, or the section heading.
+  (preferencesList.querySelector("button") ?? $("#preferences-title"))?.focus();
+}
+
+function renderPreferences() {
+  preferencesSection.hidden = !landlord || notes === null;
+  if (preferencesSection.hidden) return;
+  const rows = preferenceRows(notes);
+  preferencesEmpty.hidden = rows.length > 0;
+  preferencesList.replaceChildren(
+    ...rows.map((row) => {
+      const item = el("li", "preferences-entry");
+      const text = el("div", "preferences-text");
+      text.append(el("span", "preferences-note", row.note), el("span", "preferences-date", row.date));
+      const remove = el("button", "landlord-link-btn preferences-delete", t("landlord.preferences.delete"));
+      remove.type = "button";
+      remove.setAttribute("aria-label", row.deleteLabel);
+      remove.addEventListener("click", () => {
+        remove.disabled = true;
+        removeNote(row.noteId);
+      });
+      item.append(text, remove);
+      return item;
+    }),
+  );
+}
+
 // --- the ranked applicants -----------------------------------------------------------------------
 
 function breakdownCell(entry) {
@@ -570,6 +627,7 @@ function signOut() {
   ranking = null;
   poolOverview = null;
   shortlist = [];
+  notes = null;
   namesById = new Map();
   defaultCriteria = null;
   criteriaForm.reset();
@@ -584,6 +642,8 @@ function signOut() {
   renderPoolOverview();
   renderShortlist();
   renderRanking();
+  renderPreferences();
+  showError(preferencesError, null);
   signInName.focus();
 }
 
@@ -610,6 +670,7 @@ function applyDashboard(dashboard) {
   ranking = { ranked, excluded, hint, poolErrors };
   poolOverview = { stats, recommendations };
   shortlist = dashboard.shortlist;
+  notes = dashboard.notes ?? [];
   namesById = applicantNames(dashboard);
   defaultCriteria = dashboard.defaultCriteria;
   for (const [key, value] of Object.entries(criteriaFormValues(dashboard.criteria))) {
@@ -623,6 +684,7 @@ function applyDashboard(dashboard) {
   renderPoolOverview();
   renderShortlist();
   renderRanking();
+  renderPreferences();
 }
 
 function renderCriteriaText() {
@@ -762,8 +824,8 @@ chatForm.addEventListener("submit", async (event) => {
     });
     drawTurn(answer, state);
     if (state.signedOut) signOut();
-    // A turn that changed the Selection criteria or the Shortlist: fetch the dashboard again, so it
-    // shows the new ranking and Shortlist.
+    // A turn that changed the Selection criteria, the Shortlist or the remembered preferences: fetch
+    // the dashboard again, so it shows them.
     else if (changedDashboard(state)) await loadDashboard();
   } finally {
     chatInput.disabled = false;
@@ -789,6 +851,7 @@ onLanguageChange(() => {
   renderShortlist();
   renderRanking();
   renderApplicantDetail();
+  renderPreferences();
 });
 
 startI18n();

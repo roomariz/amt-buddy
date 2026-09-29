@@ -243,6 +243,15 @@ const de = {
       notFound: "Diesen Bewerber gibt es nicht mehr. Laden Sie die Seite neu.",
       status: { to_invite: "Einladen", invited: "Eingeladen", declined: "Abgelehnt" },
     },
+    preferences: {
+      title: "Gemerkte Wünsche",
+      intro: "Was Sie Amt-Buddy im Chat über Ihre Wünsche erzählt haben, merkt es sich für die nächsten Gespräche. Sie können jeden Eintrag löschen.",
+      empty: "Noch nichts gemerkt. Sagen Sie im Chat, was Ihnen wichtig ist, zum Beispiel „Ich suche jemanden, der lange bleibt“.",
+      remembered: "Gemerkt am {date}",
+      delete: "Löschen",
+      deleteLabel: "Löschen: {note}",
+      notFound: "Dieser Eintrag war schon gelöscht.",
+    },
     detail: {
       title: "Bewerberprofil",
       open: "Profil von {name} öffnen",
@@ -559,6 +568,15 @@ const en = {
       excluded: "Excluded",
       notFound: "This applicant no longer exists. Reload the page.",
       status: { to_invite: "To invite", invited: "Invited", declined: "Declined" },
+    },
+    preferences: {
+      title: "Remembered preferences",
+      intro: "What you told Amt-Buddy in the chat about your preferences is remembered for your next conversations. You can delete any entry.",
+      empty: "Nothing remembered yet. Tell the chat what matters to you, e.g. “I'm looking for someone who stays long-term”.",
+      remembered: "Remembered on {date}",
+      delete: "Delete",
+      deleteLabel: "Delete: {note}",
+      notFound: "This entry was already deleted.",
     },
     detail: {
       title: "Applicant profile",

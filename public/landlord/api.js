@@ -38,7 +38,7 @@ export async function saveListing({ fetchImpl, landlordId, request }) {
   throw new Error(t("landlord.errors.failed"));
 }
 
-// The dashboard → { listing, rentCheck, criteria, ranked, excluded, stats, recommendations, hint, shortlist, poolErrors }, or
+// The dashboard → { listing, rentCheck, criteria, ranked, excluded, stats, recommendations, hint, shortlist, notes, poolErrors }, or
 // { signedOut: true } when the server does not know the landlord.
 export async function fetchDashboard({ fetchImpl, landlordId }) {
   const { status, body } = await call(fetchImpl, landlordPath(landlordId, "dashboard"));
@@ -71,6 +71,16 @@ export async function removeShortlistEntry({ fetchImpl, landlordId, applicantId 
   if (status === 200 && body?.data) return { entry: body.data };
   if (status === 404 && body?.error?.code === "landlord_not_found") return { signedOut: true };
   if (status === 404 && body?.error?.code === "applicant_not_found") return { notFound: true };
+  throw new Error(t("landlord.errors.failed"));
+}
+
+// Deletes a remembered Landlord preference → { deleted: true }, { notFound: true } when the landlord
+// has no such note (any more), or { signedOut: true }.
+export async function deleteNote({ fetchImpl, landlordId, noteId }) {
+  const { status, body } = await call(fetchImpl, landlordPath(landlordId, `notes/${encodeURIComponent(noteId)}`), { method: "DELETE" });
+  if (status === 200 && body?.data?.deleted) return { deleted: true };
+  if (status === 404 && body?.error?.code === "landlord_not_found") return { signedOut: true };
+  if (status === 404 && body?.error?.code === "note_not_found") return { notFound: true };
   throw new Error(t("landlord.errors.failed"));
 }
 
