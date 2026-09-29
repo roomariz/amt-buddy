@@ -216,3 +216,25 @@ test("feature group ratings survive the first address and its verification", () 
     address: { value: "Berliner Straße 155, 10715 Berlin", source: "official", statedBy: "user" },
   });
 });
+
+test("'rented before' takes booleans and yes/no in English and German; other text is ignored", () => {
+  const parse = (value) => mergeTenancy({}, [{ fact: "rentedBefore", value, source: "user" }]).rentedBefore?.value;
+
+  for (const yes of [true, "yes", "Ja", " TRUE "]) assert.equal(parse(yes), true, String(yes));
+  for (const no of [false, "no", "NEIN", "false"]) assert.equal(parse(no), false, String(no));
+  for (const other of ["maybe", "weiß nicht", "constructor", 1, 0]) assert.equal(parse(other), undefined, String(other));
+  assert.deepEqual(factsFromConfirm({ rentedBefore: "ja" }), [{ fact: "rentedBefore", value: "ja", source: "user" }]);
+});
+
+test("a newly stated or verified different address clears 'rented before'; the first address keeps it", () => {
+  const rentedBefore = { value: true, source: "user" };
+  const before = { address: { value: "Berliner Straße 155, 10715 Berlin", source: "official", statedBy: "user" }, rentedBefore };
+
+  assert.deepEqual(Object.keys(mergeTenancy(before, [{ fact: "address", value: "Karl-Marx-Allee 1", source: "user" }])), ["address"]);
+  assert.deepEqual(
+    Object.keys(mergeTenancy(before, [{ fact: "address", value: "Karl-Marx-Allee 1, 10178 Berlin", source: "official" }])),
+    ["address"],
+  );
+  const first = mergeTenancy({ rentedBefore }, [{ fact: "address", value: "Berliner Str. 155", source: "user" }]);
+  assert.deepEqual(first.rentedBefore, rentedBefore);
+});

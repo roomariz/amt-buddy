@@ -290,6 +290,40 @@ export function getSizeCategory(areaSqm) {
   return "≥ 90 m²";
 }
 
+// Mietpreisbremse (§§ 556d–556g BGB): at the start of a lease the rent may exceed
+// the local reference rent by at most this many percent.
+export const RENT_CAP_PERCENT = 10;
+
+export const RENT_CAP_LEGAL_BASIS =
+  "Mietpreisbremse (§§ 556d–556g BGB): at the start of a lease the net cold rent may exceed the local reference rent (ortsübliche Vergleichsmiete) by at most 10 %. " +
+  "If the previous tenant paid more (Vormiete, § 556e BGB), the landlord may keep that previous rent; the first rental of a flat first used after 1 October 2014 is exempt (§ 556f BGB). " +
+  "The tenant can ask the landlord to disclose the previous rent (§ 556g BGB).";
+
+export const RENT_CAP_NOT_CHECKED =
+  "The contract rent is taken as the rent agreed at the start of the lease. Not checked: leases concluded before 1 June 2015 (Mietpreisbremse not yet in force in Berlin), " +
+  "modernisation exceptions (§ 556e Abs. 2, § 556f Satz 2 BGB), rent increases in the last year of the previous tenancy, Staffelmiete (graduated rent) and Indexmiete (index-linked rent).";
+
+// The Rent cap (Mietpreisbremse) verdict for a contract rent: Mietspiegel + 10 %, based on
+// the Adjusted reference rent when there is one, otherwise the Mietspiegel median.
+// A flat rented before may have had a higher previous rent, so its verdict is conditional.
+function evaluateRentCap({ contractRent, referenceMonthlyRent, rentedBefore }) {
+  const capMonthlyRent = round(referenceMonthlyRent * (1 + RENT_CAP_PERCENT / 100));
+  return {
+    basis: "mietspiegel_plus_10",
+    capPercent: RENT_CAP_PERCENT,
+    referenceMonthlyRent,
+    baseCapMonthlyRent: capMonthlyRent,
+    capMonthlyRent,
+    conditional: rentedBefore,
+    status: contractRent <= capMonthlyRent ? "within_cap" : "above_cap",
+    differenceFromCap: round(contractRent - capMonthlyRent),
+    legalBasis: RENT_CAP_LEGAL_BASIS,
+    notChecked: RENT_CAP_NOT_CHECKED,
+  };
+}
+
+// `rentedBefore` (optional boolean): whether the flat was rented out before. With it and a
+// valid contract rent, the result adds a Rent cap (`rentCap`); without it, it is unchanged.
 export function evaluateMietspiegel(options = {}) {
   const {
     residentialLocation,
@@ -297,6 +331,7 @@ export function evaluateMietspiegel(options = {}) {
     livingAreaSqm,
     contractRent,
     featureGroups,
+    rentedBefore,
   } = options;
 
   const loc = String(residentialLocation ?? "").trim().toLocaleLowerCase("de-DE");
@@ -394,6 +429,15 @@ export function evaluateMietspiegel(options = {}) {
     }
   }
 
+  const rentCap =
+    contractRentComparison && typeof rentedBefore === "boolean"
+      ? evaluateRentCap({
+          contractRent: contractRentComparison.actualMonthlyRent,
+          referenceMonthlyRent: adjustedReferenceRent?.monthlyRent ?? monthlyReferenceRent.median,
+          rentedBefore,
+        })
+      : undefined;
+
   return {
     status: "calculated",
     buildingAge,
@@ -406,6 +450,7 @@ export function evaluateMietspiegel(options = {}) {
     currency: MIETSPIEGEL_SOURCE.currency,
     basis: MIETSPIEGEL_SOURCE.basis,
     contractRentComparison,
+    ...(rentCap && { rentCap }),
     source: MIETSPIEGEL_SOURCE,
   };
 }

@@ -92,6 +92,7 @@ const WUEHLISCH_SCRIPT = {
               { fact: "address", value: "Wühlischstr. 30 10245" },
               { fact: "livingAreaSqm", value: 50 },
               { fact: "contractRent", value: 700 },
+              { fact: "rentedBefore", value: true },
             ],
           },
         },
