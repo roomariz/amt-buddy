@@ -117,6 +117,8 @@ test("adjust_selection_criteria: saves, and returns the old and new shares to on
   assert.deepEqual(result.top.map(({ rank }) => rank), [1, 2, 3]);
   assert.deepEqual(result.inactive, []);
   assert.equal(store.getCriteria(landlordId).weights.affordability, 27.75, "saved unrounded");
+  // The limit the chat may mention ("no criterion above 50 %") comes with the result, so it is grounded.
+  assert.equal(result.maxShare, 50);
 });
 
 test("adjust_selection_criteria reports a capped share, rounded", async () => {

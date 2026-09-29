@@ -1,7 +1,7 @@
 import { tool } from "@langchain/core/tools";
 
 import { getApplicantProfile } from "../applicant-profile.js";
-import { adjustSelectionCriteria, CriteriaInputError, updateSelectionCriteria } from "../criteria.js";
+import { adjustSelectionCriteria, CriteriaInputError, MAX_SHARE, updateSelectionCriteria } from "../criteria.js";
 import { flatToRank, missingForListing, updateFlatDetails } from "../flat-details.js";
 import { ListingInputError } from "../listing.js";
 import { rankApplicants } from "../scorer.js";
@@ -173,7 +173,8 @@ export function createLandlordTools({ getStore, getApplicantPool, fetchImpl }) {
         capped,
       }));
       const { previous, criteria, top, inactive } = criteriaResult(adjusted, await landlordState(landlordId));
-      return { previous, criteria, applied, top, inactive };
+      // maxShare: the limit, so that the chat can quote it and stay grounded.
+      return { previous, criteria, applied, maxShare: MAX_SHARE, top, inactive };
     },
 
     async update_flat_details({ facts }, landlordId) {
