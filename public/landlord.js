@@ -10,10 +10,10 @@ import { fetchDashboard, saveListing, signIn } from "./landlord/api.js";
 import { runLandlordTurn } from "./landlord/chat.js";
 import { renderMarkdown } from "./chat/markdown.js";
 import { listingFormValues, listingRequest, rentCheckView } from "./landlord/listing.js";
-import { breakdownBars, documentFlags, exclusionText, formatNumber, formatPercent, rankingRows } from "./landlord/ranking.js";
-import { poolSummary, recommendationCards, statTiles } from "./landlord/offering.js";
+import { breakdownBars, documentFlags, exclusionText, formatMoney, formatNumber, formatPercent, rankingRows } from "./landlord/ranking.js";
+import { poolSummary, recommendationCards, recommendationsEmptyText, statTiles } from "./landlord/pool-overview.js";
 import { forgetLandlord, rememberLandlord, storedLandlord } from "./landlord/session.js";
-import { getLanguage, onLanguageChange, startI18n, t } from "./i18n.js";
+import { onLanguageChange, startI18n, t } from "./i18n.js";
 
 const $ = (selector) => document.querySelector(selector);
 
@@ -45,9 +45,9 @@ const rankingEmpty = $("#ranking-empty");
 const rankingPoolErrors = $("#ranking-pool-errors");
 const excludedBlock = $("#excluded");
 const excludedList = $("#excluded-list");
-const offeringSection = $("#offering");
-const offeringSummary = $("#offering-summary");
-const offeringTiles = $("#offering-tiles");
+const poolOverviewSection = $("#pool-overview");
+const poolOverviewSummary = $("#pool-overview-summary");
+const poolOverviewTiles = $("#pool-overview-tiles");
 const recommendationList = $("#recommendation-cards");
 const recommendationsEmpty = $("#recommendations-empty");
 
@@ -62,10 +62,7 @@ function localStore() {
 let landlord = storedLandlord(localStore());
 let listing = null;
 let ranking = null; // { ranked, excluded, hint, poolErrors } from the dashboard
-let offering = null; // { stats, recommendations } from the dashboard; stats is null without a Listing
-
-const money = (amount) =>
-  new Intl.NumberFormat(getLanguage() === "en" ? "en-GB" : "de-DE", { style: "currency", currency: "EUR" }).format(amount);
+let poolOverview = null; // { stats, recommendations } from the dashboard; stats is null without a Listing
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -92,7 +89,7 @@ function renderSignedIn() {
   if (!signedIn) {
     rentCheckSection.hidden = true;
     rankingSection.hidden = true;
-    offeringSection.hidden = true;
+    poolOverviewSection.hidden = true;
   }
 }
 
@@ -120,7 +117,7 @@ function rangeBar(view, rentCheck) {
   bar.setAttribute("role", "img");
   bar.setAttribute(
     "aria-label",
-    `${t("landlord.rangeLabel")}: ${money(rentCheck.range.lower)} – ${money(rentCheck.range.upper)}; ${t("landlord.askingMark")}: ${money(rentCheck.askingRent)}`,
+    `${t("landlord.rangeLabel")}: ${formatMoney(rentCheck.range.lower)} – ${formatMoney(rentCheck.range.upper)}; ${t("landlord.askingMark")}: ${formatMoney(rentCheck.askingRent)}`,
   );
   const band = el("div", "rent-bar-range");
   band.style.left = `${view.lowerPercent}%`;
@@ -165,55 +162,57 @@ function renderRentCheck() {
   const range = el("dl", "rent-range");
   for (const bound of ["lower", "median", "upper"]) {
     const item = el("div", "rent-range-item");
-    item.append(el("dt", "", t(`landlord.${bound}`)), el("dd", "", money(rentCheck.range[bound])));
+    item.append(el("dt", "", t(`landlord.${bound}`)), el("dd", "", formatMoney(rentCheck.range[bound])));
     range.append(item);
   }
   rentCheckBody.append(range);
 
   rentCheckBody.append(
-    el("p", `rent-position is-${view.position}`, t(`landlord.position.${view.position}`, { rent: money(rentCheck.askingRent) })),
+    el("p", `rent-position is-${view.position}`, t(`landlord.position.${view.position}`, { rent: formatMoney(rentCheck.askingRent) })),
   );
   if (view.warning) {
     const warning = el(
       "p",
       "rent-warning",
-      t("landlord.warning", { excess: money(view.warning.excess), allowed: money(view.warning.allowedRent) }),
+      t("landlord.warning", { excess: formatMoney(view.warning.excess), allowed: formatMoney(view.warning.allowedRent) }),
     );
     warning.setAttribute("role", "alert");
     rentCheckBody.append(warning);
   } else {
-    rentCheckBody.append(el("p", "rent-within-cap", t("landlord.withinCap", { allowed: money(rentCheck.allowedRent) })));
+    rentCheckBody.append(el("p", "rent-within-cap", t("landlord.withinCap", { allowed: formatMoney(rentCheck.allowedRent) })));
   }
 }
 
-// --- the initial offering: pool stats and Recommendations ----------------------------------------
+// --- the pool overview: pool stats and Recommendations ----------------------------------------
 
-function renderOffering() {
-  offeringSection.hidden = !offering?.stats;
-  if (!offering?.stats) return;
-  offeringSummary.textContent = poolSummary(offering.stats);
-  offeringTiles.replaceChildren(
-    ...statTiles(offering.stats).map((tile) => {
-      const item = el("li", `offering-tile${tile.available ? "" : " is-unavailable"}`);
-      item.append(el("span", "offering-tile-value", tile.value), el("span", "offering-tile-label", tile.label));
-      if (tile.detail) item.append(el("span", "offering-tile-detail", tile.detail));
+function renderPoolOverview() {
+  poolOverviewSection.hidden = !poolOverview?.stats;
+  if (!poolOverview?.stats) return;
+  poolOverviewSummary.textContent = poolSummary(poolOverview.stats);
+  poolOverviewTiles.replaceChildren(
+    ...statTiles(poolOverview.stats).map((tile) => {
+      const item = el("li", `pool-tile${tile.available ? "" : " is-unavailable"}`);
+      item.append(el("span", "pool-tile-value", tile.value), el("span", "pool-tile-label", tile.label));
+      if (tile.detail) item.append(el("span", "pool-tile-detail", tile.detail));
       return item;
     }),
   );
-  const cards = recommendationCards(offering.recommendations);
+  const cards = recommendationCards(poolOverview.recommendations);
   recommendationList.replaceChildren(
     ...cards.map((card) => {
       const item = el("li", "recommendation-card");
       const head = el("div", "recommendation-head");
       head.append(
         el("span", "recommendation-name", card.name),
-        el("span", "recommendation-score", t("landlord.offering.score", { score: card.matchScore })),
+        el("span", "recommendation-score", t("landlord.poolOverview.score", { score: card.matchScore })),
       );
-      item.append(head, el("span", "recommendation-rank", t("landlord.offering.rank", { rank: card.rank })), el("p", "recommendation-reason", card.reason));
+      item.append(head, el("span", "recommendation-rank", t("landlord.poolOverview.rank", { rank: card.rank })), el("p", "recommendation-reason", card.reason));
       return item;
     }),
   );
-  recommendationsEmpty.hidden = cards.length > 0;
+  const emptyText = recommendationsEmptyText(poolOverview.stats, poolOverview.recommendations);
+  recommendationsEmpty.hidden = !emptyText;
+  recommendationsEmpty.textContent = emptyText ?? "";
 }
 
 // --- the ranked applicants -----------------------------------------------------------------------
@@ -299,14 +298,14 @@ function signOut() {
   landlord = null;
   listing = null;
   ranking = null;
-  offering = null;
+  poolOverview = null;
   fillForm(listingFormValues(null));
   chatMessages.replaceChildren();
   showFieldProblems();
   showError(listingError, null);
   renderSignedIn();
   renderRentCheck();
-  renderOffering();
+  renderPoolOverview();
   renderRanking();
   signInName.focus();
 }
@@ -321,10 +320,10 @@ async function loadDashboard() {
     listing = dashboard.listing;
     const { ranked, excluded, hint, poolErrors, stats, recommendations } = dashboard;
     ranking = { ranked, excluded, hint, poolErrors };
-    offering = { stats, recommendations };
+    poolOverview = { stats, recommendations };
     fillForm(listingFormValues(listing));
     renderRentCheck();
-    renderOffering();
+    renderPoolOverview();
     renderRanking();
   } catch (error) {
     showError(listingError, error.message);
@@ -430,7 +429,7 @@ signOutButton.addEventListener("click", signOut);
 onLanguageChange(() => {
   renderSignedIn();
   renderRentCheck();
-  renderOffering();
+  renderPoolOverview();
   renderRanking();
 });
 

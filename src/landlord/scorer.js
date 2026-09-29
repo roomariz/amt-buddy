@@ -184,7 +184,7 @@ function statsOf(profiles, listing, requirements, excludedCount) {
 }
 
 // How many of the top ranked applicants are recommended.
-const RECOMMENDATIONS = 2;
+const RECOMMENDATION_COUNT = 2;
 
 const byApplicantId = (a, b) => (a.applicantId < b.applicantId ? -1 : a.applicantId > b.applicantId ? 1 : 0);
 
@@ -233,7 +233,7 @@ export function rankApplicants({ profiles, listing, criteria = {} }) {
     ranked,
     excluded: excluded.sort(byApplicantId),
     stats: statsOf(profiles, listing, requirements, excluded.length),
-    recommendations: ranked.slice(0, RECOMMENDATIONS).map(({ applicantId, rank, matchScore, breakdown, rentToIncome }) => ({
+    recommendations: ranked.slice(0, RECOMMENDATION_COUNT).map(({ applicantId, rank, matchScore, breakdown, rentToIncome }) => ({
       applicantId,
       rank,
       matchScore,

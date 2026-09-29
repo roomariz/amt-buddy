@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { poolSummary, recommendationCards, statTiles } from "../../public/landlord/offering.js";
+import { poolSummary, recommendationCards, recommendationsEmptyText, statTiles } from "../../public/landlord/pool-overview.js";
 import { setLanguage } from "../../public/i18n.js";
 
 // Stats and Recommendations as GET /api/v1/landlord/:landlordId/dashboard returns them.
@@ -84,4 +84,12 @@ test("the Recommendation cards carry the name, the Match score and the reason in
   assert.equal(de[0].matchScore, "94,2");
   assert.equal(de[1].reason, "Dieser Bewerber könnte Ihnen gefallen: vollständige Unterlagen.");
   assert.deepEqual(recommendationCards([]), []);
+});
+
+test("without Recommendation cards the page says why: an empty pool, or no one meets every Requirement", () => {
+  assert.equal(recommendationsEmptyText(STATS, RECOMMENDATIONS), null);
+  assert.equal(recommendationsEmptyText(null, []), null);
+  assert.equal(inLanguage("en", () => recommendationsEmptyText({ ...STATS, excluded: 40 }, [])), "No applicant meets all your requirements.");
+  assert.equal(inLanguage("en", () => recommendationsEmptyText({ ...STATS, total: 0, excluded: 0 }, [])), "There are no applications yet.");
+  assert.equal(inLanguage("de", () => recommendationsEmptyText({ ...STATS, total: 0, excluded: 0 }, [])), "Es liegen noch keine Bewerbungen vor.");
 });

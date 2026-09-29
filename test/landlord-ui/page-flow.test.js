@@ -9,7 +9,7 @@ import { createFakeBerlinWfs } from "../helpers/fake-berlin-wfs.js";
 import { fetchDashboard, saveListing, signIn } from "../../public/landlord/api.js";
 import { listingRequest } from "../../public/landlord/listing.js";
 import { rankingRows } from "../../public/landlord/ranking.js";
-import { poolSummary, recommendationCards, statTiles } from "../../public/landlord/offering.js";
+import { poolSummary, recommendationCards, statTiles } from "../../public/landlord/pool-overview.js";
 
 async function start() {
   const app = createApp({

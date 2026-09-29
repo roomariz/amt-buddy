@@ -75,11 +75,10 @@ function rankingFor(listing, { applicants }, criteria) {
   });
   const applicantsById = new Map(applicants.map((applicant) => [applicant.id, applicant]));
   const nameOf = (applicantId) => applicantsById.get(applicantId).contact.name;
-  const forDisplay = (entry) => ({
-    ...entry,
-    name: nameOf(entry.applicantId),
-    documents: documentFlagsOf(applicantsById.get(entry.applicantId).profile.documentCheck),
-  });
+  const forDisplay = (entry) => {
+    const { contact, profile } = applicantsById.get(entry.applicantId);
+    return { ...entry, name: contact.name, documents: documentFlagsOf(profile.documentCheck) };
+  };
   return {
     ranked: ranked.map(forDisplay),
     excluded: excluded.map(forDisplay),

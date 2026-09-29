@@ -3,8 +3,8 @@
 // and English.
 
 // A subscore at least this high is a strength; one below the other is a notable weakness.
-const STRENGTH = 0.75;
-const WEAKNESS = 0.6;
+const STRENGTH_MIN = 0.75;
+const WEAKNESS_BELOW = 0.6;
 const MAX_STRENGTHS = 3;
 
 const LOCALES = { de: "de-DE", en: "en-GB" };
@@ -53,28 +53,22 @@ function previousLandlordWeakness({ status, arrears }) {
   return { en: "no previous-landlord confirmation", de: "keine Vorvermieterbescheinigung" };
 }
 
+// A phrase picker that returns { de, en } → one phrase function per language.
+const byLanguage = (phrases) => ({ en: (facts) => phrases(facts).en, de: (facts) => phrases(facts).de });
+
 const WEAKNESSES = {
   affordability: {
     en: ({ rentToIncome }) => `rent burden of ${formatPercent("en", rentToIncome)} of net household income`,
     de: ({ rentToIncome }) => `Mietbelastung von ${formatPercent("de", rentToIncome)} des Haushaltsnettoeinkommens`,
   },
-  schufa: {
-    en: ({ profile }) => (SCHUFA_WEAKNESSES[profile.schufaStatus] ?? SCHUFA_WEAKNESSES.missing).en,
-    de: ({ profile }) => (SCHUFA_WEAKNESSES[profile.schufaStatus] ?? SCHUFA_WEAKNESSES.missing).de,
-  },
+  schufa: byLanguage(({ profile }) => SCHUFA_WEAKNESSES[profile.schufaStatus] ?? SCHUFA_WEAKNESSES.missing),
   documents: { en: () => "incomplete documents", de: () => "unvollständige Unterlagen" },
   credibility: {
     en: ({ profile }) => `low credibility (${formatNumber("en", profile.credibilityScore)}/100)`,
     de: ({ profile }) => `geringe Glaubwürdigkeit (${formatNumber("de", profile.credibilityScore)}/100)`,
   },
-  employment: {
-    en: ({ profile }) => (EMPLOYMENT_WEAKNESSES[profile.employmentType] ?? EMPLOYMENT_WEAKNESSES.other).en,
-    de: ({ profile }) => (EMPLOYMENT_WEAKNESSES[profile.employmentType] ?? EMPLOYMENT_WEAKNESSES.other).de,
-  },
-  previousLandlord: {
-    en: ({ profile }) => previousLandlordWeakness(profile.documentCheck.previousLandlord).en,
-    de: ({ profile }) => previousLandlordWeakness(profile.documentCheck.previousLandlord).de,
-  },
+  employment: byLanguage(({ profile }) => EMPLOYMENT_WEAKNESSES[profile.employmentType] ?? EMPLOYMENT_WEAKNESSES.other),
+  previousLandlord: byLanguage(({ profile }) => previousLandlordWeakness(profile.documentCheck.previousLandlord)),
 };
 
 const SENTENCES = {
@@ -113,7 +107,7 @@ function criteriaByStrength(breakdown) {
 // The weakest criterion below the weakness line: by subscore, then by the larger weight.
 function weaknessOf(breakdown) {
   const weakest = criteriaByStrength(breakdown)
-    .filter((criterion) => breakdown[criterion].subscore < WEAKNESS)
+    .filter((criterion) => breakdown[criterion].subscore < WEAKNESS_BELOW)
     .sort((a, b) => breakdown[a].subscore - breakdown[b].subscore || breakdown[b].weight - breakdown[a].weight);
   return weakest[0] ?? null;
 }
@@ -124,7 +118,7 @@ function weaknessOf(breakdown) {
 // language. Without a strength, the sentence names the Match score instead.
 export function recommendationReasons({ profile, breakdown, rentToIncome, matchScore }) {
   const strengths = criteriaByStrength(breakdown)
-    .filter((criterion) => breakdown[criterion].subscore >= STRENGTH)
+    .filter((criterion) => breakdown[criterion].subscore >= STRENGTH_MIN)
     .slice(0, MAX_STRENGTHS);
   const weakness = weaknessOf(breakdown);
   const facts = { profile, rentToIncome };

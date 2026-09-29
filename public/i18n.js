@@ -192,7 +192,7 @@ const de = {
       amtBuddy: "Amt-Buddy",
       thinking: "Amt-Buddy denkt nach …",
     },
-    offering: {
+    poolOverview: {
       title: "Ihre Bewerber auf einen Blick",
       summary: "Sie haben {total} Bewerber, {canAfford} können sich diese Miete leisten.",
       stats: {
@@ -210,6 +210,7 @@ const de = {
       medianUnavailable: "Nicht verfügbar: Die Wohnung hat keinen Mietcheck",
       recommendationsTitle: "Empfehlungen",
       recommendationsEmpty: "Kein Bewerber erfüllt alle Ihre Anforderungen.",
+      poolEmpty: "Es liegen noch keine Bewerbungen vor.",
       rank: "Platz {rank}",
       score: "Match-Score {score}",
     },
@@ -449,7 +450,7 @@ const en = {
       amtBuddy: "Amt-Buddy",
       thinking: "Amt-Buddy is thinking …",
     },
-    offering: {
+    poolOverview: {
       title: "Your applicants at a glance",
       summary: "You have {total} applicants, {canAfford} can afford this rent.",
       stats: {
@@ -467,6 +468,7 @@ const en = {
       medianUnavailable: "Not available: the Listing has no Rent check",
       recommendationsTitle: "Recommendations",
       recommendationsEmpty: "No applicant meets all your requirements.",
+      poolEmpty: "There are no applications yet.",
       rank: "Rank {rank}",
       score: "Match score {score}",
     },

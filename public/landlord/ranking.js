@@ -45,6 +45,10 @@ export function documentFlags(documents) {
 export const formatNumber = (value) =>
   new Intl.NumberFormat(getLanguage() === "en" ? "en-GB" : "de-DE", { maximumFractionDigits: 1 }).format(value);
 
+// An amount in euros in the page language ("490,00 €" / "€490.00").
+export const formatMoney = (amount) =>
+  new Intl.NumberFormat(getLanguage() === "en" ? "en-GB" : "de-DE", { style: "currency", currency: "EUR" }).format(amount);
+
 // A ratio as a percentage in the page language (0.3571 → "35,7 %" / "35.7 %").
 export const formatPercent = (ratio) => `${formatNumber(ratio * 100)} %`;
 
