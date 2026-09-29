@@ -13,7 +13,9 @@ import { createBerlinTools } from "./orchestrator/berlin-tools.js";
 import { createOrchestrator } from "./orchestrator/index.js";
 import { createOpenAIModels } from "./orchestrator/openai.js";
 import { readJson as readJsonBody, sendError, sendJson } from "./http-json.js";
+import { CHAT_FAILED, streamEvents } from "./http-sse.js";
 import { createLandlordApi } from "./landlord/http.js";
+import { createLandlordOrchestrator, createLandlordStubTools } from "./landlord/orchestrator/index.js";
 import { createLandlordStore, landlordDatabasePath } from "./landlord/store.js";
 
 const publicDirectory = fileURLToPath(new URL("../public/", import.meta.url));
@@ -142,8 +144,15 @@ function defaultChatOrchestrator({ env, documents }) {
   return createOrchestrator({ models: createOpenAIModels(env), tools: createBerlinTools({ documents }).tools });
 }
 
-const SSE_HEARTBEAT_MS = 15_000;
-const CHAT_FAILED = "Amt-Buddy could not answer this message.";
+// The Landlord Orchestrator runs on the stub Tools until the real landlord Tools exist.
+function defaultLandlordChat({ env, getContext }) {
+  return createLandlordOrchestrator({
+    model: createOpenAIModels(env).supervisor,
+    tools: createLandlordStubTools().tools,
+    getContext,
+  });
+}
+
 const MAX_ID_LENGTH = 200;
 const MAX_MESSAGE_LENGTH = 4_000;
 const THREAD_PATH = "/api/v1/orchestrator/threads/";
@@ -191,41 +200,6 @@ function chatTurnProblems(input) {
   return problems;
 }
 
-// Writes one turn's events as Server-Sent Events: `event: <type>` and `data: <the event as JSON>`.
-// Stops, and aborts the run, when the client disconnects.
-async function streamEvents(response, events, abort) {
-  response.writeHead(200, {
-    "content-type": "text/event-stream; charset=utf-8",
-    "cache-control": "no-cache, no-transform",
-    connection: "keep-alive",
-    "x-accel-buffering": "no",
-  });
-  response.flushHeaders();
-  let closed = false;
-  // An SSE comment now and then keeps proxies from closing a turn that waits on slow Tools.
-  const heartbeat = setInterval(() => response.write(": keep-alive\n\n"), SSE_HEARTBEAT_MS);
-  response.on("close", () => {
-    clearInterval(heartbeat);
-    if (response.writableFinished) return;
-    closed = true;
-    abort.abort();
-  });
-  const write = (event) => response.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
-  try {
-    for await (const event of events) {
-      if (closed) break;
-      write(event);
-    }
-  } catch (error) {
-    // The event sources end every turn with done or error themselves; this is the safety net.
-    console.error("Chat turn failed:", error?.name ?? "Error");
-    if (!closed) write({ type: "error", message: CHAT_FAILED });
-  } finally {
-    clearInterval(heartbeat);
-    if (!closed) response.end();
-  }
-}
-
 // The rule-based chatbot's reply for one turn, as the same events the Orchestrator yields.
 async function* ruleBasedTurn({ message, documentId }, documents) {
   try {
@@ -252,7 +226,7 @@ async function* ruleBasedTurn({ message, documentId }, documents) {
   }
 }
 
-// createApp({ env?, documents?, createChatOrchestrator?, landlordStore?, fetchImpl? }) → an
+// createApp({ env?, documents?, createChatOrchestrator?, landlordStore?, fetchImpl?, createLandlordChat? }) → an
 // http.Server, not yet listening.
 // - env: decides the chat mode (see chatMode) and the landlord database path; default process.env.
 // - documents: the in-memory store of uploaded leases (default: 30 min, at most 100).
@@ -261,18 +235,28 @@ async function* ruleBasedTurn({ message, documentId }, documents) {
 // - landlordStore: the landlord store (default: SQLite at landlordDatabasePath(env), opened on
 //   the first landlord request).
 // - fetchImpl: the fetch the landlord side uses for the Berlin services (default: global fetch).
+// - createLandlordChat({ env, getContext }): builds the Landlord Orchestrator, lazily on the first
+//   landlord chat turn and only when a model is configured (see chatMode); `getContext` loads a
+//   landlord's state for its system prompt (default: OpenAI model from env + the stub landlord Tools).
 export function createApp({
   env = process.env,
   documents = createDocumentStore(),
   createChatOrchestrator = defaultChatOrchestrator,
   landlordStore,
   fetchImpl,
+  createLandlordChat = defaultLandlordChat,
 } = {}) {
   const mode = chatMode(env);
   let store = landlordStore;
+  const getStore = () => (store ??= createLandlordStore({ path: landlordDatabasePath(env) }));
+  let landlordChat;
   const landlordApi = createLandlordApi({
-    getStore: () => (store ??= createLandlordStore({ path: landlordDatabasePath(env) })),
+    getStore,
     fetchImpl,
+    getChat: () =>
+      mode === "orchestrator"
+        ? (landlordChat ??= createLandlordChat({ env, getContext: async (landlordId) => ({ listing: getStore().getListing(landlordId) }) }))
+        : null,
   });
   let orchestrator;
   const getOrchestrator = () => (orchestrator ??= createChatOrchestrator({ env, documents }));

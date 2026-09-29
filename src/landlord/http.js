@@ -1,8 +1,11 @@
 import { readJson, sendError, sendJson } from "../http-json.js";
+import { streamEvents } from "../http-sse.js";
 import { buildListing, ListingInputError } from "./listing.js";
+import { detectLanguage, landlordReply } from "./orchestrator/replies.js";
 import { normalizeLandlordName } from "./store.js";
 
 const MAX_NAME_LENGTH = 100;
+const MAX_MESSAGE_LENGTH = 4_000;
 const LANDLORD_PATH = "/api/v1/landlord/";
 
 class LandlordInputError extends Error {
@@ -25,6 +28,23 @@ function nameProblem(input) {
   };
 }
 
+function messageProblem(input) {
+  const message = isPlainObject(input) ? input.message : undefined;
+  if (typeof message === "string" && message.trim() && message.length <= MAX_MESSAGE_LENGTH) return null;
+  return {
+    field: "message",
+    code: "required",
+    message: `'message' must be a non-empty string of at most ${MAX_MESSAGE_LENGTH} characters.`,
+  };
+}
+
+// Without a model, the chat's one answer, as the same events the Landlord Orchestrator yields.
+async function* notConfiguredTurn(message) {
+  // German unless the message is clearly English, like the Landlord Orchestrator.
+  yield { type: "token", text: landlordReply("notConfigured", detectLanguage(message) ?? "de") };
+  yield { type: "done" };
+}
+
 function decodeId(encoded) {
   try {
     return decodeURIComponent(encoded);
@@ -36,12 +56,14 @@ function decodeId(encoded) {
 // The landlord side's HTTP API under /api/v1/landlord/ (docs/api.md, "Landlord").
 // - getStore(): the landlord store (see createLandlordStore), opened on first use.
 // - fetchImpl: the fetch for the Berlin services (default: the global fetch).
+// - getChat(): the Landlord Orchestrator (see createLandlordOrchestrator), built on first use; null
+//   when no model is configured, and the chat then answers that it is not configured.
 // handle(request, response, url) answers a landlord request and returns true, or returns
 // false when the request is not a landlord one.
-export function createLandlordApi({ getStore, fetchImpl }) {
-  async function readBody(request, response) {
+export function createLandlordApi({ getStore, fetchImpl, getChat = () => null }) {
+  async function readBody(request, response, maxBytes = 16_384) {
     try {
-      return { input: await readJson(request, 16_384, LandlordInputError) };
+      return { input: await readJson(request, maxBytes, LandlordInputError) };
     } catch (error) {
       if (!(error instanceof LandlordInputError)) throw error;
       sendError(response, 422, "validation_error", error.message, error.details);
@@ -83,9 +105,38 @@ export function createLandlordApi({ getStore, fetchImpl }) {
     sendJson(response, 200, { data: getStore().saveListing(landlordId, listing) });
   }
 
+  // POST /api/v1/landlord/:landlordId/chat { message } → one turn of the Landlord Orchestrator,
+  // streamed as SSE (token, criteria, shortlist, done, error).
+  async function chat(request, response, landlordId) {
+    const body = await readBody(request, response, 64 * 1024);
+    if (!body) return;
+    const problem = messageProblem(body.input);
+    if (problem) {
+      sendError(response, 422, "validation_error", problem.message, [problem]);
+      return;
+    }
+    const { message } = body.input;
+    const abort = new AbortController();
+    await streamEvents(response, chatTurn(landlordId, message, abort.signal), abort);
+  }
+
+  async function* chatTurn(landlordId, message, signal) {
+    let orchestrator;
+    try {
+      orchestrator = getChat();
+    } catch (error) {
+      console.error("The Landlord Orchestrator could not be created:", error.message);
+      yield { type: "error", message: "Amt-Buddy's AI chat is not available right now." };
+      return;
+    }
+    if (!orchestrator) yield* notConfiguredTurn(message);
+    else yield* orchestrator.send({ landlordId, message, signal });
+  }
+
   const routes = {
     "GET dashboard": (request, response, landlordId) => dashboard(response, landlordId),
     "PUT listing": saveListing,
+    "POST chat": chat,
   };
 
   return {
@@ -96,7 +147,7 @@ export function createLandlordApi({ getStore, fetchImpl }) {
         await signIn(request, response);
         return true;
       }
-      const match = /^([^/]+)\/(dashboard|listing)$/.exec(path);
+      const match = /^([^/]+)\/(dashboard|listing|chat)$/.exec(path);
       const handler = match && routes[`${request.method} ${match[2]}`];
       if (!handler) {
         sendError(response, 404, "not_found", "No such landlord endpoint.");
