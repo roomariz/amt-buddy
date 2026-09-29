@@ -5,11 +5,33 @@ address dataset published by Amt für Statistik Berlin-Brandenburg.
 
 ## Run locally
 
-Requires Node.js 20 or newer. Install the dependencies once (they are used by the
+Requires Node.js 20.6 or newer. Install the dependencies once (they are used by the
 Orchestrator):
 
 ```sh
 npm install
+```
+
+### Configure the AI chat (optional)
+
+The chat uses the Orchestrator when a model is configured. Copy `.env.example` to
+`.env` (gitignored) and fill in `OPENAI_API_KEY` and `OPENAI_MODEL`; the example
+file shows the settings for OpenAI directly and for OpenRouter.
+
+Without these two variables the app still runs, and the chat answers with a
+rule-based fallback that does not remember the conversation.
+
+### Start the server
+
+With the AI chat (loads `.env`):
+
+```sh
+node --env-file=.env src/server.js
+```
+
+Without it:
+
+```sh
 npm start
 ```
 
@@ -23,6 +45,42 @@ port instead, set `PORT` before starting the server; for example in PowerShell:
 $env:PORT = 4000
 npm start
 ```
+
+### Use the app
+
+- `http://localhost:3000/` is the form: enter an address and the dwelling
+  details to get the address check, the Mietspiegel range and the occupancy
+  assessment in one result. Uploading a lease there fills in the fields it can
+  read.
+- `http://localhost:3000/chatbot` is the chat. Type a question and press Enter;
+  step chips show what Amt Buddy is checking before the answer arrives. It asks
+  for any detail that is missing, so a short reply such as "60 m²" is enough.
+
+Both pages have a **DE | EN** switch in the header. It changes the page text;
+the AI chat answers in the language you write in.
+
+Example questions for the chat:
+
+```text
+Does my rent fall within Mietspiegel? Wühlischstraße 30, 10245 Berlin, 60 m², €900 base rent.
+
+Is my apartment overcrowded? 50 m², 2 rooms, 4 people, including one child under the age of 6.
+
+Please check the address Berliner Straße 155, 10715 Berlin.
+
+What does "Wohnlage" mean in the Berlin Mietspiegel?
+```
+
+The buttons under the chat's welcome text send questions like these with one
+click.
+
+To check a lease (Mietvertrag), drop the file on the upload card or attach it
+with **+** next to the input, then send. Accepted are PDFs with a text layer,
+TXT and Markdown, up to 15 MB. Amt Buddy shows the values it read (address,
+area, rent, rooms, building year, occupants) in a review card; correct them if
+needed and confirm to run the checks. The lease reader recognises German lease
+wording, and scanned PDFs or PDFs whose text is stored with embedded font
+encodings (for example LibreOffice exports) yield no text.
 
 ## Test
 
