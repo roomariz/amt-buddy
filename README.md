@@ -61,6 +61,14 @@ looks up the Wohnlage and building age, and shows the Mietspiegel range for the
 flat with your asking rent on it. If the asking rent is above Mietspiegel + 10 %,
 it warns you and shows the rent the Mietpreisbremse would allow.
 
+Below the Rent check, every applicant in the (synthetic) Applicant pool is ranked
+by a Match score from 0 to 100, with a bar per criterion (affordability, SCHUFA,
+documents, credibility, employment, previous landlord) and flags for missing or
+expired documents. Sort the table or show complete applications only. Applicants
+whose household is too large for the flat (§ 7 WoAufG Bln) are listed separately
+as excluded, with the reason. The pool is read at start from `data/applicants`
+(set `APPLICANT_POOL_DIR` and `APPLICANT_POOL_TODAY` to use another pool or day).
+
 Signing in again with the same name brings your flat back, also after a restart.
 The data is kept in `data/landlord.sqlite` (set `LANDLORD_DB_PATH` to use another
 file).

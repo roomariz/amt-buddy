@@ -14,6 +14,8 @@ import { createOrchestrator } from "./orchestrator/index.js";
 import { createOpenAIModels } from "./orchestrator/openai.js";
 import { readJson as readJsonBody, sendError, sendJson } from "./http-json.js";
 import { CHAT_FAILED, streamEvents } from "./http-sse.js";
+import { APPLICANT_POOL_DIRECTORY, readApplicantPool } from "./landlord/applicant-pool.js";
+import { POOL_DATE } from "./landlord/applicant-pool-generator.js";
 import { createLandlordApi } from "./landlord/http.js";
 import { createLandlordOrchestrator, createLandlordStubTools } from "./landlord/orchestrator/index.js";
 import { createLandlordStore, landlordDatabasePath } from "./landlord/store.js";
@@ -153,6 +155,28 @@ function defaultLandlordChat({ env, getContext }) {
   });
 }
 
+// The Applicant pool the landlord side scores: APPLICANT_POOL_DIR (default: the committed pool in
+// data/applicants), read as of APPLICANT_POOL_TODAY (default: POOL_DATE, the day the committed
+// pool was generated, so its SCHUFA-Auskünfte do not expire as time passes).
+export function applicantPoolSettings(env) {
+  return {
+    directory: env.APPLICANT_POOL_DIR?.trim() || APPLICANT_POOL_DIRECTORY,
+    today: env.APPLICANT_POOL_TODAY?.trim() || POOL_DATE,
+  };
+}
+
+// Reads the Applicant pool once; a pool that cannot be read at all is logged and scored as empty,
+// with the reason as its one error, so the rest of the server keeps working.
+async function loadApplicantPool(env) {
+  const { directory, today } = applicantPoolSettings(env);
+  try {
+    return await readApplicantPool(directory, { today });
+  } catch (error) {
+    console.error("The Applicant pool could not be read:", error.message);
+    return { applicants: [], errors: [{ file: directory, reason: "The Applicant pool could not be read." }] };
+  }
+}
+
 const MAX_ID_LENGTH = 200;
 const MAX_MESSAGE_LENGTH = 4_000;
 const THREAD_PATH = "/api/v1/orchestrator/threads/";
@@ -228,7 +252,8 @@ async function* ruleBasedTurn({ message, documentId }, documents) {
 
 // createApp({ env?, documents?, createChatOrchestrator?, landlordStore?, fetchImpl?, createLandlordChat? }) → an
 // http.Server, not yet listening.
-// - env: decides the chat mode (see chatMode) and the landlord database path; default process.env.
+// - env: decides the chat mode (see chatMode), the landlord database path and the Applicant pool
+//   (see applicantPoolSettings); default process.env.
 // - documents: the in-memory store of uploaded leases (default: 30 min, at most 100).
 // - createChatOrchestrator({ env, documents }): builds the one Orchestrator of this server,
 //   lazily on the first chat turn (default: OpenAI models from env + the real Berlin Tools).
@@ -249,9 +274,12 @@ export function createApp({
   const mode = chatMode(env);
   let store = landlordStore;
   const getStore = () => (store ??= createLandlordStore({ path: landlordDatabasePath(env) }));
+  // Read once at start; every dashboard request scores it again (cheap at this size).
+  const applicantPool = loadApplicantPool(env);
   let landlordChat;
   const landlordApi = createLandlordApi({
     getStore,
+    getApplicantPool: () => applicantPool,
     fetchImpl,
     getChat: () =>
       mode === "orchestrator"

@@ -2,6 +2,7 @@ import { readJson, sendError, sendJson } from "../http-json.js";
 import { streamEvents } from "../http-sse.js";
 import { buildListing, ListingInputError } from "./listing.js";
 import { detectLanguage, landlordReply } from "./orchestrator/replies.js";
+import { DEFAULT_CRITERIA, rankApplicants } from "./scorer.js";
 import { normalizeLandlordName } from "./store.js";
 
 const MAX_NAME_LENGTH = 100;
@@ -45,6 +46,35 @@ async function* notConfiguredTurn(message) {
   yield { type: "done" };
 }
 
+const EMPTY_POOL = { applicants: [], errors: [] };
+
+const LISTING_REQUIRED = {
+  code: "listing_required",
+  message: "Save your flat's Listing first: the applicants are ranked for its rent and size.",
+};
+
+// The document flags the dashboard shows beside an applicant: each document's status, and whether
+// the application is complete.
+const documentFlagsOf = ({ schufa, incomeProof, previousLandlord, complete }) => ({
+  schufa: schufa.status,
+  incomeProof: incomeProof.status,
+  previousLandlord: previousLandlord.status,
+  complete,
+});
+
+// The ranking of the pool for the Listing (none without a Listing), with each applicant's name
+// and document flags joined in for display. The scorer sees the anonymised profiles only.
+function rankingFor(listing, { applicants }, criteria) {
+  if (!listing) return { ranked: [], excluded: [], hint: LISTING_REQUIRED };
+  const { ranked, excluded } = rankApplicants({ profiles: applicants.map(({ profile }) => profile), listing, criteria });
+  const byId = new Map(applicants.map((applicant) => [applicant.id, applicant]));
+  const forDisplay = (entry) => {
+    const { contact, profile } = byId.get(entry.applicantId);
+    return { ...entry, name: contact.name, documents: documentFlagsOf(profile.documentCheck) };
+  };
+  return { ranked: ranked.map(forDisplay), excluded: excluded.map(forDisplay), hint: null };
+}
+
 function decodeId(encoded) {
   try {
     return decodeURIComponent(encoded);
@@ -55,12 +85,14 @@ function decodeId(encoded) {
 
 // The landlord side's HTTP API under /api/v1/landlord/ (docs/api.md, "Landlord").
 // - getStore(): the landlord store (see createLandlordStore), opened on first use.
+// - getApplicantPool(): the Applicant pool ({ applicants, errors }, see readApplicantPool), or a
+//   promise of it; scored for the landlord's Listing on every dashboard request.
 // - fetchImpl: the fetch for the Berlin services (default: the global fetch).
 // - getChat(): the Landlord Orchestrator (see createLandlordOrchestrator), built on first use; null
 //   when no model is configured, and the chat then answers that it is not configured.
 // handle(request, response, url) answers a landlord request and returns true, or returns
 // false when the request is not a landlord one.
-export function createLandlordApi({ getStore, fetchImpl, getChat = () => null }) {
+export function createLandlordApi({ getStore, getApplicantPool = () => EMPTY_POOL, fetchImpl, getChat = () => null }) {
   async function readBody(request, response, maxBytes = 16_384) {
     try {
       return { input: await readJson(request, maxBytes, LandlordInputError) };
@@ -83,10 +115,21 @@ export function createLandlordApi({ getStore, fetchImpl, getChat = () => null })
     sendJson(response, 200, { data: getStore().signIn(body.input.name) });
   }
 
-  // GET /api/v1/landlord/:landlordId/dashboard → { listing, rentCheck }
-  function dashboard(response, landlordId) {
+  // GET /api/v1/landlord/:landlordId/dashboard → { listing, rentCheck, criteria, ranked, excluded,
+  // hint, poolErrors }. Criteria are the defaults until they can be tuned.
+  async function dashboard(response, landlordId) {
     const listing = getStore().getListing(landlordId);
-    sendJson(response, 200, { data: { listing, rentCheck: listing?.rentCheck ?? null } });
+    const pool = await getApplicantPool();
+    const criteria = DEFAULT_CRITERIA;
+    sendJson(response, 200, {
+      data: {
+        listing,
+        rentCheck: listing?.rentCheck ?? null,
+        criteria,
+        ...rankingFor(listing, pool, criteria),
+        poolErrors: pool.errors,
+      },
+    });
   }
 
   // PUT /api/v1/landlord/:landlordId/listing { address, livingAreaSqm, rooms, askingRent, buildingYear? }

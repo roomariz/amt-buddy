@@ -4,14 +4,17 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { fileURLToPath } from "node:url";
+
 import { createApp } from "../../src/app.js";
 import { createLandlordStore } from "../../src/landlord/store.js";
 import { createFakeBerlinWfs } from "../helpers/fake-berlin-wfs.js";
 
 // Starts the app on a free port with an in-memory landlord store (or `store`) and the
 // Berlin WFS faked (`wfs`: createFakeBerlinWfs options).
-async function start({ store = createLandlordStore({ path: ":memory:" }), wfs = {} } = {}) {
-  const app = createApp({ env: {}, landlordStore: store, fetchImpl: createFakeBerlinWfs(wfs).fetchImpl });
+// `env` configures the rest (e.g. APPLICANT_POOL_DIR); by default the committed Applicant pool.
+async function start({ store = createLandlordStore({ path: ":memory:" }), wfs = {}, env = {} } = {}) {
+  const app = createApp({ env, landlordStore: store, fetchImpl: createFakeBerlinWfs(wfs).fetchImpl });
   await new Promise((resolve) => app.listen(0, "127.0.0.1", resolve));
   const base = `http://127.0.0.1:${app.address().port}`;
   const send = async (method, path, body) => {
@@ -281,4 +284,77 @@ test("with a stated building year, a failing building-age service does not stop 
   assert.equal(body.data.buildingAgePeriod, null);
   assert.deepEqual(body.data.rentCheck.range, { lower: 420, median: 490, upper: 610 });
   assert.equal(body.data.note, null);
+});
+
+// --- The dashboard's ranking (over the committed Applicant pool, data/applicants) -------------
+
+test("without a Listing the dashboard has an empty ranking and a hint to save one", async (t) => {
+  const server = await start();
+  t.after(server.close);
+  const landlordId = await signIn(server);
+
+  const { status, body } = await server.get(`/api/v1/landlord/${landlordId}/dashboard`);
+
+  assert.equal(status, 200);
+  assert.deepEqual(body.data.ranked, []);
+  assert.deepEqual(body.data.excluded, []);
+  assert.equal(body.data.hint.code, "listing_required");
+  assert.equal(typeof body.data.hint.message, "string");
+  assert.deepEqual(body.data.criteria.weights, { affordability: 30, schufa: 20, documents: 15, credibility: 15, employment: 15, previousLandlord: 5 });
+});
+
+test("with a Listing the dashboard ranks the committed pool, households too large for the flat excluded", async (t) => {
+  const server = await start();
+  t.after(server.close);
+  const landlordId = await signIn(server);
+  await server.put(`/api/v1/landlord/${landlordId}/listing`, WUEHLISCH_LISTING);
+
+  const { status, body } = await server.get(`/api/v1/landlord/${landlordId}/dashboard`);
+
+  assert.equal(status, 200);
+  const { ranked, excluded, hint, criteria, poolErrors } = body.data;
+  assert.equal(hint, null);
+  assert.deepEqual(poolErrors, []);
+  assert.equal(criteria.requirements.occupancyCompliant, true);
+  // 50 m²: the pool's households of six and seven need 51–63 m² under § 7 WoAufG Bln.
+  assert.deepEqual(excluded.map(({ applicantId }) => applicantId), ["A-017", "A-020", "A-021", "A-035"]);
+  assert.ok(excluded.every(({ excludedBy }) => excludedBy === "occupancyCompliant"));
+  assert.equal(ranked.length, 36);
+  assert.deepEqual(ranked.map(({ rank }) => rank), Array.from({ length: 36 }, (_, index) => index + 1));
+  for (let index = 1; index < ranked.length; index += 1) assert.ok(ranked[index - 1].matchScore >= ranked[index].matchScore);
+});
+
+test("the dashboard joins in the applicant's name for display, with the document flags and no contact details", async (t) => {
+  const server = await start();
+  t.after(server.close);
+  const landlordId = await signIn(server);
+  await server.put(`/api/v1/landlord/${landlordId}/listing`, WUEHLISCH_LISTING);
+
+  const { ranked, excluded } = (await server.get(`/api/v1/landlord/${landlordId}/dashboard`)).body.data;
+
+  for (const entry of [...ranked, ...excluded]) {
+    assert.equal(typeof entry.name, "string", entry.applicantId);
+    assert.ok(entry.name.trim());
+    assert.equal(entry.email, undefined);
+    assert.equal(entry.phone, undefined);
+    assert.deepEqual(Object.keys(entry.documents), ["schufa", "incomeProof", "previousLandlord", "complete"]);
+  }
+  const entry = ranked[0];
+  assert.deepEqual(Object.keys(entry.breakdown), ["affordability", "schufa", "documents", "credibility", "employment", "previousLandlord"]);
+  assert.equal(typeof entry.rentToIncome, "number");
+});
+
+test("the Applicant pool directory and its day are configurable", async (t) => {
+  const directory = fileURLToPath(new URL("../fixtures/applicants/", import.meta.url));
+  const server = await start({ env: { APPLICANT_POOL_DIR: directory, APPLICANT_POOL_TODAY: "2026-09-29" } });
+  t.after(server.close);
+  const landlordId = await signIn(server);
+  await server.put(`/api/v1/landlord/${landlordId}/listing`, { ...WUEHLISCH_LISTING, livingAreaSqm: 90 });
+
+  const { ranked, excluded, poolErrors } = (await server.get(`/api/v1/landlord/${landlordId}/dashboard`)).body.data;
+  const all = [...ranked, ...excluded];
+
+  assert.ok(all.some(({ applicantId, name }) => applicantId === "A-complete" && name === "Lena Schmidt"));
+  assert.ok(!all.some(({ applicantId }) => applicantId.startsWith("A-0")), "not the committed pool");
+  assert.ok(poolErrors.some(({ file }) => file === "malformed.md"));
 });
