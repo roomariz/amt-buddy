@@ -370,7 +370,7 @@ const en = {
   form: {
     heading: "Is this address official?",
     intro: "Amt Buddy checks an address directly against the official Berlin address register.",
-    chatLink: "💬 Open the full-screen chatbot (guided assistant) →",
+    chatLink: "💬 Open the full-screen chat →",
     ocrStep: "STEP 00 (OPTIONAL)",
     ocrHeading: "Read a document with OCR",
     ocrIntro:

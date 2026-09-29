@@ -24,12 +24,12 @@ export const UPLOAD_TEXT = {
   },
 };
 
-// The server's reason codes → UPLOAD_TEXT names.
-const UPLOAD_REASONS = {
-  ocr_no_text: "noTextLayer",
-  image_ocr_provider_required: "image",
-  file_too_large: "tooLarge",
-  empty_text: "empty",
+// The server's reasons for a lease it cannot read → i18n keys. The form page's OCR upload shares them.
+export const UPLOAD_REASON_KEYS = {
+  ocr_no_text: "upload.noTextLayer",
+  image_ocr_provider_required: "upload.image",
+  file_too_large: "upload.tooLarge",
+  empty_text: "upload.empty",
 };
 
 const postJson = (fetchImpl, url, body, signal) =>
@@ -77,7 +77,7 @@ export async function uploadLease({ fetchImpl, payload, signal }) {
   const documentId = body?.data?.documentId;
   if (response.ok && typeof documentId === "string") return { documentId };
   const code = body?.error?.details?.[0]?.code;
-  throw new Error(UPLOAD_TEXT[UPLOAD_REASONS[code] ?? "failed"]);
+  throw new Error(t(UPLOAD_REASON_KEYS[code] ?? "upload.failed"));
 }
 
 // Runs one chat turn: posts `request` ({ threadId, message?, documentId?, confirm? }), folds the

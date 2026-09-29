@@ -1,3 +1,4 @@
+import { UPLOAD_REASON_KEYS } from "./chat/api.js";
 import { startI18n, t } from "./i18n.js";
 
 const form = document.querySelector("#address-form");
@@ -16,21 +17,20 @@ function escapeHtml(value) {
 }
 
 // Known server error codes → translated text; anything else shows the server's own message.
-const ERROR_TEXT = {
+// Address codes depend on the field ("invalid_format" is used for more than one).
+const ADDRESS_ERROR_KEYS = {
   "address:invalid_format": "errors.addressFormat",
   "street:invalid_length": "errors.streetLength",
   "houseNumber:invalid_format": "errors.houseNumber",
   "postalCode:outside_berlin": "errors.postalCode",
-  "file:ocr_no_text": "upload.noTextLayer",
-  "file:image_ocr_provider_required": "upload.image",
-  "file:file_too_large": "upload.tooLarge",
-  "document:empty_text": "upload.empty",
-  berlin_data_service_unavailable: "errors.serviceUnavailable",
 };
 
 function errorText(body, fallbackKey) {
   const detail = body?.error?.details?.[0];
-  const key = ERROR_TEXT[`${detail?.field}:${detail?.code}`] ?? ERROR_TEXT[body?.error?.code];
+  const key =
+    ADDRESS_ERROR_KEYS[`${detail?.field}:${detail?.code}`] ??
+    UPLOAD_REASON_KEYS[detail?.code] ??
+    (body?.error?.code === "berlin_data_service_unavailable" ? "errors.serviceUnavailable" : undefined);
   if (key) return t(key);
   return detail?.message ?? body?.error?.message ?? t(fallbackKey);
 }
