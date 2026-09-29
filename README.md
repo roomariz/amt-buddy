@@ -70,8 +70,9 @@ as excluded, with the reason. The pool is read at start from `data/applicants`
 (set `APPLICANT_POOL_DIR` and `APPLICANT_POOL_TODAY` to use another pool or day).
 
 Put applicants you want to act on on your **Shortlist** with **Add to Shortlist**
-in the ranking or on a Recommendation card. In the Shortlist panel, set each
-entry's status (to invite, invited, declined), add a short note, or remove it.
+in the ranking, on a Recommendation card or in an applicant's profile. In the
+Shortlist panel, set each entry's status (to invite, invited, declined), add a
+short note, or remove it.
 Amt Buddy never contacts applicants; the status only helps you keep track.
 
 Signing in again with the same name brings your flat and your Shortlist back,
