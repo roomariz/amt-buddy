@@ -97,7 +97,7 @@ test("adding an applicant from the ranking puts them on the Shortlist; its statu
     listed.map(({ applicantId, name, status, note, matchScore }) => ({ applicantId, name, status, note, matchScore })),
     [{ applicantId: top.applicantId, name: top.name, status: "invited", note: "Viewing Tuesday", matchScore: top.matchScore }],
   );
-  assert.deepEqual(removed, { removed: true });
+  assert.deepEqual(removed, { entry: { applicantId: top.applicantId, status: "removed", note: null } });
   assert.deepEqual(after, []);
 });
 
@@ -111,6 +111,15 @@ test("a Shortlist note the server refuses comes back as a readable problem; an u
   assert.deepEqual(Object.keys(refused.problems), ["note"]);
   assert.deepEqual(await saveShortlistEntry({ fetchImpl, landlordId: "gone", applicantId: "A-001", status: "invited" }), { signedOut: true });
   assert.deepEqual(await removeShortlistEntry({ fetchImpl, landlordId: "gone", applicantId: "A-001" }), { signedOut: true });
+});
+
+test("an applicant the pool does not know comes back as notFound, for adding and removing", async (t) => {
+  const { fetchImpl, close } = await start();
+  t.after(close);
+  const { landlordId } = await signIn({ fetchImpl, name: "Erika" });
+
+  assert.deepEqual(await saveShortlistEntry({ fetchImpl, landlordId, applicantId: "A-999", status: "to_invite" }), { notFound: true });
+  assert.deepEqual(await removeShortlistEntry({ fetchImpl, landlordId, applicantId: "A-999" }), { notFound: true });
 });
 
 test("form fields the server rejects come back as problems by field", async (t) => {

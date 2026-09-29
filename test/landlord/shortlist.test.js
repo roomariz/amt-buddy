@@ -109,3 +109,23 @@ test("every result satisfies the update_shortlist Tool contract's output schema"
     output.parse(update(args));
   }
 });
+
+test("an entry whose applicant has left the pool can still be changed and removed; a new one cannot be added", () => {
+  const { store, landlordId, update } = setup();
+  update({ applicantId: "A-003", status: "to_invite", note: "keep" });
+  const smallerPool = new Set(["A-001"]);
+  const later = (args) => updateShortlist({ store, landlordId, applicantIds: smallerPool, ...args });
+
+  assert.deepEqual(later({ applicantId: "A-003", status: "invited" }), { applicantId: "A-003", status: "invited", note: "keep" });
+  assert.deepEqual(later({ applicantId: "A-003", status: "remove" }), { applicantId: "A-003", status: "removed", note: null });
+  assert.throws(() => later({ applicantId: "A-003", status: "to_invite" }), UnknownApplicantError);
+  assert.deepEqual(store.getShortlist(landlordId), []);
+});
+
+test("the note limit counts the trimmed note", () => {
+  const { update } = setup();
+  const note = "x".repeat(500);
+
+  assert.equal(update({ applicantId: "A-001", status: "to_invite", note: `  ${note}\n\n` }).note, note);
+  assert.throws(() => update({ applicantId: "A-001", status: "to_invite", note: ` ${note}x ` }), ShortlistInputError);
+});

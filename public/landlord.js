@@ -14,7 +14,7 @@ import { listingFormValues, listingRequest, rentCheckView } from "./landlord/lis
 import { breakdownBars, documentFlags, exclusionText, formatMoney, formatNumber, formatPercent, rankingRows } from "./landlord/ranking.js";
 import { poolSummary, recommendationCards, recommendationsEmptyText, statTiles } from "./landlord/pool-overview.js";
 import { forgetLandlord, rememberLandlord, storedLandlord } from "./landlord/session.js";
-import { isShortlisted, SHORTLIST_STATUSES, shortlistRows } from "./landlord/shortlist.js";
+import { applyShortlistChange, isShortlisted, shortlistRows, statusOptions } from "./landlord/shortlist.js";
 import { onLanguageChange, startI18n, t } from "./i18n.js";
 
 const $ = (selector) => document.querySelector(selector);
@@ -218,7 +218,7 @@ function renderPoolOverview() {
         head,
         el("span", "recommendation-rank", t("landlord.poolOverview.rank", { rank: card.rank })),
         el("p", "recommendation-reason", card.reason),
-        shortlistButton(card.applicantId),
+        shortlistButton(card.applicantId, "recommendation"),
       );
       return item;
     }),
@@ -230,28 +230,66 @@ function renderPoolOverview() {
 
 // --- the Shortlist -------------------------------------------------------------------------------
 
-// Sends one Shortlist change, then fetches the dashboard again so every panel shows it.
-async function changeShortlist(request) {
-  showError(shortlistError, null);
-  try {
-    const result = await request({ fetchImpl: fetch, landlordId: landlord.landlordId });
+// Redraws with `render` and gives the focus back to the control that had it (same data-focus-key),
+// so saving from the keyboard does not drop the focus to the page.
+function keepingFocus(render) {
+  const key = document.activeElement?.dataset?.focusKey;
+  render();
+  if (key) document.querySelector(`[data-focus-key="${CSS.escape(key)}"]`)?.focus();
+}
+
+function redrawShortlistAndButtons() {
+  keepingFocus(() => {
+    renderShortlist();
+    renderPoolOverview();
+    renderRanking();
+  });
+}
+
+// Shortlist changes run one after another, in the order the landlord made them, so a note saved
+// on blur and a Remove clicked right after cannot reach the server the other way round.
+let shortlistQueue = Promise.resolve();
+
+// Sends one Shortlist change and applies the server's answer to the page's Shortlist; the rest of
+// the dashboard (and the Listing form with any unsaved edits) is left alone.
+function changeShortlist(request) {
+  shortlistQueue = shortlistQueue.then(async () => {
+    if (!landlord) return;
+    showError(shortlistError, null);
+    let result;
+    try {
+      result = await request({ fetchImpl: fetch, landlordId: landlord.landlordId });
+    } catch (error) {
+      result = { error: error.message };
+    }
     if (result.signedOut) {
       signOut();
       return;
     }
-    if (result.problems) showError(shortlistError, Object.values(result.problems).join(" "));
-  } catch (error) {
-    showError(shortlistError, error.message);
-  }
-  await loadDashboard();
+    if (!result.entry) {
+      const message = result.error ?? (result.notFound ? t("landlord.shortlist.notFound") : Object.values(result.problems).join(" "));
+      showError(shortlistError, message);
+      // Put the controls back to what is saved.
+      keepingFocus(renderShortlist);
+      return;
+    }
+    const wasListed = isShortlisted(shortlist, result.entry.applicantId);
+    shortlist = applyShortlistChange(shortlist, result.entry, ranking);
+    // A status or note change is already on screen; only adding or removing redraws.
+    if (wasListed !== isShortlisted(shortlist, result.entry.applicantId)) redrawShortlistAndButtons();
+    else shortlistList.querySelector(`[data-applicant-id="${CSS.escape(result.entry.applicantId)}"]`)?.setAttribute("class", `shortlist-entry is-${result.entry.status}`);
+  });
+  return shortlistQueue;
 }
 
-// "Add to Shortlist" for the ranking and the Recommendation cards; "On the Shortlist" once added.
-function shortlistButton(applicantId) {
+// "Add to Shortlist" for the ranking and the Recommendation cards (`place`); "On the Shortlist"
+// once added.
+function shortlistButton(applicantId, place) {
   const added = isShortlisted(shortlist, applicantId);
   const button = el("button", "landlord-link-btn shortlist-add", t(added ? "landlord.shortlist.added" : "landlord.shortlist.add"));
   button.type = "button";
   button.disabled = added;
+  button.dataset.focusKey = `add:${place}:${applicantId}`;
   button.addEventListener("click", () =>
     changeShortlist((call) => saveShortlistEntry({ ...call, applicantId, status: "to_invite" })),
   );
@@ -266,13 +304,15 @@ function renderShortlist() {
   shortlistList.replaceChildren(
     ...rows.map((row) => {
       const item = el("li", `shortlist-entry is-${row.status}`);
+      item.dataset.applicantId = row.applicantId;
       const head = el("div", "shortlist-head");
       head.append(el("span", "shortlist-name", row.name), el("span", "shortlist-score", row.score));
 
       const status = el("select", "shortlist-status");
+      status.dataset.focusKey = `status:${row.applicantId}`;
       status.setAttribute("aria-label", `${t("landlord.shortlist.statusLabel")}: ${row.name}`);
-      for (const value of SHORTLIST_STATUSES) {
-        const option = el("option", "", t(`landlord.shortlist.status.${value}`));
+      for (const { value, label } of statusOptions()) {
+        const option = el("option", "", label);
         option.value = value;
         option.selected = value === row.status;
         status.append(option);
@@ -282,6 +322,7 @@ function renderShortlist() {
       );
 
       const note = el("input", "shortlist-note");
+      note.dataset.focusKey = `note:${row.applicantId}`;
       note.value = row.note;
       note.maxLength = 500;
       note.placeholder = t("landlord.shortlist.notePlaceholder");
@@ -360,7 +401,7 @@ function renderRanking() {
       cell(breakdownCell(entry));
       cell(formatPercent(entry.rentToIncome));
       cell(flagsCell(entry.documents));
-      cell(shortlistButton(entry.applicantId));
+      cell(shortlistButton(entry.applicantId, "ranking"));
       return row;
     }),
   );

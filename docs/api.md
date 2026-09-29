@@ -371,14 +371,14 @@ Adds the applicant to the Shortlist, or changes their entry. Nothing is sent to 
 → `200 { "data": { "applicantId": "A-007", "status": "to_invite", "note": "Stable income, call on Monday" } }`.
 
 - `status`: `to_invite`, `invited` or `declined`.
-- `note`: optional, at most 500 characters, trimmed. Left out, the entry keeps its note (so a status change does not wipe it); `null` or blank clears it.
-- An invalid `status` or `note` is a `422 validation_error`; an applicant id that is not in the Applicant pool a `404 applicant_not_found`. Nothing is saved then.
+- `note`: optional, at most 500 characters after trimming. Left out, the entry keeps its note (so a status change does not wipe it); `null` or blank clears it.
+- An invalid `status` or `note` is a `422 validation_error`. Adding an applicant id that is not in the Applicant pool is a `404 applicant_not_found`; an entry already on the Shortlist can still be changed after its applicant has left the pool (e.g. another `APPLICANT_POOL_DIR`). Nothing is saved on an error.
 
 The same logic (`updateShortlist`, `src/landlord/shortlist.js`) backs the chat Tool `update_shortlist`, so its checks hold there too.
 
 ### `DELETE /api/v1/landlord/:landlordId/shortlist/:applicantId`
 
-Takes the applicant off the Shortlist → `200 { "data": { "applicantId": "A-007", "status": "removed", "note": null } }`. Removing an applicant who is not on the Shortlist changes nothing and is not an error; one who is not in the pool is a `404 applicant_not_found`.
+Takes the applicant off the Shortlist → `200 { "data": { "applicantId": "A-007", "status": "removed", "note": null } }`. Removing an applicant who is not on the Shortlist changes nothing and is not an error; one who is neither on the Shortlist nor in the pool is a `404 applicant_not_found`. An entry whose applicant has left the pool can always be removed.
 
 ### `POST /api/v1/landlord/:landlordId/chat`
 

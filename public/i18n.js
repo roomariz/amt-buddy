@@ -227,6 +227,7 @@ const de = {
       score: "Match-Score {score}",
       noScore: "Noch kein Score",
       excluded: "Ausgeschlossen",
+      notFound: "Diesen Bewerber gibt es nicht mehr. Laden Sie die Seite neu.",
       status: { to_invite: "Einladen", invited: "Eingeladen", declined: "Abgelehnt" },
     },
     ranking: {
@@ -500,6 +501,7 @@ const en = {
       score: "Match score {score}",
       noScore: "No score yet",
       excluded: "Excluded",
+      notFound: "This applicant no longer exists. Reload the page.",
       status: { to_invite: "To invite", invited: "Invited", declined: "Declined" },
     },
     ranking: {
