@@ -181,6 +181,17 @@ const de = {
       failed: "Das hat nicht geklappt. Bitte versuchen Sie es noch einmal.",
       nameRequired: "Bitte geben Sie Ihren Namen ein (höchstens 100 Zeichen).",
     },
+    chat: {
+      title: "Chat mit Amt-Buddy",
+      intro:
+        "Fragen Sie nach Ihren Bewerbern oder Ihrer Miete, oder sagen Sie, was Ihnen wichtig ist (zum Beispiel „nur saubere SCHUFA“). Amt-Buddy wählt nie nach Herkunft, Geschlecht, Religion, Alter oder Behinderung aus (AGG).",
+      label: "Ihre Nachricht",
+      placeholder: "Wer ist mein bester Bewerber?",
+      send: "Senden",
+      you: "Sie",
+      assistant: "Amt-Buddy",
+      thinking: "Amt-Buddy denkt nach …",
+    },
   },
 };
 
@@ -355,6 +366,17 @@ const en = {
       unreachable: "Amt-Buddy cannot be reached right now. Please try again in a moment.",
       failed: "That did not work. Please try again.",
       nameRequired: "Please enter your name (at most 100 characters).",
+    },
+    chat: {
+      title: "Chat with Amt-Buddy",
+      intro:
+        "Ask about your applicants or your rent, or say what matters to you (for example “clean SCHUFA only”). Amt-Buddy never selects by origin, gender, religion, age or disability (AGG).",
+      label: "Your message",
+      placeholder: "Who is my best applicant?",
+      send: "Send",
+      you: "You",
+      assistant: "Amt-Buddy",
+      thinking: "Amt-Buddy is thinking …",
     },
   },
 };

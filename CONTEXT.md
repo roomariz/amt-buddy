@@ -138,6 +138,10 @@ _Avoid_: Suggestion, pick, top match
 The long-term memory about a Landlord: saved Selection criteria plus free-text preference notes from the chat.
 _Avoid_: Memory, profile, settings
 
+**Landlord Orchestrator**:
+The conversational agent of the landlord side: one agent with its own Tools (ranking, Applicant profile, Selection criteria, Landlord preferences, Shortlist, Rent check), separate from the tenant Orchestrator, with no Intent router and no Sub-agents. It sees applicants by id only.
+_Avoid_: Landlord bot, landlord assistant
+
 **Shortlist**:
 The Applicants the Landlord selected, each with a status (`to_invite`, `invited`, `declined`) and an optional note.
 _Avoid_: Favourites, watchlist, selection

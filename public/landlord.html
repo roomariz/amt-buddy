@@ -97,6 +97,22 @@
               Der Mietcheck dient der Orientierung und ist keine Rechtsberatung. Nicht berücksichtigt: eine höhere Vormiete, Modernisierung und die Ausnahme für Neubauten.
             </p>
           </section>
+
+          <!-- The chat with the Landlord Orchestrator; drawn by landlord.js -->
+          <section id="landlord-chat" class="landlord-card" aria-labelledby="landlord-chat-title" hidden>
+            <h2 id="landlord-chat-title" data-i18n="landlord.chat.title">Chat mit Amt-Buddy</h2>
+            <p class="landlord-intro" data-i18n="landlord.chat.intro">
+              Fragen Sie nach Ihren Bewerbern oder Ihrer Miete, oder sagen Sie, was Ihnen wichtig ist (zum Beispiel „nur saubere SCHUFA“). Amt-Buddy wählt nie nach Herkunft, Geschlecht, Religion, Alter oder Behinderung aus (AGG).
+            </p>
+            <ol id="landlord-chat-log" class="landlord-chat-log" aria-live="polite"></ol>
+            <form id="landlord-chat-form" class="landlord-chat-form" novalidate>
+              <label class="landlord-field landlord-chat-field">
+                <span class="visually-hidden" data-i18n="landlord.chat.label">Ihre Nachricht</span>
+                <textarea id="landlord-chat-input" name="message" rows="2" maxlength="4000" placeholder="Wer ist mein bester Bewerber?" data-i18n-attr="placeholder:landlord.chat.placeholder"></textarea>
+              </label>
+              <button type="submit" id="btn-landlord-chat-send" class="landlord-btn" data-i18n="landlord.chat.send">Senden</button>
+            </form>
+          </section>
         </div>
       </div>
     </main>

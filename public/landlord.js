@@ -1,11 +1,14 @@
 /**
- * Amt-Buddy /landlord page: sign in with a name, enter the Listing, see its Rent check.
+ * Amt-Buddy /landlord page: sign in with a name, enter the Listing, see its Rent check, and chat
+ * with the Landlord Orchestrator.
  *
  * The logic lives in ./landlord/ (server calls, the form and range-bar view model, the stored
  * sign-in); this file only wires it to the DOM. Server text is always set as textContent.
  */
 
 import { fetchDashboard, saveListing, signIn } from "./landlord/api.js";
+import { runLandlordTurn } from "./landlord/chat.js";
+import { renderMarkdown } from "./chat/markdown.js";
 import { listingFormValues, listingRequest, rentCheckView } from "./landlord/listing.js";
 import { forgetLandlord, rememberLandlord, storedLandlord } from "./landlord/session.js";
 import { getLanguage, onLanguageChange, startI18n, t } from "./i18n.js";
@@ -24,6 +27,11 @@ const rentCheckSection = $("#rent-check");
 const rentCheckBody = $("#rent-check-body");
 const nameLabel = $("#landlord-name");
 const signOutButton = $("#btn-sign-out");
+const chatSection = $("#landlord-chat");
+const chatLog = $("#landlord-chat-log");
+const chatForm = $("#landlord-chat-form");
+const chatInput = $("#landlord-chat-input");
+const chatSendButton = $("#btn-landlord-chat-send");
 
 function localStore() {
   try {
@@ -57,6 +65,7 @@ function renderSignedIn() {
   const signedIn = Boolean(landlord);
   signInSection.hidden = signedIn;
   listingSection.hidden = !signedIn;
+  chatSection.hidden = !signedIn;
   signOutButton.hidden = !signedIn;
   nameLabel.hidden = !signedIn;
   nameLabel.textContent = signedIn ? t("landlord.signedInAs", { name: landlord.name }) : "";
@@ -160,6 +169,7 @@ function signOut() {
   landlord = null;
   listing = null;
   fillForm(listingFormValues(null));
+  chatLog.replaceChildren();
   showFieldProblems();
   showError(listingError, null);
   renderSignedIn();
@@ -217,6 +227,60 @@ listingForm.addEventListener("submit", async (event) => {
   } finally {
     saveButton.disabled = false;
     saveButton.textContent = t("landlord.save");
+  }
+});
+
+// --- chat ----------------------------------------------------------------------------------------
+
+function appendChatMessage(role, text) {
+  const item = el("li", `landlord-chat-msg is-${role}`);
+  item.setAttribute("aria-label", t(role === "user" ? "landlord.chat.you" : "landlord.chat.assistant"));
+  if (text !== undefined) item.textContent = text;
+  chatLog.append(item);
+  item.scrollIntoView({ block: "nearest" });
+  return item;
+}
+
+// Draws the answer as it streams: markdown (escaped first by renderMarkdown), or the turn's error.
+function drawTurn(item, state) {
+  item.classList.toggle("is-pending", state.phase === "streaming" && !state.answer);
+  item.classList.toggle("is-error", state.phase === "error");
+  if (state.phase === "error" && !state.answer) item.textContent = state.error;
+  else if (state.answer) item.innerHTML = renderMarkdown(state.answer);
+}
+
+chatForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const message = chatInput.value.trim();
+  if (!message || !landlord) return;
+  chatInput.value = "";
+  appendChatMessage("user", message);
+  const answer = appendChatMessage("assistant", t("landlord.chat.thinking"));
+  answer.classList.add("is-pending");
+  chatInput.disabled = true;
+  chatSendButton.disabled = true;
+  try {
+    const state = await runLandlordTurn({
+      fetchImpl: fetch,
+      landlordId: landlord.landlordId,
+      message,
+      onChange: (next) => drawTurn(answer, next),
+    });
+    drawTurn(answer, state);
+    if (state.signedOut) signOut();
+    // The chat changed the Selection criteria or the Shortlist: the dashboard shows the new state.
+    else if (state.changed.criteria || state.changed.shortlist) await loadDashboard();
+  } finally {
+    chatInput.disabled = false;
+    chatSendButton.disabled = false;
+    if (landlord) chatInput.focus();
+  }
+});
+
+chatInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+    event.preventDefault();
+    chatForm.requestSubmit();
   }
 });
 
