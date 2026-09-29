@@ -7,7 +7,7 @@ data. Ask it in German or English, or upload your lease, and it tells you:
   (residential location category);
 - the **Mietspiegel 2026** reference rent for your flat, and whether your rent is
   below, within or above it;
-- whether the **Mietpreisbremse** (rent cap) may apply to your rent (in the chat);
+- whether the **Mietpreisbremse** (rent cap) may apply to your rent;
 - whether the flat is **big enough for the people living in it**
   (§ 7 WoAufG Bln).
 
@@ -25,29 +25,17 @@ npm start
 
 Open <http://localhost:3000>.
 
-This starts the app **without the AI chat**. The form works fully, and the chat
-answers with a simpler rule-based assistant that does not remember the
-conversation. To turn on the AI chat, see
-[Enable the AI chat](#enable-the-ai-chat).
+This starts the app **without the AI chat**: the chat answers with a simpler
+rule-based assistant that does not remember the conversation. To turn on the AI
+chat, see [Enable the AI chat](#enable-the-ai-chat).
 
 ## Using Amt Buddy
 
-There are two pages. Both have a **DE | EN** switch in the header that changes
-the page text.
-
-### The form: <http://localhost:3000/>
-
-Enter an address and the details of the flat (living area, rent, building year,
-rooms, occupants). You get the address check, the Mietspiegel range and the
-occupancy assessment in one result. Uploading a lease fills in the fields Amt
-Buddy can read.
-
-### The chat: <http://localhost:3000/chatbot>
-
 Type a question and press Enter. While it works, small step chips show what Amt
 Buddy is checking. If a detail is missing it asks for it, so a short reply such
-as "60 m²" is enough. It answers in the language you write in. If you reload the
-page, the conversation comes back.
+as "60 m²" is enough. It answers in the language you write in; the **DE | EN**
+switch in the header changes the page text. If you reload the page, the
+conversation comes back.
 
 Try for example:
 
@@ -63,7 +51,7 @@ What does "Wohnlage" mean in the Berlin Mietspiegel?
 
 The buttons under the welcome text send questions like these with one click.
 
-### Checking your lease (Mietvertrag)
+## Checking your lease (Mietvertrag)
 
 Drop the file on the upload card, or attach it with **+** next to the input, and
 send. Amt Buddy shows what it read (address, area, rent, rooms, building year,
@@ -146,6 +134,6 @@ More documentation:
 - [docs/orchestrator.md](docs/orchestrator.md): the LangGraph.js Orchestrator
   behind the AI chat. It covers the chat's HTTP/SSE endpoints, the `send()` event
   contract, how to write Tools, configuration and the LangSmith/PII warning.
-- [docs/api.md](docs/api.md): the HTTP API behind the form (address check,
-  lease reading, rule-based chat), with request and response examples.
+- [docs/api.md](docs/api.md): the plain JSON endpoints (address check, lease
+  reading, rule-based chat), with request and response examples.
 - [CONTEXT.md](CONTEXT.md): the project's vocabulary.

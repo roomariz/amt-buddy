@@ -332,6 +332,23 @@ test("the existing chat and OCR endpoints answer as before", async (t) => {
   assert.deepEqual(ocr.body, { data: await processDocumentOcr({ text }) });
 });
 
+test("the chat is the home page, and /chatbot still opens it", async (t) => {
+  const server = await start({ env: {} });
+  t.after(server.close);
+  const page = async (path) => {
+    const response = await fetch(server.base + path);
+    return { status: response.status, html: await response.text() };
+  };
+
+  const home = await page("/");
+  const chatbot = await page("/chatbot");
+
+  assert.equal(home.status, 200);
+  assert.ok(home.html.includes('src="/chatbot.js"'));
+  assert.equal(chatbot.html, home.html);
+  assert.equal((await page("/app.js")).status, 404);
+});
+
 test("an upload the OCR cannot read is a 422 with the OCR's details, and nothing is stored", async (t) => {
   const server = await start();
   t.after(server.close);

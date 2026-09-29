@@ -48,7 +48,7 @@ function htmlKeys(html) {
   return [...text, ...attrs];
 }
 
-for (const page of ["index.html", "chatbot.html"]) {
+for (const page of ["chatbot.html"]) {
   test(`every i18n key in ${page} exists, and the page has a DE | EN switch`, async () => {
     const html = await readFile(new URL(`../public/${page}`, import.meta.url), "utf8");
     const keys = htmlKeys(html);
