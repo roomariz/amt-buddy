@@ -23,7 +23,7 @@ async function start({ store = createLandlordStore({ path: ":memory:" }), wfs = 
       headers: { "content-type": "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
-    return { status: response.status, body: await response.json() };
+    return { status: response.status, headers: response.headers, body: await response.json() };
   };
   return {
     base,
@@ -427,6 +427,17 @@ test("applicant detail returns 404 for an unknown applicant or landlord", async 
   assert.equal(missing.body.error.code, "applicant_not_found");
   assert.equal(unknownLandlord.status, 404);
   assert.equal(unknownLandlord.body.error.code, "landlord_not_found");
+});
+
+test("applicant detail responses cannot be cached", async (t) => {
+  const server = await start();
+  t.after(server.close);
+  const landlordId = await signIn(server);
+
+  const response = await server.get(`/api/v1/landlord/${landlordId}/applicants/A-001`);
+
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("cache-control"), "no-store");
 });
 
 test("the dashboard has the pool stats and the Recommendations, with names joined in", async (t) => {
