@@ -112,7 +112,7 @@ function renderRentCheck() {
 
   const facts = el("dl", "landlord-facts");
   const address = listing.canonicalAddress;
-  fact(facts, t("landlord.officialAddress"), address ? `${address.street} ${address.houseNumber}, ${address.postalCode} Berlin` : null);
+  fact(facts, t("landlord.officialAddress"), address ? `${address.street} ${address.houseNumber}, ${address.postalCode} ${address.city ?? "Berlin"}` : null);
   fact(facts, t("landlord.residentialLocation"), listing.residentialLocation);
   fact(facts, t("landlord.buildingAgePeriod"), listing.buildingAgePeriod);
   if (listing.buildingYear) fact(facts, t("landlord.buildingYearUsed"), String(listing.buildingYear));

@@ -20,6 +20,8 @@ test("the form's text fields become the Listing request, with German or English 
   );
   assert.equal(listingRequest({ address: "x", livingAreaSqm: "50", rooms: "2", askingRent: "1.200,50", buildingYear: "1955" }).askingRent, 1200.5);
   assert.equal(listingRequest({ address: "x", livingAreaSqm: "50", rooms: "2", askingRent: "700", buildingYear: "1955" }).buildingYear, 1955);
+  assert.equal(listingRequest({ address: "x", livingAreaSqm: "50", rooms: "2", askingRent: "1.200", buildingYear: "" }).askingRent, 1200, "German thousands");
+  assert.equal(listingRequest({ address: "x", livingAreaSqm: "50", rooms: "2", askingRent: "1.234.567", buildingYear: "" }).askingRent, 1234567);
 });
 
 test("a field that is not a number is sent as it is, so the server names it", () => {

@@ -35,7 +35,7 @@ function listingProblems(input) {
     problems.push({ field: "rooms", code: "invalid_value", message: "'rooms' must be a number above 0 and at most 20." });
   }
   if (!isNumberIn(askingRent, 0, 100_000)) {
-    problems.push({ field: "askingRent", code: "invalid_value", message: "'askingRent' must be a monthly net cold rent in EUR above 0." });
+    problems.push({ field: "askingRent", code: "invalid_value", message: "'askingRent' must be a monthly net cold rent in EUR above 0 and at most 100000." });
   }
   const latestYear = new Date().getFullYear() + 5;
   if (buildingYear !== undefined && buildingYear !== null && !(Number.isInteger(buildingYear) && buildingYear >= 1800 && buildingYear <= latestYear)) {
@@ -143,7 +143,8 @@ export async function buildListing(input, { fetchImpl } = {}) {
   ]);
   listing.residentialLocation = location.value?.classification ?? null;
   listing.buildingAgePeriod = buildingAge.value?.predominantConstructionPeriod ?? null;
-  if (location.status === "rejected" || buildingAge.status === "rejected") {
+  // A stated building year replaces the block's period, so only then can its lookup fail unharmed.
+  if (location.status === "rejected" || (buildingAge.status === "rejected" && listing.buildingYear === null)) {
     return { ...listing, note: NOTES.serviceUnavailable };
   }
 

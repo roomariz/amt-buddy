@@ -2,11 +2,13 @@
 
 const FIELDS = ["address", "livingAreaSqm", "rooms", "askingRent", "buildingYear"];
 
-// "52,5" and "1.200,50" (German) or "52.5" (English) → a number; anything else stays the text it
-// was, so the server's validation names the field.
+// "52,5", "1.200" and "1.200,50" (German) or "52.5" (English) → a number; anything else stays the
+// text it was, so the server's validation names the field.
 function parseNumber(text) {
   const trimmed = String(text ?? "").trim();
-  const normalized = trimmed.includes(",") ? trimmed.replaceAll(".", "").replace(",", ".") : trimmed;
+  const germanThousands = /^\d{1,3}(\.\d{3})+$/.test(trimmed);
+  const normalized =
+    trimmed.includes(",") || germanThousands ? trimmed.replaceAll(".", "").replace(",", ".") : trimmed;
   const number = Number(normalized);
   return normalized && /^[\d.]+$/.test(normalized) && Number.isFinite(number) ? number : trimmed;
 }

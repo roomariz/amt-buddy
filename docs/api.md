@@ -258,7 +258,7 @@ Saves the landlord's one Listing (replacing an earlier one) and returns it with 
 ```
 
 - `address`: street, house number and postal code (`Wühlischstr. 30 10245` works too); verified against the official address register.
-- `livingAreaSqm` (0–1000), `rooms` (0–20), `askingRent` (monthly net cold rent in EUR): numbers above 0.
+- `livingAreaSqm` (at most 1000), `rooms` (at most 20), `askingRent` (monthly net cold rent in EUR, at most 100 000): numbers above 0.
 - `buildingYear` (optional, 1800 to five years ahead): replaces the block's predominant construction period in the Mietspiegel.
 
 The Rent check runs `evaluateMietspiegel` with the asking rent as contract rent and `rentedBefore: true` (a re-let, so the Mietpreisbremse applies; the new-build exemption and a previous rent are not considered).

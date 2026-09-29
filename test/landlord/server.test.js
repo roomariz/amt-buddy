@@ -270,3 +270,15 @@ test("the landlord page is served at /landlord", async (t) => {
   assert.match(response.headers.get("content-type"), /^text\/html/);
   assert.ok(html.includes('src="/landlord.js"'));
 });
+
+test("with a stated building year, a failing building-age service does not stop the Rent check", async (t) => {
+  const server = await start({ wfs: { status: { buildingAge: 503 } } });
+  t.after(server.close);
+  const landlordId = await signIn(server);
+
+  const { body } = await server.put(`/api/v1/landlord/${landlordId}/listing`, { ...WUEHLISCH_LISTING, buildingYear: 1905 });
+
+  assert.equal(body.data.buildingAgePeriod, null);
+  assert.deepEqual(body.data.rentCheck.range, { lower: 420, median: 490, upper: 610 });
+  assert.equal(body.data.note, null);
+});
