@@ -28,7 +28,7 @@ const rentCheckBody = $("#rent-check-body");
 const nameLabel = $("#landlord-name");
 const signOutButton = $("#btn-sign-out");
 const chatSection = $("#landlord-chat");
-const chatLog = $("#landlord-chat-log");
+const chatMessages = $("#landlord-chat-messages");
 const chatForm = $("#landlord-chat-form");
 const chatInput = $("#landlord-chat-input");
 const chatSendButton = $("#btn-landlord-chat-send");
@@ -169,7 +169,7 @@ function signOut() {
   landlord = null;
   listing = null;
   fillForm(listingFormValues(null));
-  chatLog.replaceChildren();
+  chatMessages.replaceChildren();
   showFieldProblems();
   showError(listingError, null);
   renderSignedIn();
@@ -234,9 +234,9 @@ listingForm.addEventListener("submit", async (event) => {
 
 function appendChatMessage(role, text) {
   const item = el("li", `landlord-chat-msg is-${role}`);
-  item.setAttribute("aria-label", t(role === "user" ? "landlord.chat.you" : "landlord.chat.assistant"));
+  item.setAttribute("aria-label", t(role === "user" ? "landlord.chat.you" : "landlord.chat.amtBuddy"));
   if (text !== undefined) item.textContent = text;
-  chatLog.append(item);
+  chatMessages.append(item);
   item.scrollIntoView({ block: "nearest" });
   return item;
 }
@@ -255,7 +255,7 @@ chatForm.addEventListener("submit", async (event) => {
   if (!message || !landlord) return;
   chatInput.value = "";
   appendChatMessage("user", message);
-  const answer = appendChatMessage("assistant", t("landlord.chat.thinking"));
+  const answer = appendChatMessage("answer", t("landlord.chat.thinking"));
   answer.classList.add("is-pending");
   chatInput.disabled = true;
   chatSendButton.disabled = true;
@@ -268,8 +268,8 @@ chatForm.addEventListener("submit", async (event) => {
     });
     drawTurn(answer, state);
     if (state.signedOut) signOut();
-    // The chat changed the Selection criteria or the Shortlist: the dashboard shows the new state.
-    else if (state.changed.criteria || state.changed.shortlist) await loadDashboard();
+    // After every turn the dashboard is fetched again, so it shows what the chat changed.
+    else if (state.phase === "done") await loadDashboard();
   } finally {
     chatInput.disabled = false;
     chatSendButton.disabled = false;

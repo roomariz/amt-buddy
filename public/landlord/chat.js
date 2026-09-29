@@ -35,8 +35,8 @@ export function endLandlordTurn(state) {
 
 // Runs one chat turn for `message`, calling onChange(next, previous) on every change. Resolves with
 // the final state, always in phase "done" or "error"; `signedOut` is true when the server does not
-// know the landlord. After a turn with `changed` criteria or shortlist, the page reloads the dashboard.
-export async function runLandlordTurn({ fetchImpl, landlordId, message, signal, onChange = () => {} }) {
+// know the landlord; `changed` says whether the turn changed the Selection criteria or the Shortlist.
+export async function runLandlordTurn({ fetchImpl, landlordId, message, onChange = () => {} }) {
   let state = initialLandlordTurn();
   const commit = (next) => {
     if (next === state) return;
@@ -54,7 +54,6 @@ export async function runLandlordTurn({ fetchImpl, landlordId, message, signal, 
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ message }),
-      signal,
     });
   } catch {
     commit(endLandlordTurn(state));

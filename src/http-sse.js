@@ -1,7 +1,8 @@
 // Server-Sent Events for the chat endpoints (the tenant and the landlord chat share them).
 
 const SSE_HEARTBEAT_MS = 15_000;
-const CHAT_FAILED = "Amt-Buddy could not answer this message.";
+// What a turn that failed unexpectedly tells the client.
+export const CHAT_FAILED = "Amt-Buddy could not answer this message.";
 
 // Writes one turn's events as Server-Sent Events: `event: <type>` and `data: <the event as JSON>`.
 // Stops, and aborts the run (`abort`, an AbortController), when the client disconnects.

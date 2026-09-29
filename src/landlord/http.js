@@ -40,7 +40,8 @@ function messageProblem(input) {
 
 // Without a model, the chat's one answer, as the same events the Landlord Orchestrator yields.
 async function* notConfiguredTurn(message) {
-  yield { type: "token", text: landlordReply("notConfigured", detectLanguage(message)) };
+  // German unless the message is clearly English, like the Landlord Orchestrator.
+  yield { type: "token", text: landlordReply("notConfigured", detectLanguage(message) ?? "de") };
   yield { type: "done" };
 }
 

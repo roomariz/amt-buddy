@@ -1366,19 +1366,19 @@ footer a { color: inherit; }
 }
 
 /* Landlord chat panel */
-.landlord-chat-log { margin: 0 0 12px; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; }
+.landlord-chat-messages { margin: 0 0 12px; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; }
 
-.landlord-chat-log:empty { display: none; }
+.landlord-chat-messages:empty { display: none; }
 
 .landlord-chat-msg { max-width: 85%; padding: 10px 14px; border-radius: 14px; line-height: 1.45; overflow-wrap: anywhere; }
 
 .landlord-chat-msg.is-user { align-self: flex-end; background: #f0f0f0; white-space: pre-wrap; }
 
-.landlord-chat-msg.is-assistant { align-self: flex-start; background: #f7f7f7; border: 1px solid #ececec; }
+.landlord-chat-msg.is-answer { align-self: flex-start; background: #f7f7f7; border: 1px solid #ececec; }
 
-.landlord-chat-msg.is-assistant p { margin: 0 0 8px; }
+.landlord-chat-msg.is-answer p { margin: 0 0 8px; }
 
-.landlord-chat-msg.is-assistant p:last-child { margin-bottom: 0; }
+.landlord-chat-msg.is-answer p:last-child { margin-bottom: 0; }
 
 .landlord-chat-msg.is-pending { color: #5d5d5d; font-style: italic; }
 

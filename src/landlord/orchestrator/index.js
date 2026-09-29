@@ -2,7 +2,7 @@ import { HumanMessage } from "@langchain/core/messages";
 import { MemorySaver } from "@langchain/langgraph";
 
 import { createEventTranslator } from "../../orchestrator/events.js";
-import { defaultAuditLog } from "../../orchestrator/tool-wrapper.js";
+import { DEFAULT_TOOL_TIMEOUT_MS, defaultAuditLog } from "../../orchestrator/tool-wrapper.js";
 import { buildLandlordGraph } from "./graph.js";
 import { assertLandlordToolsMatchContracts } from "./tool-contracts.js";
 
@@ -10,7 +10,6 @@ export { LANDLORD_TOOL_CONTRACTS, LANDLORD_TOOL_NAMES } from "./tool-contracts.j
 export { createLandlordStubTools } from "./stub-tools.js";
 
 const RECURSION_LIMIT = 25;
-const DEFAULT_TOOL_TIMEOUT_MS = 10_000;
 
 // The Landlord Orchestrator: a LangGraph graph of its own, separate from the tenant Orchestrator.
 // - model: a chat model supporting bindTools.

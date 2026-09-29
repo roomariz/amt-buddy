@@ -13,7 +13,7 @@ import { createBerlinTools } from "./orchestrator/berlin-tools.js";
 import { createOrchestrator } from "./orchestrator/index.js";
 import { createOpenAIModels } from "./orchestrator/openai.js";
 import { readJson as readJsonBody, sendError, sendJson } from "./http-json.js";
-import { streamEvents } from "./http-sse.js";
+import { CHAT_FAILED, streamEvents } from "./http-sse.js";
 import { createLandlordApi } from "./landlord/http.js";
 import { createLandlordOrchestrator, createLandlordStubTools } from "./landlord/orchestrator/index.js";
 import { createLandlordStore, landlordDatabasePath } from "./landlord/store.js";
@@ -153,7 +153,6 @@ function defaultLandlordChat({ env, getContext }) {
   });
 }
 
-const CHAT_FAILED = "Amt-Buddy could not answer this message.";
 const MAX_ID_LENGTH = 200;
 const MAX_MESSAGE_LENGTH = 4_000;
 const THREAD_PATH = "/api/v1/orchestrator/threads/";

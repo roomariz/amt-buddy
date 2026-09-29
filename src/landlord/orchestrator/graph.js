@@ -80,6 +80,8 @@ export function buildLandlordGraph({ model, tools, getContext, log, toolTimeoutM
   }
 
   // Runs one Tool call → { message, evidence }. Errors go back to the model as the result.
+  // Not the tenant's wrapTool: that one cannot pass the landlord in the call's config, and the
+  // landlord Tools are local (no upstream service), so there is no retry.
   async function runTool(toolCall, landlordId) {
     const baseTool = tools.get(toolCall.name);
     const args = toolCall.args ?? {};
