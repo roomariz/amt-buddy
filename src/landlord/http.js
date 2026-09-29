@@ -151,6 +151,7 @@ export function createLandlordApi({ getStore, getApplicantPool = () => EMPTY_POO
   // GET /api/v1/landlord/:landlordId/applicants/:applicantId → profile and its current score,
   // with contact details joined only for the UI. Unknown applicant → 404.
   async function applicantDetail(response, landlordId, applicantId) {
+    response.setHeader("cache-control", "no-store");
     const pool = await getApplicantPool();
     const result = getApplicantProfile({
       applicants: pool.applicants,

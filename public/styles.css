@@ -1430,8 +1430,8 @@ footer a { color: inherit; }
 .excluded-list li { padding: 8px 12px; border-radius: 10px; background: #f7f7f7; }
 .excluded-name { font-weight: 600; margin-right: 8px; }
 #ranking-body[hidden], #excluded[hidden], #ranking-empty[hidden], #ranking-hint[hidden], #ranking-pool-errors[hidden] { display: none; }
-.applicant-open { border: 0; padding: 0; background: none; color: #235d3b; text-align: left; text-decoration: underline; cursor: pointer; font: inherit; font-weight: 600; }
-.applicant-open:hover { color: #173f29; }
+.applicant-open { width: auto; margin-top: 0; border: 0; padding: 0; background: transparent; color: #235d3b; text-align: left; text-decoration: underline; cursor: pointer; font: inherit; font-weight: 600; }
+.applicant-open:hover { background: transparent; color: #173f29; }
 .applicant-open:focus-visible, .applicant-detail-close:focus-visible { outline: 2px solid #235d3b; outline-offset: 3px; }
 .applicant-detail-head { display: flex; justify-content: space-between; align-items: start; gap: 16px; }
 .applicant-detail-close { border: 1px solid #c62828; border-radius: 8px; padding: 6px 10px; background: #c62828; color: #fff; cursor: pointer; font: inherit; }

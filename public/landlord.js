@@ -149,6 +149,10 @@ function closeApplicantDetail() {
   applicantDetailError = null;
   detailOpener = null;
   applicantDetailSection.hidden = true;
+  applicantDetailBody.replaceChildren();
+  applicantDetailTitle.textContent = "";
+  applicantDetailStatus.textContent = "";
+  applicantDetailStatus.hidden = true;
 }
 
 function renderApplicantDetail() {
