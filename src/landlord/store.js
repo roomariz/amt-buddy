@@ -5,8 +5,8 @@ import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 import { DEFAULT_CRITERIA } from "./scorer.js";
 
-// The landlord's state in SQLite (Node's built-in node:sqlite): landlords, listings, criteria,
-// shortlist and preference_notes (the free-text Landlord preferences).
+// The landlord's state in SQLite (Node's built-in node:sqlite): landlords, listings, flat_details,
+// criteria, shortlist and preference_notes (the free-text Landlord preferences).
 const SCHEMA = `
   CREATE TABLE IF NOT EXISTS landlords (
     id TEXT PRIMARY KEY,
@@ -17,6 +17,11 @@ const SCHEMA = `
   CREATE TABLE IF NOT EXISTS listings (
     landlord_id TEXT PRIMARY KEY REFERENCES landlords(id),
     listing TEXT NOT NULL,
+    updated TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS flat_details (
+    landlord_id TEXT PRIMARY KEY REFERENCES landlords(id),
+    details TEXT NOT NULL,
     updated TEXT NOT NULL
   );
   CREATE TABLE IF NOT EXISTS criteria (
@@ -51,14 +56,24 @@ export const normalizeLandlordName = (name) => String(name ?? "").trim().replace
 // Two names are the same landlord when they match trimmed and case-insensitively.
 const nameKey = (name) => normalizeLandlordName(name).toLocaleLowerCase("de-DE");
 
+// The flat details: what the landlord said about the flat so far, each null until known. A Listing
+// needs all but the building year.
+const FLAT_FIELDS = ["address", "livingAreaSqm", "rooms", "askingRent", "buildingYear"];
+export const flatDetailsOf = (source) => Object.fromEntries(FLAT_FIELDS.map((field) => [field, source?.[field] ?? null]));
+
 const toLandlord = (row) => (row ? { landlordId: row.id, name: row.name } : null);
 
 // createLandlordStore({ path }) → the landlord repository. `path` is the SQLite file (its
 // directory is created), or ":memory:" for a database that lives as long as the store.
 // - signIn(name) → { landlordId, name }: the landlord with this name, created on first sign-in.
 // - getLandlord(landlordId) → { landlordId, name }, or null when there is none.
-// - saveListing(landlordId, listing) → listing: replaces the landlord's one Listing.
+// - saveListing(landlordId, listing) → listing: replaces the landlord's one Listing, and the flat
+//   details with the Listing's, so both pages agree.
 // - getListing(landlordId) → the Listing, or null when none was saved.
+// - saveFlatDetails(landlordId, details) → details: replaces the flat details (see flatDetailsOf).
+// - getFlatDetails(landlordId) → { address, livingAreaSqm, rooms, askingRent, buildingYear }, each
+//   null until known: the saved flat details, else those of the saved Listing (one saved before
+//   the flat details existed), else all null.
 // - getCriteria(landlordId): saved Selection criteria, or a fresh copy of the defaults.
 // - saveCriteria(landlordId, criteria): stores validated Selection criteria.
 // - saveShortlistEntry(landlordId, { applicantId, status, note }): adds the entry or replaces its
@@ -83,6 +98,11 @@ export function createLandlordStore({ path = ":memory:" } = {}) {
      ON CONFLICT (landlord_id) DO UPDATE SET listing = excluded.listing, updated = excluded.updated`,
   );
   const selectListing = db.prepare("SELECT listing FROM listings WHERE landlord_id = ?");
+  const upsertFlatDetails = db.prepare(
+    `INSERT INTO flat_details (landlord_id, details, updated) VALUES (?, ?, ?)
+     ON CONFLICT (landlord_id) DO UPDATE SET details = excluded.details, updated = excluded.updated`,
+  );
+  const selectFlatDetails = db.prepare("SELECT details FROM flat_details WHERE landlord_id = ?");
   const selectCriteria = db.prepare("SELECT criteria FROM criteria WHERE landlord_id = ?");
   const upsertCriteria = db.prepare(
     `INSERT INTO criteria (landlord_id, criteria) VALUES (?, ?)
@@ -116,12 +136,23 @@ export function createLandlordStore({ path = ":memory:" } = {}) {
       return toLandlord(selectById.get(landlordId));
     },
     saveListing(landlordId, listing) {
-      upsertListing.run(landlordId, JSON.stringify(listing), new Date().toISOString());
+      const now = new Date().toISOString();
+      upsertListing.run(landlordId, JSON.stringify(listing), now);
+      upsertFlatDetails.run(landlordId, JSON.stringify(flatDetailsOf(listing)), now);
       return listing;
     },
     getListing(landlordId) {
       const row = selectListing.get(landlordId);
       return row ? JSON.parse(row.listing) : null;
+    },
+    saveFlatDetails(landlordId, details) {
+      upsertFlatDetails.run(landlordId, JSON.stringify(flatDetailsOf(details)), new Date().toISOString());
+      return details;
+    },
+    getFlatDetails(landlordId) {
+      const row = selectFlatDetails.get(landlordId);
+      const listing = row ? null : selectListing.get(landlordId);
+      return flatDetailsOf(row ? JSON.parse(row.details) : listing && JSON.parse(listing.listing));
     },
     saveShortlistEntry(landlordId, { applicantId, status, note }) {
       const now = new Date().toISOString();

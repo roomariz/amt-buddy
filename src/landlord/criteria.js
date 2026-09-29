@@ -15,6 +15,11 @@ const requirementsSchema = z.strictObject({
 });
 const updateSchema = z.strictObject({ weights: weightsSchema.optional(), requirements: requirementsSchema.optional() });
 
+const CRITERIA = Object.keys(DEFAULT_CRITERIA.weights);
+const changesSchema = z
+  .array(z.strictObject({ criterion: z.enum(CRITERIA), factor: z.number().nonnegative().optional(), share: z.number().min(0).max(100).optional() }))
+  .min(1);
+
 export class CriteriaInputError extends Error {
   constructor(details) {
     super("Check the selection criteria.");
@@ -22,7 +27,8 @@ export class CriteriaInputError extends Error {
   }
 }
 
-// Shared by the HTTP endpoint and, later, the update_selection_criteria chat Tool.
+// Shared by the HTTP endpoint and the update_selection_criteria chat Tool (whose contract has no
+// weights: the chat changes weights with adjustSelectionCriteria, under its limits).
 // Missing fields keep their saved values. Weights are relative, saved as percentages.
 // Validation completes before the store is changed.
 export function updateSelectionCriteria({ store, landlordId, input }) {
@@ -51,4 +57,93 @@ export function updateSelectionCriteria({ store, landlordId, input }) {
   };
   store.saveCriteria(landlordId, criteria);
   return { previous, criteria };
+}
+
+// The largest share one criterion may get through adjustSelectionCriteria.
+export const MAX_SHARE = 50;
+
+// Tolerance for sums of shares that went through floating-point arithmetic.
+const EPSILON = 1e-9;
+
+const sum = (values) => values.reduce((total, value) => total + value, 0);
+// A share to 1e-9 %, so that one worked out as 27.75 on paper is saved as 27.75, not
+// 27.749999999999996, and rounds for the chat as the landlord would round it.
+const tidy = (share) => Math.round(share * 1e9) / 1e9;
+const shown = (share) => `${Math.round(share * 10) / 10} %`;
+
+const refusal = (field, code, message) => new CriteriaInputError([{ field, code, message }]);
+
+function parseChanges(changes) {
+  const parsed = changesSchema.safeParse(changes);
+  if (!parsed.success) {
+    throw new CriteriaInputError(parsed.error.issues.map((issue) => ({
+      field: ["changes", ...issue.path].join("."), code: issue.code, message: issue.message,
+    })));
+  }
+  const problems = [];
+  const seen = new Set();
+  parsed.data.forEach(({ criterion, factor, share }, index) => {
+    if ((factor === undefined) === (share === undefined)) {
+      problems.push({ field: `changes.${index}`, code: "factor_or_share", message: `Give '${criterion}' either a factor or a share, not both or neither.` });
+    }
+    if (seen.has(criterion)) {
+      problems.push({ field: `changes.${index}.criterion`, code: "duplicate_criterion", message: `'${criterion}' is named more than once.` });
+    }
+    seen.add(criterion);
+  });
+  if (problems.length > 0) throw new CriteriaInputError(problems);
+  return parsed.data;
+}
+
+// adjustSelectionCriteria({ store, landlordId, changes }) → { previous, criteria, applied }: the
+// relative weight change of the chat ("give SCHUFA 30 % more importance"), computed in code, never
+// by the model (ADR 0004).
+// - changes: [{ criterion, factor } | { criterion, share }]. A named criterion's new share is its
+//   saved share × factor, or the share given, in % of the saved criteria. The criteria not named
+//   keep their proportions and are scaled to fill the rest to 100 %.
+// - applied: [{ criterion, from, requested, to, capped }], unrounded.
+// Limits, all checked before the store changes (CriteriaInputError otherwise):
+// - a share above MAX_SHARE (50 %) is capped at it and reported as capped;
+// - an unnamed share may not be pushed above MAX_SHARE (one already above it may shrink towards it:
+//   the classic page's sliders have no cap);
+// - the named shares may not add up to more than 100 %, and when every unnamed criterion is at 0
+//   they must reach 100 % (the landlord names what fills the rest);
+// - at least two criteria stay above 0 (one alone would be the whole Match score).
+export function adjustSelectionCriteria({ store, landlordId, changes }) {
+  const parsed = parseChanges(changes);
+  const previous = store.getCriteria(landlordId);
+  const savedTotal = sum(CRITERIA.map((criterion) => previous.weights[criterion]));
+  const saved = Object.fromEntries(CRITERIA.map((criterion) => [criterion, (previous.weights[criterion] / savedTotal) * 100]));
+
+  const applied = parsed.map(({ criterion, factor, share }) => {
+    const from = tidy(saved[criterion]);
+    const requested = tidy(share ?? from * factor);
+    return { criterion, from, requested, to: Math.min(requested, MAX_SHARE), capped: requested > MAX_SHARE };
+  });
+  const named = new Map(applied.map(({ criterion, to }) => [criterion, to]));
+  const unnamed = CRITERIA.filter((criterion) => !named.has(criterion));
+  const left = 100 - sum([...named.values()]);
+  const rest = sum(unnamed.map((criterion) => saved[criterion]));
+  if (left < -EPSILON) {
+    throw refusal("changes", "over_total", `The shares named add up to ${shown(100 - left)}, more than 100 %.`);
+  }
+  if (rest === 0 && left > EPSILON) {
+    throw refusal("changes", "rest_unfilled", `Every criterion not named is at 0 %, so nothing can fill the remaining ${shown(left)}: name the criteria that should fill it.`);
+  }
+
+  const weights = Object.fromEntries(CRITERIA.map((criterion) => [
+    criterion,
+    tidy(named.has(criterion) ? named.get(criterion) : rest === 0 ? 0 : Math.max(0, (saved[criterion] * left) / rest)),
+  ]));
+  const pushedAbove = unnamed.find((criterion) => weights[criterion] > MAX_SHARE + EPSILON && weights[criterion] > saved[criterion] + EPSILON);
+  if (pushedAbove) {
+    throw refusal("changes", "above_limit", `'${pushedAbove}' would rise to ${shown(weights[pushedAbove])}, above the ${MAX_SHARE} % limit: name it in the change as well.`);
+  }
+  if (CRITERIA.filter((criterion) => weights[criterion] > 0).length < 2) {
+    throw refusal("changes", "too_few_criteria", "At least two criteria must stay above 0 %: one criterion alone would be the whole Match score.");
+  }
+
+  const criteria = { weights, requirements: previous.requirements };
+  store.saveCriteria(landlordId, criteria);
+  return { previous, criteria, applied };
 }

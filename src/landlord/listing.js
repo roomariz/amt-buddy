@@ -64,6 +64,14 @@ function parseListingAddress(address) {
   }
 }
 
+// Checks only the given fields of a Listing (the chat's flat details come a few at a time), the
+// way buildListing does and with its messages. Throws ListingInputError.
+export function checkListingFields(input, fields) {
+  const problems = listingProblems(input).filter(({ field }) => fields.includes(field));
+  if (problems.length > 0) throw new ListingInputError(problems);
+  if (fields.includes("address")) parseListingAddress(input.address);
+}
+
 const NOTES = {
   addressNotVerified: {
     code: "address_not_verified",
