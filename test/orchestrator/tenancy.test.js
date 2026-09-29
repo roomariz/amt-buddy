@@ -226,12 +226,12 @@ test("'rented before' takes booleans and yes/no in English and German; other tex
   assert.deepEqual(factsFromConfirm({ rentedBefore: "ja" }), [{ fact: "rentedBefore", value: "ja", source: "user" }]);
 });
 
-test("the previous rent is numeric and accepts German decimals; unparsable values are ignored", () => {
+test("the previous rent is a positive amount and accepts German decimals; anything else is ignored", () => {
   const parse = (value) => mergeTenancy({}, [{ fact: "previousRent", value, source: "user" }]).previousRent?.value;
 
   assert.equal(parse("950,50"), 950.5);
   assert.equal(parse(950), 950);
-  assert.equal(parse("about nine hundred"), undefined);
+  for (const other of ["about nine hundred", 0, "-50"]) assert.equal(parse(other), undefined, String(other));
   assert.deepEqual(factsFromConfirm({ previousRent: "950,50" }), [{ fact: "previousRent", value: "950,50", source: "user" }]);
 });
 

@@ -36,6 +36,8 @@ export const OFFICIAL_ONLY_FACTS = ["coordinates", "residentialLocation"];
 export const TENANCY_FACTS = [...STATED_FACTS, ...OFFICIAL_ONLY_FACTS];
 
 const NUMERIC_FACTS = new Set(["livingAreaSqm", "contractRent", "previousRent", "rooms", "occupants", "childrenUpToSix"]);
+// A previous rent is an amount paid, so zero or less is not a previous rent.
+const POSITIVE_FACTS = new Set(["previousRent"]);
 const SOURCE_RANK = { official: 1, lease: 2, user: 3 };
 
 // Lease facts below this confidence are Unconfirmed facts until the user confirms them.
@@ -50,8 +52,9 @@ export function isUnconfirmed(fact) {
 // anything unparsable yields undefined and the update is ignored.
 function coerce(name, value) {
   if (NUMERIC_FACTS.has(name)) {
-    if (typeof value === "number") return Number.isFinite(value) ? value : undefined;
-    return parseNumber(String(value).trim()) ?? undefined;
+    const number = typeof value === "number" ? value : parseNumber(String(value).trim());
+    if (!Number.isFinite(number)) return undefined;
+    return POSITIVE_FACTS.has(name) && number <= 0 ? undefined : number;
   }
   if (name === "buildingYear") return coerceBuildingYear(value);
   if (BOOLEAN_FACTS.has(name)) {
