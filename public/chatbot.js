@@ -1,802 +1,470 @@
 /**
- * Amt-Buddy Guided Chatbot (ChatGPT Style Layout)
- * Provides an intuitive, structured rule-based conversational experience
- * for Berlin address checking, Mietspiegel 2026, occupancy compliance, and OCR.
+ * Amt-Buddy /chatbot page: a free-text chat with the Orchestrator over
+ * POST /api/v1/orchestrator/chat (Server-Sent Events). In rule_based mode the same endpoint
+ * answers with the rule-based chatbot, so there is one code path.
+ *
+ * The logic lives in ./chat/ (SSE parsing, the turn view model, Markdown, the review card,
+ * the thread id); this file only wires it to the DOM. Model output reaches the page only
+ * through renderMarkdown, which escapes everything first. Nothing here logs messages or uploads.
  */
 
-const chatStream = document.querySelector("#chat-stream");
-const gptHero = document.querySelector("#gpt-hero");
-const gptScrollContainer = document.querySelector("#gpt-scroll-container");
-const quickOptions = document.querySelector("#quick-options");
-const chatInputForm = document.querySelector("#chat-input-form");
-const chatUserInput = document.querySelector("#chat-user-input");
-const chatFileInput = document.querySelector("#chat-file-input");
-const chatUploadBtn = document.querySelector("#chat-upload-btn");
-const btnNewChat = document.querySelector("#btn-new-chat");
-const sidebarToggleBtn = document.querySelector("#sidebar-toggle-btn");
-const gptSidebar = document.querySelector("#gpt-sidebar");
-const heroUploadCard = document.querySelector("#hero-upload-card");
-const btnHeroSelectFile = document.querySelector("#btn-hero-select-file");
-const attachmentPreview = document.querySelector("#attachment-preview");
-const chipFileName = document.querySelector("#chip-file-name");
-const chipFileRemove = document.querySelector("#chip-file-remove");
+import { fetchChatMode, MODE_LABEL, runTurn, uploadLease, UPLOAD_TEXT } from "./chat/api.js";
+import { onLanguageChange, startI18n, t } from "./i18n.js";
+import { renderMarkdown } from "./chat/markdown.js";
+import { confirmPayload, inputModeFor } from "./chat/tenancy.js";
+import { currentThreadId, startNewThread } from "./chat/thread.js";
+import { announcements } from "./chat/turn.js";
 
+const $ = (selector) => document.querySelector(selector);
+
+const chatStream = $("#chat-stream");
+const gptHero = $("#gpt-hero");
+const gptScrollContainer = $("#gpt-scroll-container");
+const chatInputForm = $("#chat-input-form");
+const chatUserInput = $("#chat-user-input");
+const chatFileInput = $("#chat-file-input");
+const chatUploadBtn = $("#chat-upload-btn");
+const chatSendBtn = $("#chat-send-btn");
+const btnNewChat = $("#btn-new-chat");
+const sidebarToggleBtn = $("#sidebar-toggle-btn");
+const gptSidebar = $("#gpt-sidebar");
+const heroUploadCard = $("#hero-upload-card");
+const btnHeroSelectFile = $("#btn-hero-select-file");
+const attachmentPreview = $("#attachment-preview");
+const chipFileName = $("#chip-file-name");
+const chipFileRemove = $("#chip-file-remove");
+const modeNote = $("#mode-note");
+const modeLabel = $("#chat-mode-label");
+const liveRegion = $("#chat-live");
+
+const MAX_FILE_BYTES = 15 * 1024 * 1024; // the upload endpoint's limit
+// Matches the stylesheet's breakpoint, where the sidebar lies over the page instead of beside it.
+const narrowScreen = window.matchMedia("(max-width: 768px)");
+
+function localStore() {
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+const newId = () =>
+  globalThis.crypto?.randomUUID?.() ?? `t-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+
+let threadId = currentThreadId(localStore(), newId);
 let stagedFile = null;
+let busy = false;
+let activeTurn = null; // AbortController of the running turn
+let openReviewCard = null; // the latest review card, until it is sent or a newer turn starts
+let chatMode = null; // "orchestrator", "rule_based" or null (unknown)
 
-// State machine states
-const STATES = {
-  HERO: "HERO",
-  MAIN_MENU: "MAIN_MENU",
-  ADDRESS_INPUT: "ADDRESS_INPUT",
-  MIETSPIEGEL_AREA: "MIETSPIEGEL_AREA",
-  MIETSPIEGEL_LOCATION: "MIETSPIEGEL_LOCATION",
-  MIETSPIEGEL_YEAR: "MIETSPIEGEL_YEAR",
-  MIETSPIEGEL_RENT: "MIETSPIEGEL_RENT",
-  OCCUPANCY_AREA: "OCCUPANCY_AREA",
-  OCCUPANCY_ROOMS: "OCCUPANCY_ROOMS",
-  OCCUPANCY_PERSONS: "OCCUPANCY_PERSONS",
-  OCCUPANCY_CHILDREN: "OCCUPANCY_CHILDREN",
-  OCR_INPUT: "OCR_INPUT",
-};
+// --- small DOM helpers -------------------------------------------------------------------------
 
-let currentState = STATES.HERO;
-let sessionData = {};
+function setSidebarOpen(open) {
+  gptSidebar?.classList.toggle("collapsed", !open);
+  sidebarToggleBtn?.setAttribute("aria-expanded", String(open));
+}
+
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+const fileSizeLabel = (file) => `${Math.max(1, Math.round(file.size / 1024))} KB`;
+
+function scrollToBottom() {
+  if (gptScrollContainer) gptScrollContainer.scrollTop = gptScrollContainer.scrollHeight;
+}
+
+function showChatView() {
+  if (gptHero) gptHero.hidden = true;
+}
+
+function announce(lines) {
+  if (!liveRegion || lines.length === 0) return;
+  for (const line of lines) liveRegion.append(el("p", "", line));
+  // Keep the region short: old lines have been read already.
+  while (liveRegion.childElementCount > 6) liveRegion.firstElementChild.remove();
+}
+
+function resizeInput() {
+  chatUserInput.style.height = "auto";
+  chatUserInput.style.height = `${Math.min(chatUserInput.scrollHeight, 160)}px`;
+  chatUserInput.style.overflowY = chatUserInput.scrollHeight > 160 ? "auto" : "hidden";
+}
+
+function setBusy(value) {
+  busy = value;
+  chatStream.setAttribute("aria-busy", String(value));
+  for (const control of [chatUserInput, chatSendBtn, chatUploadBtn, btnHeroSelectFile]) {
+    if (control) control.disabled = value;
+  }
+  for (const button of document.querySelectorAll(".hero-suggestions .bot-option-btn")) button.disabled = value;
+}
 
 function setStagedFile(file) {
   stagedFile = file;
   if (!file) {
-    if (attachmentPreview) attachmentPreview.hidden = true;
-    if (chatFileInput) chatFileInput.value = "";
+    attachmentPreview.hidden = true;
+    chatFileInput.value = "";
     return;
   }
-  if (chipFileName) {
-    const sizeKb = Math.round(file.size / 1024);
-    chipFileName.textContent = `${file.name} (${sizeKb} KB)`;
-  }
-  if (attachmentPreview) {
-    attachmentPreview.hidden = false;
-  }
-  if (chatUserInput) {
-    chatUserInput.focus();
-  }
+  chipFileName.textContent = `${file.name} (${fileSizeLabel(file)})`;
+  attachmentPreview.hidden = false;
+  chatUserInput.focus();
 }
 
-function escapeHtml(str) {
-  return String(str ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-}
-
-function showChatView() {
-  if (gptHero) gptHero.style.display = "none";
-}
-
-function scrollToBottom() {
-  if (gptScrollContainer) {
-    gptScrollContainer.scrollTop = gptScrollContainer.scrollHeight;
-  }
-}
-
-function appendBotMessage(html) {
-  showChatView();
-  const row = document.createElement("div");
-  row.className = "chat-msg-row bot-row";
-  row.innerHTML = `
-    <div class="bot-avatar" title="Amt-Buddy">🏛️</div>
-    <div class="bot-bubble">
-      <div class="bot-header">
-        <span class="bot-name">Amt-Buddy</span>
-        <span class="bot-tag">Offizielle Prüfung · Berlin Open Data</span>
-      </div>
-      <div class="bot-content">${html}</div>
-    </div>
-  `;
-  chatStream.appendChild(row);
-  scrollToBottom();
-}
+// --- messages ----------------------------------------------------------------------------------
 
 function appendUserMessage(text, file = null) {
   showChatView();
-  const row = document.createElement("div");
-  row.className = "chat-msg-row user-row";
-
-  let fileHtml = "";
+  const row = el("div", "chat-msg-row user-row");
+  const bubble = el("div", "user-bubble");
   if (file) {
-    const sizeKb = Math.round(file.size / 1024);
-    fileHtml = `
-      <div class="user-file-chip">
-        <span class="chip-icon">📄</span>
-        <span class="chip-name">${escapeHtml(file.name)}</span>
-        <span class="chip-size">(${sizeKb} KB)</span>
-      </div>
-    `;
+    const chip = el("div", "user-file-chip");
+    chip.append(
+      el("span", "chip-icon", "📄"),
+      el("span", "chip-name", file.name),
+      el("span", "chip-size", `(${fileSizeLabel(file)})`),
+    );
+    bubble.append(chip);
   }
-
-  const textHtml = text ? `<div class="user-msg-text">${escapeHtml(text)}</div>` : "";
-
-  row.innerHTML = `
-    <div class="user-bubble">
-      ${fileHtml}
-      ${textHtml}
-    </div>
-  `;
-  chatStream.appendChild(row);
+  if (text) bubble.append(el("div", "user-msg-text", text));
+  row.append(bubble);
+  chatStream.append(row);
   scrollToBottom();
 }
 
-function setActionButtons(options = []) {
-  if (quickOptions) {
-    quickOptions.innerHTML = "";
-    quickOptions.hidden = true;
+// One Amt-Buddy reply: step chips, the answer, an error line and (maybe) the review card.
+function appendBotTurn() {
+  showChatView();
+  const row = el("div", "chat-msg-row bot-row");
+  const avatar = el("div", "bot-avatar", "🏛️");
+  avatar.setAttribute("aria-hidden", "true");
+  const bubble = el("div", "bot-bubble");
+  const header = el("div", "bot-header");
+  header.append(el("span", "bot-name", "Amt-Buddy"), el("span", "bot-tag", t("chat.botTag")));
+  const steps = el("ul", "agent-steps");
+  steps.setAttribute("aria-label", t("chat.steps"));
+  const working = el("p", "turn-working", t("chat.working"));
+  const content = el("div", "bot-content");
+  const error = el("p", "turn-error");
+  error.hidden = true;
+  const extra = el("div", "turn-extra");
+  bubble.append(header, steps, working, content, error, extra);
+  row.append(avatar, bubble);
+  chatStream.append(row);
+  scrollToBottom();
+  return { row, steps, working, content, error, extra };
+}
+
+const STEP_CLASS = { running: "is-running", done: "is-done", failed: "is-failed", needs_facts: "is-needs-facts" };
+
+function renderStepChip(list, { key, status, label }) {
+  let chip = list.querySelector(`[data-step="${key}"]`);
+  if (!chip) {
+    chip = el("li", "step-chip");
+    chip.dataset.step = key;
+    const icon = el("span", "step-icon");
+    icon.setAttribute("aria-hidden", "true");
+    chip.append(icon, el("span", "step-label"));
+    list.append(chip);
   }
-  if (!options || options.length === 0) {
-    return;
+  chip.className = `step-chip ${STEP_CLASS[status]}`;
+  chip.querySelector(".step-label").textContent = label;
+}
+
+function renderTurn(view, state) {
+  for (const step of state.steps) renderStepChip(view.steps, { key: step.id, status: step.status, label: step.label });
+  // Only the escaping Markdown renderer ever writes HTML from model output (and only when it changed).
+  if (view.content.dataset.rendered !== state.answer) {
+    view.content.innerHTML = renderMarkdown(state.answer);
+    view.content.dataset.rendered = state.answer;
   }
+  view.working.hidden = state.phase !== "streaming" || state.steps.some((s) => s.status === "running") || !!state.answer;
+  view.error.hidden = !state.error;
+  view.error.textContent = state.error ?? "";
+  scrollToBottom();
+}
 
-  // Render question options directly inside the chatbot's message bubble
-  const lastBotContent = chatStream.querySelector(".bot-row:last-child .bot-content");
-  if (!lastBotContent) {
-    return;
+// --- review card (Unconfirmed facts) ---------------------------------------------------------
+
+function renderReviewCard(view, review) {
+  const form = el("form", "doc-result-card review-card");
+  const titleId = `review-title-${Date.now().toString(36)}`;
+  form.setAttribute("aria-labelledby", titleId);
+  const title = el("div", "doc-title", t("review.title"));
+  title.id = titleId;
+  const hint = el("p", "review-hint", t("review.hint"));
+  const grid = el("div", "doc-fact-grid");
+  for (const field of review.fields) {
+    const item = el("label", `doc-fact-item review-field conf-${field.level}`);
+    const inputId = `review-${field.name}-${titleId}`;
+    item.htmlFor = inputId;
+    const caption = el("span", "", field.label + (field.unit ? ` (${field.unit})` : ""));
+    const input = el("input", "review-input");
+    input.id = inputId;
+    input.name = field.name;
+    input.value = field.value;
+    input.required = field.unconfirmed;
+    input.autocomplete = "off";
+    input.inputMode = inputModeFor(field.name);
+    const confidence = el(
+      "small",
+      "review-confidence",
+      field.confidence === null ? t("review.noConfidence") : `${t(`review.${field.level}`)} (${Math.round(field.confidence * 100)} %)`,
+    );
+    confidence.id = `${inputId}-confidence`;
+    input.setAttribute("aria-describedby", confidence.id);
+    item.append(caption, input, confidence);
+    grid.append(item);
   }
+  const submit = el("button", "btn-select-file review-submit", t("review.submit"));
+  submit.type = "submit";
+  form.append(title, hint, grid, submit);
 
-  const existingGrid = lastBotContent.querySelector(".bot-options-grid");
-  if (existingGrid) existingGrid.remove();
-
-  const grid = document.createElement("div");
-  grid.className = "bot-options-grid";
-
-  options.forEach((opt) => {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "bot-option-btn";
-    btn.textContent = opt.label;
-    btn.addEventListener("click", () => {
-      grid.querySelectorAll(".bot-option-btn").forEach((b) => (b.disabled = true));
-      btn.classList.add("selected");
-      handleUserAction(opt.value || opt.label);
-    });
-    grid.appendChild(btn);
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    if (busy) return;
+    const inputs = Object.fromEntries(new FormData(form).entries());
+    const confirm = confirmPayload(review.fields, inputs);
+    if (Object.keys(confirm).length === 0) return;
+    setFormDisabled(form, true);
+    const summary = review.fields
+      .filter((field) => field.name in confirm)
+      .map((field) => `${field.label}: ${confirm[field.name]}${field.unit ? ` ${field.unit}` : ""}`)
+      .join(", ");
+    sendTurn({ confirm }, { text: t("chat.confirmedValues", { summary }) }, null, form);
   });
 
-  lastBotContent.appendChild(grid);
+  openReviewCard = form;
+  view.extra.append(form);
   scrollToBottom();
+  form.querySelector("input:required")?.focus();
+}
+
+function setFormDisabled(form, disabled) {
+  for (const control of form.elements) control.disabled = disabled;
+}
+
+// --- turns -------------------------------------------------------------------------------------
+
+// Sends one turn. `request` holds message / documentId / confirm; `shown` is what the user bubble
+// shows ({ text, file }). A staged file is uploaded first and sent as documentId. `reviewForm` is
+// the review card a confirm came from: it opens again if the confirm turn fails.
+async function sendTurn(request, shown, file = null, reviewForm = null) {
+  if (busy) return;
+  setBusy(true);
+  // An older review card would send values from before this turn: close it.
+  if (openReviewCard && openReviewCard !== reviewForm) setFormDisabled(openReviewCard, true);
+  openReviewCard = null;
+  const controller = new AbortController();
+  activeTurn = controller;
+  const turnThread = threadId;
+  appendUserMessage(shown.text, file);
+  const view = appendBotTurn();
+  let reviewShown = false;
+
+  try {
+    let documentId;
+    if (file) {
+      renderStepChip(view.steps, { key: "upload", status: "running", label: t("upload.running") });
+      view.working.hidden = true;
+      announce([t("upload.running")]);
+      try {
+        ({ documentId } = await uploadLease({ fetchImpl: fetch, payload: await filePayload(file), signal: controller.signal }));
+        renderStepChip(view.steps, { key: "upload", status: "done", label: t("upload.done") });
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        renderStepChip(view.steps, { key: "upload", status: "failed", label: t("upload.stepFailed") });
+        view.error.textContent = error.message || UPLOAD_TEXT.failed;
+        view.error.hidden = false;
+        announce([view.error.textContent]);
+        return;
+      }
+    }
+
+    const state = await runTurn({
+      fetchImpl: fetch,
+      request: { threadId: turnThread, ...request, ...(documentId ? { documentId } : {}) },
+      signal: controller.signal,
+      onChange: (next, previous) => {
+        if (controller.signal.aborted) return;
+        renderTurn(view, next);
+        announce(announcements(previous, next));
+      },
+    });
+    if (controller.signal.aborted) return;
+    if (reviewForm && state.phase === "error") {
+      setFormDisabled(reviewForm, false);
+      openReviewCard = reviewForm;
+    }
+    if (state.review) {
+      renderReviewCard(view, state.review);
+      reviewShown = true;
+    }
+  } finally {
+    if (activeTurn === controller) {
+      activeTurn = null;
+      setBusy(false);
+      if (!reviewShown) chatUserInput.focus();
+    }
+  }
+}
+
+function guessMimeType(file) {
+  if (file.type) return file.type;
+  const name = file.name.toLowerCase();
+  if (name.endsWith(".pdf")) return "application/pdf";
+  if (name.endsWith(".json")) return "application/json";
+  return "text/plain";
+}
+
+async function filePayload(file) {
+  if (file.size > MAX_FILE_BYTES) throw new Error(UPLOAD_TEXT.tooLarge);
+  const base64 = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(",")[1] ?? "");
+    reader.onerror = () => reject(new Error(UPLOAD_TEXT.failed));
+    reader.readAsDataURL(file);
+  });
+  return { file: base64, mimeType: guessMimeType(file), fileName: file.name };
+}
+
+function submitInput() {
+  if (busy) return;
+  const text = chatUserInput.value.trim();
+  const file = stagedFile;
+  if (!text && !file) return;
+  chatUserInput.value = "";
+  resizeInput();
+  setStagedFile(null);
+  sendTurn(text ? { message: text } : {}, { text }, file);
 }
 
 function resetToNewChat() {
-  currentState = STATES.HERO;
-  sessionData = {};
+  activeTurn?.abort(); // cancels the running turn on the server too
+  activeTurn = null;
+  openReviewCard = null;
+  setBusy(false);
+  threadId = startNewThread(localStore(), newId);
   setStagedFile(null);
-  chatStream.innerHTML = "";
-  setActionButtons([]);
-  if (gptHero) gptHero.style.display = "block";
-  if (chatUserInput) {
-    chatUserInput.value = "";
-    chatUserInput.style.height = "auto";
-    chatUserInput.style.overflowY = "hidden";
-    chatUserInput.focus();
-  }
-}
-
-async function verifyAddressFlow(addressText) {
-  appendBotMessage("🔍 <em>Prüfe Adresse gegen das offizielle Berliner Liegenschaftskataster (WFS) …</em>");
-
-  try {
-    const res = await fetch("/api/v1/address-verifications", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ address: addressText }),
-    });
-
-    const body = await res.json();
-
-    if (!res.ok) {
-      throw new Error(body.error?.details?.[0]?.message || body.error?.message || "Prüfung fehlgeschlagen.");
-    }
-
-    if (!body.data.verified) {
-      appendBotMessage(
-        `❌ <strong>Adresse nicht im Berliner Liegenschaftskataster gefunden.</strong><br />` +
-          `Möglicherweise liegt ein Tippfehler vor oder die Hausnummer ist noch nicht amtlich erfasst.<br />` +
-          `<em>Beispiel für gültige Eingabe: "Berliner Straße 155, 10715 Berlin"</em>`,
-      );
-      setActionButtons([
-        { label: "🔄 Andere Adresse prüfen", value: "start_address" },
-        { label: "🔙 Zum Hauptmenü", value: "menu" },
-      ]);
-      return;
-    }
-
-    const { address } = body.data;
-    sessionData.verifiedAddress = address;
-
-    const locText = address.residentialLocation
-      ? address.residentialLocation.charAt(0).toUpperCase() + address.residentialLocation.slice(1)
-      : "Nicht ausgewiesen";
-
-    const ageText =
-      address.buildingAge?.areaBuildingAgeClass ||
-      address.buildingAge?.predominantAreaConstructionPeriod ||
-      "Nicht verfügbar";
-
-    appendBotMessage(
-      `✓ <strong>Offizielle Berliner Adresse bestätigt!</strong><br /><br />` +
-        `• <strong>Straße & Nr.:</strong> ${escapeHtml(address.street)} ${escapeHtml(address.houseNumber)}<br />` +
-        `• <strong>PLZ & Ort:</strong> ${escapeHtml(address.postalCode)} Berlin (${escapeHtml(address.district)})<br />` +
-        `• <strong>Wohnlage (Mietspiegel 2026):</strong> <strong>${escapeHtml(locText)}</strong><br />` +
-        `• <strong>Baualtersklasse:</strong> ${escapeHtml(ageText)}<br />` +
-        `• <strong>Koordinaten:</strong> ${address.coordinates?.latitude?.toFixed(4) || "-"}, ${address.coordinates?.longitude?.toFixed(4) || "-"}`,
-    );
-
-    setActionButtons([
-      { label: "💶 Mietspiegel für diese Adresse berechnen", value: "address_calc_mietspiegel" },
-      { label: "👥 Belegungsprüfung für diese Wohnung", value: "address_calc_occupancy" },
-      { label: "📍 Andere Adresse prüfen", value: "start_address" },
-      { label: "🔙 Zum Start", value: "menu" },
-    ]);
-  } catch (err) {
-    appendBotMessage(`⚠️ <strong>Fehler bei der Adressprüfung:</strong> ${escapeHtml(err.message)}`);
-    setActionButtons([
-      { label: "🔄 Erneut versuchen", value: "start_address" },
-      { label: "🔙 Zum Start", value: "menu" },
-    ]);
-  }
-}
-
-async function runMietspiegelCalculation() {
-  appendBotMessage("📊 <em>Ermittle amtliches Tabellenfeld des Berliner Mietspiegels 2026 …</em>");
-
-  try {
-    const payload = {
-      address: sessionData.verifiedAddress
-        ? `${sessionData.verifiedAddress.street} ${sessionData.verifiedAddress.houseNumber}\n${sessionData.verifiedAddress.postalCode} Berlin`
-        : "Berliner Straße 155\n10715 Berlin",
-      livingAreaSqm: sessionData.livingAreaSqm,
-      buildingYear: sessionData.buildingYear,
-      contractRent: sessionData.contractRent,
-    };
-
-    const res = await fetch("/api/v1/address-verifications", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-
-    const body = await res.json();
-    const ms = body.data?.mietspiegel;
-
-    if (!ms || ms.status !== "calculated") {
-      appendBotMessage(
-        `Mietspiegel-Berechnung für ${sessionData.livingAreaSqm} m² in ${sessionData.residentialLocation}er Wohnlage (${sessionData.buildingYear}): Status ${ms?.status || "unvollständig"}.`,
-      );
-      setActionButtons([{ label: "🔙 Zum Start", value: "menu" }]);
-      return;
-    }
-
-    let comparisonHtml = "";
-    if (ms.contractRentComparison) {
-      const cmp = ms.contractRentComparison;
-      const statusLabel =
-        cmp.status === "within"
-          ? "liegt innerhalb der amtlichen Referenzspanne (Mietpreisbremse eingehalten)"
-          : cmp.status === "above"
-            ? "liegt über der amtlichen Referenzspanne"
-            : "liegt unter der amtlichen Referenzspanne";
-
-      comparisonHtml = `<br />• <strong>Ihre Kaltmiete (${cmp.actualMonthlyRent} €):</strong> ${statusLabel}`;
-    }
-
-    appendBotMessage(
-      `✓ <strong>Berliner Mietspiegel 2026 Auswertung:</strong><br /><br />` +
-        `• <strong>Tabellenfeld:</strong> Feld <strong>${ms.field}</strong> (${ms.sizeCategory}, ${ms.buildingAge}, ${ms.residentialLocation}e Wohnlage)<br />` +
-        `• <strong>Referenzspanne:</strong> ${ms.rentPerSqm.lower} € – ${ms.rentPerSqm.upper} € / m²<br />` +
-        `• <strong>Mittelwert:</strong> <strong>${ms.rentPerSqm.median} € / m²</strong><br />` +
-        `• <strong>Monatliche Vergleichsmiete:</strong> <strong>${ms.monthlyReferenceRent.lower.toFixed(2)} € – ${ms.monthlyReferenceRent.upper.toFixed(2)} €</strong> (Mittelwert: <strong>${ms.monthlyReferenceRent.median.toFixed(2)} €</strong>)` +
-        comparisonHtml,
-    );
-
-    setActionButtons([
-      { label: "👥 Jetzt Belegungsprüfung durchführen", value: "start_occupancy" },
-      { label: "🔄 Neuen Mietspiegel berechnen", value: "start_mietspiegel" },
-      { label: "🔙 Zum Start", value: "menu" },
-    ]);
-  } catch (err) {
-    appendBotMessage(`⚠️ Fehler bei der Berechnung: ${escapeHtml(err.message)}`);
-    setActionButtons([{ label: "🔙 Zum Start", value: "menu" }]);
-  }
-}
-
-async function runOccupancyCalculation() {
-  const { livingAreaSqm, rooms, occupants, childrenUpToSix = 0 } = sessionData;
-  const otherOccupants = occupants - childrenUpToSix;
-  const requiredAreaSqm = otherOccupants * 9 + childrenUpToSix * 6;
-  const meets = livingAreaSqm >= requiredAreaSqm;
-  const perPerson = Math.round((livingAreaSqm / occupants) * 10) / 10;
-  const occPerRoom = Math.round((occupants / rooms) * 10) / 10;
-
-  appendBotMessage(
-    `<strong>Ergebnis der Belegungsprüfung (§ 7 Abs. 1 WoAufG Bln):</strong><br /><br />` +
-      `• <strong>Bewertung:</strong> <strong>${meets ? "✓ Gesetzliche Mindeststandards erfüllt" : "⚠️ Überbelegungsrisiko (§ 7 WoAufG Bln unterschritten)"}</strong><br />` +
-      `• <strong>Wohnungsgröße:</strong> ${livingAreaSqm} m² auf ${rooms} Zimmer<br />` +
-      `• <strong>Haushalt:</strong> ${occupants} Personen (${childrenUpToSix} Kinder bis 6 J.)<br />` +
-      `• <strong>Gesetzliche Mindestfläche:</strong> ${requiredAreaSqm} m² (9 m²/Erwachsener, 6 m²/Kind bis 6 J.)<br />` +
-      `• <strong>Tatsächliche Fläche pro Person:</strong> ${perPerson} m²<br />` +
-      `• <strong>Zimmerdichte:</strong> ${occPerRoom} Personen / Zimmer<br /><br />` +
-      `<em>Rechtsgrundlage: § 7 Wohnungsaufsichtsgesetz Berlin (WoAufG Bln).</em>`,
-  );
-
-  setActionButtons([
-    { label: "💶 Mietspiegel berechnen", value: "start_mietspiegel" },
-    { label: "📍 Adresse prüfen", value: "start_address" },
-    { label: "🔙 Zum Start", value: "menu" },
-  ]);
-}
-
-async function handleOcrUpload(file) {
-  if (!file) return;
-  appendBotMessage(`📄 <em>Lese "${escapeHtml(file.name)}" per OCR ein und analysiere Mietvertragsdaten …</em>`);
-
-  try {
-    const reader = new FileReader();
-    const base64Promise = new Promise((resolve, reject) => {
-      reader.onload = () => resolve(reader.result.split(",")[1]);
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
-
-    const base64Data = await base64Promise;
-    const res = await fetch("/api/v1/documents/ocr", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        file: base64Data,
-        mimeType: file.type || "application/pdf",
-        fileName: file.name,
-      }),
-    });
-
-    const body = await res.json();
-    if (!res.ok) {
-      throw new Error(body.error?.message || "OCR-Extraktion fehlgeschlagen.");
-    }
-
-    const { fields, confidence } = body.data;
-    sessionData.ocrExtracted = fields;
-    if (fields.livingAreaSqm) sessionData.livingAreaSqm = fields.livingAreaSqm;
-    if (fields.contractRent) sessionData.contractRent = fields.contractRent;
-    if (fields.rooms) sessionData.rooms = fields.rooms;
-    if (fields.buildingYear) sessionData.buildingYear = fields.buildingYear;
-
-    const confScore = Math.round((confidence?.overall || 0) * 100);
-
-    appendBotMessage(
-      `✓ <strong>Dokument erfolgreich eingelesen und analysiert!</strong><br />` +
-        `<div class="doc-result-card">` +
-        `  <div class="doc-title">📋 Extrahierte Vertragsdaten (${escapeHtml(file.name)})</div>` +
-        `  <div class="doc-fact-grid">` +
-        `    <div class="doc-fact-item"><span>Adresse</span><strong>${escapeHtml(fields.address || "Nicht angegeben")}</strong></div>` +
-        `    <div class="doc-fact-item"><span>Nettokaltmiete</span><strong>${fields.contractRent ? `${fields.contractRent} € / Monat` : "Nicht angegeben"}</strong></div>` +
-        `    <div class="doc-fact-item"><span>Wohnfläche</span><strong>${fields.livingAreaSqm ? `${fields.livingAreaSqm} m²` : "Nicht angegeben"}</strong></div>` +
-        `    <div class="doc-fact-item"><span>Zimmer</span><strong>${fields.rooms || "Nicht angegeben"}</strong></div>` +
-        `    <div class="doc-fact-item"><span>Baujahr</span><strong>${fields.buildingYear || "Nicht angegeben"}</strong></div>` +
-        `    <div class="doc-fact-item"><span>OCR-Erkennung</span><strong>${confScore}%</strong></div>` +
-        `  </div>` +
-        `</div>`,
-    );
-
-    if (fields.address) {
-      appendBotMessage(`🔍 <em>Gleiche extrahierte Adresse "${escapeHtml(fields.address)}" direkt mit dem amtlichen Berliner WFS-Kataster ab …</em>`);
-      await verifyAddressFlow(fields.address);
-    } else {
-      setActionButtons([
-        { label: "📍 Adresse manuell eingeben", value: "start_address" },
-        { label: "💶 Mietspiegel berechnen", value: "start_mietspiegel" },
-        { label: "💬 Neuer Chat", value: "menu" },
-      ]);
-    }
-  } catch (err) {
-    appendBotMessage(`⚠️ Fehler bei der OCR-Extraktion: ${escapeHtml(err.message)}`);
-    setActionButtons([{ label: "🔙 Neuer Chat", value: "menu" }]);
-  }
-}
-
-function handleUserAction(value) {
-  if (value === "menu" || value === "reset" || value === "start") {
-    resetToNewChat();
-    return;
-  }
-
-  if (value === "start_address") {
-    currentState = STATES.ADDRESS_INPUT;
-    appendBotMessage("Bitte geben Sie die Berliner Adresse ein (z. B. <strong>Berliner Straße 155, 10715 Berlin</strong>):");
-    setActionButtons([
-      { label: "Berliner Straße 155, 10715 Berlin", value: "Berliner Straße 155, 10715 Berlin" },
-      { label: "Pariser Platz 1, 10117 Berlin", value: "Pariser Platz 1, 10117 Berlin" },
-      { label: "🔙 Zum Start", value: "menu" },
-    ]);
-    chatUserInput.focus();
-    return;
-  }
-
-  if (value === "start_mietspiegel" || value === "address_calc_mietspiegel") {
-    currentState = STATES.MIETSPIEGEL_AREA;
-    appendBotMessage("Schritt 1: Wie groß ist die Wohnung in Quadratmetern (Wohnfläche in m²)?");
-    setActionButtons([
-      { label: "40 m²", value: "40" },
-      { label: "50 m²", value: "50" },
-      { label: "65 m²", value: "65" },
-      { label: "80 m²", value: "80" },
-      { label: "🔙 Zum Start", value: "menu" },
-    ]);
-    chatUserInput.focus();
-    return;
-  }
-
-  if (value === "start_occupancy" || value === "address_calc_occupancy") {
-    currentState = STATES.OCCUPANCY_AREA;
-    appendBotMessage("Schritt 1: Wie groß ist die gesamte Wohnfläche der Wohnung in m²?");
-    setActionButtons([
-      { label: "35 m²", value: "35" },
-      { label: "50 m²", value: "50" },
-      { label: "75 m²", value: "75" },
-      { label: "🔙 Zum Start", value: "menu" },
-    ]);
-    chatUserInput.focus();
-    return;
-  }
-
-  if (value === "start_ocr") {
-    currentState = STATES.OCR_INPUT;
-    appendBotMessage(
-      `Bitte laden Sie Ihren Berliner Mietvertrag oder eine Wohnungsgeberbestätigung (PDF oder Text) hoch ` +
-        `oder fügen Sie den Vertragstext hier in das Chatfeld ein.<br /><br />` +
-        `Klicken Sie auf das <strong>+</strong> Symbol links neben dem Eingabefeld, um eine Datei auszuwählen.`,
-    );
-    setActionButtons([{ label: "🔙 Zum Start", value: "menu" }]);
-    return;
-  }
-
-  if (value === "verify_ocr_address" && sessionData.ocrExtracted?.address) {
-    appendUserMessage(`Prüfe: ${sessionData.ocrExtracted.address}`);
-    verifyAddressFlow(sessionData.ocrExtracted.address);
-    return;
-  }
-
-  if (value === "faq") {
-    appendBotMessage(
-      `<strong>Häufige Fragen zu den Berliner Wohnungsregeln:</strong><br /><br />` +
-        `• <strong>Was bedeutet Wohnlage?</strong><br />` +
-        `Die Wohnlage (einfach, mittel, gut) ist eine amtliche statistische Lagekategorie der Senatsverwaltung für Stadtentwicklung und bestimmt die Mietspiegelspanne nach Straßenabschnitten.<br /><br />` +
-        `• <strong>Was regelt § 7 WoAufG Bln?</strong><br />` +
-        `Das Berliner Wohnungsaufsichtsgesetz fordert mind. 9 m² Wohnfläche für jeden Erwachsenen und mind. 6 m² für Kinder bis 6 Jahre. Eine Unterschreitung stellt eine behördlich rügbare Überbelegung dar.<br /><br />` +
-        `• <strong>Woher stammen die Daten?</strong><br />` +
-        `Alle Daten werden in Echtzeit aus dem amtlichen WFS-Liegenschaftskataster Berlin (Amt für Statistik Berlin-Brandenburg) und dem Berliner Mietspiegel 2026 abgerufen.`,
-    );
-    setActionButtons([
-      { label: "📍 Adresse prüfen", value: "start_address" },
-      { label: "💶 Mietspiegel berechnen", value: "start_mietspiegel" },
-      { label: "🔙 Zum Start", value: "menu" },
-    ]);
-    return;
-  }
-
-  handleStateInput(value);
-}
-
-function handleStateInput(input) {
-  const trimmed = input.trim();
-
-  switch (currentState) {
-    case STATES.ADDRESS_INPUT: {
-      appendUserMessage(trimmed);
-      verifyAddressFlow(trimmed);
-      break;
-    }
-
-    case STATES.MIETSPIEGEL_AREA: {
-      const area = parseFloat(trimmed.replace(",", "."));
-      if (isNaN(area) || area <= 0) {
-        appendBotMessage("Bitte geben Sie eine gültige Zahl für die Wohnfläche in m² ein (z. B. 50):");
-        return;
-      }
-      sessionData.livingAreaSqm = area;
-      appendUserMessage(`${area} m²`);
-      currentState = STATES.MIETSPIEGEL_LOCATION;
-      appendBotMessage("Schritt 2: In welcher amtlichen Wohnlage befindet sich die Wohnung?");
-      setActionButtons([
-        { label: "gut", value: "gut" },
-        { label: "mittel", value: "mittel" },
-        { label: "einfach", value: "einfach" },
-      ]);
-      break;
-    }
-
-    case STATES.MIETSPIEGEL_LOCATION: {
-      const loc = trimmed.toLowerCase();
-      if (!["gut", "mittel", "einfach"].includes(loc)) {
-        appendBotMessage("Bitte wählen Sie: gut, mittel oder einfach:");
-        return;
-      }
-      sessionData.residentialLocation = loc;
-      appendUserMessage(`Wohnlage: ${loc}`);
-      currentState = STATES.MIETSPIEGEL_YEAR;
-      appendBotMessage("Schritt 3: Welches Baujahr oder welche Baualtersklasse hat das Gebäude?");
-      setActionButtons([
-        { label: "bis 1918 (Altbau)", value: "bis 1918" },
-        { label: "1919–1949", value: "1919–1949" },
-        { label: "1950–1964", value: "1950–1964" },
-        { label: "1965–1972", value: "1965–1972" },
-        { label: "1973–1990", value: "1973–1990" },
-        { label: "1991–2001", value: "1991–2001" },
-        { label: "ab 2010 (Neubau)", value: "ab 2010" },
-      ]);
-      break;
-    }
-
-    case STATES.MIETSPIEGEL_YEAR: {
-      sessionData.buildingYear = trimmed;
-      appendUserMessage(`Baujahr: ${trimmed}`);
-      currentState = STATES.MIETSPIEGEL_RENT;
-      appendBotMessage("Schritt 4 (Optional): Wie hoch ist Ihre tatsächliche monatliche Kaltmiete in EUR (für den Vergleich)?");
-      setActionButtons([
-        { label: "500 €", value: "500" },
-        { label: "700 €", value: "700" },
-        { label: "900 €", value: "900" },
-        { label: "Überspringen", value: "skip" },
-      ]);
-      break;
-    }
-
-    case STATES.MIETSPIEGEL_RENT: {
-      if (trimmed.toLowerCase() !== "skip" && trimmed !== "Überspringen") {
-        const rent = parseFloat(trimmed.replace(",", "."));
-        if (!isNaN(rent) && rent > 0) {
-          sessionData.contractRent = rent;
-          appendUserMessage(`Kaltmiete: ${rent} €`);
-        } else {
-          appendUserMessage("Übersprungen");
-        }
-      } else {
-        appendUserMessage("Übersprungen");
-      }
-      runMietspiegelCalculation();
-      break;
-    }
-
-    case STATES.OCCUPANCY_AREA: {
-      const area = parseFloat(trimmed.replace(",", "."));
-      if (isNaN(area) || area <= 0) {
-        appendBotMessage("Bitte geben Sie eine gültige Zahl für die Wohnfläche in m² ein:");
-        return;
-      }
-      sessionData.livingAreaSqm = area;
-      appendUserMessage(`${area} m²`);
-      currentState = STATES.OCCUPANCY_ROOMS;
-      appendBotMessage("Schritt 2: Wie viele Zimmer hat die Wohnung?");
-      setActionButtons([
-        { label: "1 Zimmer", value: "1" },
-        { label: "2 Zimmer", value: "2" },
-        { label: "3 Zimmer", value: "3" },
-        { label: "4 Zimmer", value: "4" },
-      ]);
-      break;
-    }
-
-    case STATES.OCCUPANCY_ROOMS: {
-      const rooms = parseFloat(trimmed.replace(",", "."));
-      if (isNaN(rooms) || rooms <= 0) {
-        appendBotMessage("Bitte geben Sie die Anzahl der Zimmer ein (z. B. 2):");
-        return;
-      }
-      sessionData.rooms = rooms;
-      appendUserMessage(`${rooms} Zimmer`);
-      currentState = STATES.OCCUPANCY_PERSONS;
-      appendBotMessage("Schritt 3: Wie viele Personen bewohnen die Wohnung insgesamt?");
-      setActionButtons([
-        { label: "1 Person", value: "1" },
-        { label: "2 Personen", value: "2" },
-        { label: "3 Personen", value: "3" },
-        { label: "4 Personen", value: "4" },
-      ]);
-      break;
-    }
-
-    case STATES.OCCUPANCY_PERSONS: {
-      const persons = parseInt(trimmed, 10);
-      if (isNaN(persons) || persons < 1) {
-        appendBotMessage("Bitte geben Sie die Personenzahl ein (mindestens 1):");
-        return;
-      }
-      sessionData.occupants = persons;
-      appendUserMessage(`${persons} Personen`);
-      currentState = STATES.OCCUPANCY_CHILDREN;
-      appendBotMessage("Schritt 4: Wie viele davon sind Kinder bis 6 Jahre?");
-      setActionButtons([
-        { label: "0 Kinder", value: "0" },
-        { label: "1 Kind", value: "1" },
-        { label: "2 Kinder", value: "2" },
-      ]);
-      break;
-    }
-
-    case STATES.OCCUPANCY_CHILDREN: {
-      const children = parseInt(trimmed, 10);
-      sessionData.childrenUpToSix = isNaN(children) || children < 0 ? 0 : children;
-      appendUserMessage(`${sessionData.childrenUpToSix} Kinder bis 6 J.`);
-      runOccupancyCalculation();
-      break;
-    }
-
-    case STATES.OCR_INPUT: {
-      appendUserMessage(trimmed);
-      (async () => {
-        try {
-          const res = await fetch("/api/v1/documents/ocr", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ text: trimmed }),
-          });
-          const body = await res.json();
-          if (!res.ok) throw new Error(body.error?.message || "Analyse fehlgeschlagen");
-          const { fields } = body.data;
-          appendBotMessage(
-            `✓ <strong>Mietvertragstext analysiert:</strong><br /><br />` +
-              `• <strong>Adresse:</strong> ${fields.address || "Nicht erkannt"}<br />` +
-              `• <strong>Kaltmiete:</strong> ${fields.contractRent ? `${fields.contractRent} €` : "Nicht erkannt"}<br />` +
-              `• <strong>Wohnfläche:</strong> ${fields.livingAreaSqm ? `${fields.livingAreaSqm} m²` : "Nicht erkannt"}`,
-          );
-          setActionButtons([{ label: "🔙 Zum Start", value: "menu" }]);
-        } catch (e) {
-          appendBotMessage(`⚠️ Fehler: ${escapeHtml(e.message)}`);
-          setActionButtons([{ label: "🔙 Zum Start", value: "menu" }]);
-        }
-      })();
-      break;
-    }
-
-    default: {
-      appendUserMessage(trimmed);
-      const lower = trimmed.toLowerCase();
-      if (/(?:straße|strasse|str\.|platz|allee|weg|damm|chaussee)\s+\d+/i.test(lower)) {
-        verifyAddressFlow(trimmed);
-      } else if (/mietspiegel|vergleichsmiete/i.test(lower)) {
-        handleUserAction("start_mietspiegel");
-      } else if (/belegung|überbelegung|woaufg/i.test(lower)) {
-        handleUserAction("start_occupancy");
-      } else if (/vertrag|ocr|upload/i.test(lower)) {
-        handleUserAction("start_ocr");
-      } else {
-        appendBotMessage("Ich habe Ihre Eingabe erhalten. Wählen Sie bitte eine Option aus:");
-        setActionButtons([
-          { label: "📍 Adresse prüfen", value: "start_address" },
-          { label: "💶 Mietspiegel berechnen", value: "start_mietspiegel" },
-          { label: "👥 Belegung prüfen", value: "start_occupancy" },
-          { label: "📄 Mietvertrag OCR", value: "start_ocr" },
-        ]);
-      }
-      break;
-    }
-  }
-}
-
-// Event Listeners
-chatInputForm?.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const text = chatUserInput.value.trim();
-
-  // If a document was staged, send the document and any optional text
-  if (stagedFile) {
-    const fileToSend = stagedFile;
-    setStagedFile(null);
-    chatUserInput.value = "";
-    chatUserInput.style.height = "auto";
-    chatUserInput.style.overflowY = "hidden";
-    appendUserMessage(text, fileToSend);
-    await handleOcrUpload(fileToSend);
-    return;
-  }
-
-  if (!text) return;
+  chatStream.replaceChildren();
+  if (liveRegion) liveRegion.replaceChildren();
+  if (gptHero) gptHero.hidden = false;
   chatUserInput.value = "";
-  chatUserInput.style.height = "auto";
-  chatUserInput.style.overflowY = "hidden";
-  appendUserMessage(text);
-  handleUserAction(text);
+  resizeInput();
+  chatUserInput.focus();
+}
+
+function renderChatMode() {
+  if (modeNote) modeNote.hidden = chatMode !== "rule_based";
+  if (modeLabel) modeLabel.textContent = MODE_LABEL[chatMode] ?? t("mode.unknown");
+}
+
+async function showChatMode() {
+  chatMode = await fetchChatMode(fetch);
+  renderChatMode();
+}
+
+// --- event listeners ---------------------------------------------------------------------------
+
+chatInputForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  submitInput();
 });
 
-chatUserInput?.addEventListener("input", () => {
-  chatUserInput.style.height = "auto";
-  const newHeight = Math.min(chatUserInput.scrollHeight, 160);
-  chatUserInput.style.height = `${newHeight}px`;
-  chatUserInput.style.overflowY = chatUserInput.scrollHeight > 160 ? "auto" : "hidden";
-});
+chatUserInput.addEventListener("input", resizeInput);
 
-chatUserInput?.addEventListener("keydown", (e) => {
-  if (e.key === "Enter" && !e.shiftKey) {
-    e.preventDefault();
-    chatInputForm.requestSubmit();
+chatUserInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+    event.preventDefault();
+    submitInput();
   }
 });
 
 btnNewChat?.addEventListener("click", () => {
   resetToNewChat();
+  if (narrowScreen.matches) setSidebarOpen(false);
 });
 
-sidebarToggleBtn?.addEventListener("click", () => {
-  gptSidebar?.classList.toggle("collapsed");
+sidebarToggleBtn?.addEventListener("click", () => setSidebarOpen(gptSidebar?.classList.contains("collapsed")));
+
+// On a narrow screen the open sidebar lies over the page and covers the toggle, so a tap
+// outside it or Escape closes it.
+document.addEventListener("click", (event) => {
+  if (!narrowScreen.matches || gptSidebar?.classList.contains("collapsed")) return;
+  if (!gptSidebar.contains(event.target) && !sidebarToggleBtn?.contains(event.target)) setSidebarOpen(false);
 });
 
-chatUploadBtn?.addEventListener("click", () => {
-  chatFileInput.click();
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape" || !narrowScreen.matches || gptSidebar?.classList.contains("collapsed")) return;
+  setSidebarOpen(false);
+  sidebarToggleBtn?.focus();
 });
 
-btnHeroSelectFile?.addEventListener("click", (e) => {
-  e.stopPropagation();
+narrowScreen.addEventListener("change", () => setSidebarOpen(!narrowScreen.matches));
+
+chatUploadBtn?.addEventListener("click", () => chatFileInput.click());
+
+btnHeroSelectFile?.addEventListener("click", (event) => {
+  event.stopPropagation();
   chatFileInput.click();
 });
 
 heroUploadCard?.addEventListener("click", () => {
-  chatFileInput.click();
+  if (!busy) chatFileInput.click();
 });
 
-heroUploadCard?.addEventListener("dragover", (e) => {
-  e.preventDefault();
+heroUploadCard?.addEventListener("dragover", (event) => {
+  event.preventDefault();
   heroUploadCard.classList.add("drag-over");
 });
 
-heroUploadCard?.addEventListener("dragleave", () => {
+heroUploadCard?.addEventListener("dragleave", () => heroUploadCard.classList.remove("drag-over"));
+
+heroUploadCard?.addEventListener("drop", (event) => {
+  event.preventDefault();
+  event.stopPropagation();
   heroUploadCard.classList.remove("drag-over");
+  const file = event.dataTransfer?.files?.[0];
+  if (file) setStagedFile(file);
 });
 
-heroUploadCard?.addEventListener("drop", (e) => {
-  e.preventDefault();
-  heroUploadCard.classList.remove("drag-over");
-  const file = e.dataTransfer?.files?.[0];
-  if (file) {
-    setStagedFile(file);
-  }
-});
-
-chatFileInput?.addEventListener("change", (e) => {
-  const file = e.target.files?.[0];
-  if (file) {
-    setStagedFile(file);
-  }
+chatFileInput.addEventListener("change", (event) => {
+  const file = event.target.files?.[0];
+  if (file) setStagedFile(file);
 });
 
 chipFileRemove?.addEventListener("click", () => {
   setStagedFile(null);
+  chatUserInput.focus();
 });
 
-// Window-wide drag and drop for documents
-window.addEventListener("dragover", (e) => {
-  e.preventDefault();
+// A file dropped anywhere on the page is staged as the lease.
+window.addEventListener("dragover", (event) => event.preventDefault());
+window.addEventListener("drop", (event) => {
+  event.preventDefault();
+  const file = event.dataTransfer?.files?.[0];
+  if (file) setStagedFile(file);
 });
 
-window.addEventListener("drop", (e) => {
-  e.preventDefault();
-  const file = e.dataTransfer?.files?.[0];
-  if (file) {
-    setStagedFile(file);
-  }
+// Suggestion prompts send their question as a normal message.
+document.addEventListener("click", (event) => {
+  const suggestion = event.target.closest("[data-prompt]");
+  if (!suggestion || busy) return;
+  const prompt = suggestion.getAttribute("data-prompt");
+  sendTurn({ message: prompt }, { text: prompt });
 });
 
-// Action buttons & suggestions event delegation
-document.addEventListener("click", (e) => {
-  const navBtn = e.target.closest("[data-action]");
-  if (navBtn) {
-    const action = navBtn.getAttribute("data-action");
-    handleUserAction(action);
-  }
+// --- start -------------------------------------------------------------------------------------
 
-  const historyBtn = e.target.closest("[data-prompt]");
-  if (historyBtn) {
-    const prompt = historyBtn.getAttribute("data-prompt");
-    handleUserAction(prompt);
-  }
-});
-
-// Initialize on page load
-resetToNewChat();
+startI18n();
+onLanguageChange(renderChatMode);
+sidebarToggleBtn?.setAttribute("aria-controls", "gpt-sidebar");
+setSidebarOpen(!narrowScreen.matches);
+showChatMode();
+chatUserInput.focus();

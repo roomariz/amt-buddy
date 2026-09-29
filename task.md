@@ -36,24 +36,40 @@ This document outlines the tasks required to evolve Amt-Buddy into an intelligen
 The Orchestrator acts as the central brain that manages conversation state, routes user requests to specialized workers or tools, and synthesizes answers for the user.
 
 - [x] **1.1 Core Orchestration Engine**
-  - **Task**: Central orchestrator lifecycle (Receive Input -> Classify Intent -> Plan & Execute Tools -> Format Markdown Reply with statutory explanations).
+  - **Task**: Define the central orchestrator lifecycle (Receive Input -> Plan Steps -> Invoke Tools/Agents -> Evaluate Output -> Respond).
   - **Priority**: High
-  - **Status**: Implemented (`src/chatbot-orchestrator.js`).
+  - **Acceptance Criteria**: State machine maintains conversation memory, session state, and execution history across multi-turn dialogs.
+  - **Status (LangGraph Orchestrator, `src/orchestrator/`)**: Done in `src/orchestrator/` (LangGraph state machine, per-thread checkpointer, Tenancy, audit log).
+  - **Status (rule-based chatbot, `src/chatbot-orchestrator.js`)**: Implemented (`src/chatbot-orchestrator.js`).
 
 - [x] **1.2 Intent Classification & Router**
-  - **Task**: Intent classification distinguishing address verification, Mietspiegel calculation, occupancy checks (§ 7 WoAufG Bln), document OCR, and general queries.
+  - **Task**: Implement intent classification to distinguish between:
+    - General Berlin housing inquiries.
+    - Official address verification queries.
+    - Mietspiegel calculation requests.
+    - § 7 WoAufG Bln occupancy compliance checks.
+    - Document analysis / lease contract upload workflows.
   - **Priority**: High
-  - **Status**: Implemented (`classifyIntent` in `src/chatbot-orchestrator.js`).
+  - **Acceptance Criteria**: Router selects the appropriate sub-pipeline or worker with >95% accuracy.
+  - **Status (LangGraph Orchestrator, `src/orchestrator/`)**: Partial: router with all five Intents plus `out_of_scope`, multi-Intent and follow-up aware (`src/orchestrator/intents.js`). The >95% accuracy has not been measured yet.
+  - **Status (rule-based chatbot, `src/chatbot-orchestrator.js`)**: Implemented (`classifyIntent` in `src/chatbot-orchestrator.js`).
 
-- [x] **1.3 Multi-Agent / Pluggable LLM Provider Handoff**
-  - **Task**: Extensible provider interface (`registerChatModelProvider`) allowing plug-in of LLMs (Gemini, Claude, GPT) with deterministic fallback rule engine.
+- [x] **1.3 Multi-Agent Handoff & Worker Coordination**
+  - **Task**: Create specialized sub-agents:
+    - `LeaseAnalysisAgent`: Focuses on interpreting parsed lease documents.
+    - `ComplianceAgent`: Evaluates rent caps, Mietspiegel tiers, and overcrowding.
+    - `OfficialDataAgent`: Interfaces with Berlin open data endpoints.
   - **Priority**: Medium
-  - **Status**: Implemented (`src/chatbot-orchestrator.js`).
+  - **Acceptance Criteria**: Orchestrator delegates tasks to sub-agents and gracefully aggregates results into a single coherent response.
+  - **Status (LangGraph Orchestrator, `src/orchestrator/`)**: Done: OfficialDataAgent, ComplianceAgent, LeaseAnalysisAgent, delegated by the Supervisor.
+  - **Status (rule-based chatbot, `src/chatbot-orchestrator.js`)**: Implemented (`src/chatbot-orchestrator.js`).
 
 - [x] **1.4 Guardrails, Safety & Fallbacks**
-  - **Task**: Informational disclaimers on Mietspiegel and occupancy rules; graceful fallback responses for ambiguous inputs.
+  - **Task**: Implement prompt guardrails, hallucination checks against Berlin statutory rules, and graceful fallback responses for ambiguous inputs.
   - **Priority**: Medium
-  - **Status**: Implemented.
+  - **Acceptance Criteria**: Disclaimer provided that outputs do not replace formal legal counsel; out-of-scope requests are politely rejected.
+  - **Status (LangGraph Orchestrator, `src/orchestrator/`)**: Done: out-of-scope rejection, grounding check on every figure, "not legal advice" disclaimer on verdicts, fallback question.
+  - **Status (rule-based chatbot, `src/chatbot-orchestrator.js`)**: Implemented.
 
 ---
 
@@ -64,26 +80,34 @@ Formalize functions as structured tools conforming to standard JSON schemas for 
 - [x] **2.1 Tool Registry & Standardized Interface**
   - **Task**: Extensible tool registry (`CHATBOT_TOOLS`, `getToolSchemas`, `executeTool`) with type-safe JSON Schemas.
   - **Priority**: High
-  - **Status**: Implemented (`src/chatbot-tools.js`).
+  - **Acceptance Criteria**: Any new tool can be registered with type-safe schema definitions and automatic input validation.
+  - **Status (LangGraph Orchestrator, `src/orchestrator/`)**: Partial: Tool contracts with zod input/output schemas and validation (`src/orchestrator/tool-contracts.js`); no general-purpose registry.
+  - **Status (rule-based chatbot, `src/chatbot-orchestrator.js`)**: Implemented (`src/chatbot-tools.js`).
 
 - [x] **2.2 Existing Service Tool Adapters**
-  - **Task**: Wrapped services into callable agent tools:
-    - `validate_berlin_address`: Wraps `verifyBerlinAddress`.
-    - `calculate_mietspiegel`: Wraps `evaluateMietspiegel`.
-    - `assess_occupancy_compliance`: Wraps `assessOccupancy`.
-    - `extract_document_ocr`: Wraps `processDocumentOcr`.
+  - **Task**: Wrap current Amt-Buddy backend services into callable agent tools:
+    - `validate_berlin_address`: Calls `src/berlin-address.js` with street, house number, postal code.
+    - `lookup_building_age`: Calls `src/berlin-building-age.js` to determine block-level construction period.
+    - `calculate_mietspiegel`: Calls `src/berlin-mietspiegel.js` to evaluate reference rent and rent cap conformity.
+    - `assess_occupancy_compliance`: Calls `src/occupancy-assessment.js` for § 7 WoAufG Bln living area per person checks.
   - **Priority**: High
-  - **Status**: Implemented (`src/chatbot-tools.js`).
+  - **Acceptance Criteria**: Agent reliably invokes tools with correct extracted parameters and handles API error responses gracefully.
+  - **Status (LangGraph Orchestrator, `src/orchestrator/`)**: Done: `createBerlinTools()` (`src/orchestrator/berlin-tools.js`) gives all four Tools on the official Berlin services and real calculations, with input vs. upstream errors and a per-call time budget matching the Tool wrapper; offline contract tests on recorded WFS responses, opt-in live test (`BERLIN_LIVE=1`). `extract_lease_data` is still a stub there.
+  - **Status (rule-based chatbot, `src/chatbot-orchestrator.js`)**: Implemented (`src/chatbot-tools.js`).
 
 - [x] **2.3 Dynamic Tool Execution & Error Handling**
-  - **Task**: Safe execution pipeline measuring latency, catching validation errors, and returning structured error payloads.
+  - **Task**: Implement execution pipeline handling tool timeouts, retries, parameter coercion, and structured error feedback returned to the model.
   - **Priority**: High
-  - **Status**: Implemented (`executeTool`).
+  - **Acceptance Criteria**: When a tool returns missing data or errors, the orchestrator asks clarifying questions or attempts recovery.
+  - **Status (LangGraph Orchestrator, `src/orchestrator/`)**: Done: timeout, one retry, argument pinning and number parsing, input vs. upstream errors, `needs_facts` leads to clarifying questions.
+  - **Status (rule-based chatbot, `src/chatbot-orchestrator.js`)**: Implemented (`executeTool`).
 
 - [x] **2.4 Tool Execution Auditing & Logging**
-  - **Task**: Execution latency tracking (`executionTimeMs`), tool names, and parameters reported in chat response.
+  - **Task**: Log tool call traces (input arguments, execution latency, raw response, error states) for debugging and audit compliance.
   - **Priority**: Low
-  - **Status**: Implemented.
+  - **Acceptance Criteria**: Structured log events generated for each tool execution during a conversation.
+  - **Status (LangGraph Orchestrator, `src/orchestrator/`)**: Done: one structured audit line per Tool call (latency, attempts, outcome); argument values and raw responses are left out on purpose (PII).
+  - **Status (rule-based chatbot, `src/chatbot-orchestrator.js`)**: Implemented.
 
 ---
 
@@ -94,17 +118,34 @@ Upgrade the front-end to support conversational AI, interactive tool previews, a
 - [x] **3.1 Chat Interface Layout & Message Stream**
   - **Task**: Floating, collapsible chat assistant widget with message bubble history, typing indicators, and markdown formatting.
   - **Priority**: High
-  - **Status**: Implemented (`public/index.html`, `public/app.js`, `public/styles.css`).
+  - **Status (LangGraph Orchestrator, `/chatbot`)**: Done: full-page free-text chat on the SSE endpoint (`public/chatbot.html`, `public/chatbot.js`, `public/chat/`), answers as safe Markdown (escape first, whitelist), status note in `rule_based` mode, keyboard submit, focus management, `aria-live` status.
+  - **Status (rule-based chatbot, floating widget)**: Implemented (`public/index.html`, `public/app.js`, `public/styles.css`).
 
 - [x] **3.2 Tool Call & Progress Visualization**
   - **Task**: Visual tool execution chips (`⚙️ Tool: <name> (X ms)`) indicating active operations in chat replies.
   - **Priority**: Medium
-  - **Status**: Implemented (`.tool-chip`).
+  - **Status (LangGraph Orchestrator, `/chatbot`)**: Done: live `agent_step` chips per Sub-agent (running / done / failed / needs facts), announced via `aria-live` (`public/chat/turn.js`).
+  - **Status (rule-based chatbot, floating widget)**: Implemented (`.tool-chip`).
 
 - [x] **3.3 Quick Suggestions & Follow-ups**
   - **Task**: Clickable prompt suggestion pills to explore Mietspiegel, address checks, and occupancy rules with one click.
   - **Priority**: Medium
-  - **Status**: Implemented (`.suggestion-pill`).
+  - **Status (LangGraph Orchestrator, `/chatbot`)**: Done: the guided wizard's buttons are now optional suggestion prompts that send a message.
+  - **Status (rule-based chatbot, floating widget)**: Implemented (`.suggestion-pill`).
+
+- [x] **3.4 Extracted Data Review & Verification Card**
+  - **Task**: Build an interactive form card inside chat allowing users to review and manually correct extracted OCR data (rent, area, address, rooms) before triggering compliance calculations.
+  - **Priority**: High
+  - **Acceptance Criteria**: Editable field cards with confidence highlights (green/yellow/red) allowing one-click confirmation to run calculations.
+  - **Status (LangGraph Orchestrator, `/chatbot`)**: Done: a `tenancy` event with Unconfirmed facts shows an editable card of the lease's values, green / yellow / red by confidence (≥ 0.8 / > 0.5 / ≤ 0.5 or none); one click sends `confirm` and the check continues (`public/chat/tenancy.js`).
+  - **Status (rule-based chatbot, floating widget)**: Not planned (the rule-based chat has no Tenancy).
+
+- [ ] **3.5 Session Management & Conversation History**
+  - **Task**: Provide conversation reset, thread persistence in `localStorage` or session backend, and export to PDF/Markdown report.
+  - **Priority**: Low
+  - **Acceptance Criteria**: User can restart context or save their compliance evaluation report.
+  - **Status (LangGraph Orchestrator, `/chatbot`)**: Partial: "Neuer Chat" starts a new `threadId` (and cancels a running turn); the `threadId` is kept in `localStorage`, so a reload continues the thread on the server, but the page does not redraw earlier messages. Threads live in server memory (lost on restart). No PDF/Markdown export yet.
+  - **Status (rule-based chatbot, floating widget)**: Not implemented.
 
 ---
 
@@ -135,7 +176,9 @@ Extract relevant tenancy and dwelling metadata from user-uploaded files (rental 
 - [x] **4.4 Confidence Scoring & Fallback Clarification**
   - **Task**: Compute field-level extraction confidence scores; flag ambiguous or low-confidence values with warnings and confidence pills.
   - **Priority**: Medium
-  - **Status**: Implemented (`confidence` calculation and `warnings` array).
+  - **Acceptance Criteria**: Fields with confidence < 80% prompt the Orchestrator to confirm details with the user in chat.
+  - **Status (LangGraph Orchestrator)**: lease facts with confidence < 0.8 are Unconfirmed and block verdicts until the user confirms them.
+  - **Status (OCR, `src/ocr-extraction.js`)**: Implemented (`confidence` calculation and `warnings` array).
 
 - [x] **4.5 Privacy, In-Memory Processing & API Pre-filling**
   - **Task**: Transform extracted fields into ready-to-run API payload (`prefilledApiPayload`) conforming to `/api/v1/address-verifications`, and auto-populate user form without persisting user document files.
@@ -153,10 +196,11 @@ Combine all components into seamless user journeys.
   - **Priority**: High
   - **Acceptance Criteria**: Uploading a standard Berlin rental contract yields a full compliance check report without manual data entry.
 
-- [ ] **5.2 Conversational Correction Loop**
+- [x] **5.2 Conversational Correction Loop**
   - **Task**: Enable user to correct any parsed field in chat (e.g., "Actually the cold rent is 720, not 780") and have the orchestrator re-run tool calculations.
   - **Priority**: Medium
   - **Acceptance Criteria**: Tool recalculation reflects user adjustments immediately in subsequent chat messages.
+  - **Status**: Done in the Orchestrator and tested through `send()`; in the UI on `/chatbot` (free-text corrections and the review card).
 
 - [ ] **5.3 Automated Testing & E2E Verification**
   - **Task**: Write unit and integration tests for:
@@ -165,6 +209,7 @@ Combine all components into seamless user journeys.
     - Orchestrator multi-turn state transitions.
   - **Priority**: Medium
   - **Acceptance Criteria**: Test suite passes with `npm test`.
+  - **Status**: Partial: Tool contract and Orchestrator multi-turn tests pass with `npm test`; OCR mock tests are not part of the Orchestrator work.
 
 ---
 

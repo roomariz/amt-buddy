@@ -162,9 +162,9 @@ function mapFeature(feature) {
   };
 }
 
-export async function verifyBerlinAddress(input, options = {}) {
-  const address = parseAddressInput(input);
-  const occupancyAssessment = assessOccupancy(input);
+// Looks up a parsed address (see parseAddressInput) in the official address register.
+// Returns the official address, or null when the register has no such address.
+export async function lookupBerlinAddress(address, options = {}) {
   const fetchImpl = options.fetchImpl ?? fetch;
   const response = await fetchImpl(buildWfsUrl(address), {
     headers: { accept: "application/json" },
@@ -177,12 +177,19 @@ export async function verifyBerlinAddress(input, options = {}) {
 
   const collection = await response.json();
   const feature = collection.features?.find((candidate) => matchesAddress(candidate, address));
+  return feature ? mapFeature(feature) : null;
+}
 
-  if (!feature) {
+export async function verifyBerlinAddress(input, options = {}) {
+  const address = parseAddressInput(input);
+  const occupancyAssessment = assessOccupancy(input);
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const verifiedAddress = await lookupBerlinAddress(address, { fetchImpl, signal: options.signal });
+
+  if (!verifiedAddress) {
     return { verified: false, address: null };
   }
 
-  const verifiedAddress = mapFeature(feature);
   const [residentialLocation, buildingAgeArea] = await Promise.all([
     getBerlinResidentialLocation(verifiedAddress, {
       fetchImpl: options.residentialLocationFetchImpl ?? fetchImpl,

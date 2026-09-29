@@ -5,9 +5,11 @@ address dataset published by Amt für Statistik Berlin-Brandenburg.
 
 ## Run locally
 
-Requires Node.js 20 or newer. No third-party packages are required.
+Requires Node.js 20 or newer. Install the dependencies once (they are used by the
+Orchestrator):
 
 ```sh
+npm install
 npm start
 ```
 
@@ -30,6 +32,26 @@ npm test
 
 Tests mock the upstream service so they are deterministic and do not require
 network access.
+
+## Orchestrator
+
+`src/orchestrator/` contains the LangGraph.js Orchestrator behind the chat: it
+routes each message by Intent, delegates to Sub-agents over the Tools, keeps the
+Tenancy per conversation and only releases grounded answers. Tool authors and the
+UI build against the contracts described in the handoff notes,
+[docs/orchestrator.md](docs/orchestrator.md) (Tool authoring, the `send()` event
+contract, configuration and the LangSmith/PII warning). The vocabulary is in
+[CONTEXT.md](CONTEXT.md).
+
+It needs `OPENAI_API_KEY` and `OPENAI_MODEL` (optionally `OPENAI_ROUTER_MODEL`).
+`npm test` stays offline; the live smoke tests run only when both are set.
+
+The server serves it over Server-Sent Events: `POST /api/v1/orchestrator/chat`,
+with `GET /api/v1/orchestrator/status` and the lease upload
+`POST /api/v1/orchestrator/documents` (see
+[docs/orchestrator.md](docs/orchestrator.md#http-and-sse-interface)). Without the
+two variables the server still starts, and the same endpoint answers with the
+rule-based chatbot of `POST /api/v1/chat`.
 
 ## API
 
