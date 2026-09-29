@@ -92,7 +92,7 @@ export async function runLandlordTurn({ fetchImpl, landlordId, message, onChange
 // remembered preferences), so the page fetches it again. A change saved before the turn failed
 // still counts.
 export function changedDashboard(state) {
-  return Boolean(state?.changed?.criteria || state?.changed?.shortlist || state?.changed?.notes);
+  return Object.values(state?.changed ?? {}).some(Boolean);
 }
 
 // The applicants' names by id, from the dashboard (ranked, excluded and the Shortlist).

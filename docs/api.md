@@ -357,11 +357,10 @@ The Rent check runs `evaluateMietspiegel` with the asking rent as contract rent 
 - `name` is joined in for display only; the scorer never sees names or contact details.
 - `hint`: `{ "code": "listing_required", "message" }` without a Listing (then `ranked` and `excluded` are empty), otherwise `null`.
 - `shortlist`: the landlord's Shortlist, in the order the entries were added: `[{ applicantId, name, status, note, added, rank, matchScore, excluded }]`. `rank` and `matchScore` come from `ranked`; both are `null` without a Listing or when the applicant is excluded (`excluded: true`). `name` is `null` for an applicant no longer in the pool.
+- `notes`: the Landlord preferences the chat remembered (`remember_preference`), oldest first: `[{ noteId, note, created }]`, also without a Listing.
 - `poolErrors`: `[{ file, reason }]`, the pool files that could not be read as an application.
 
 The server reads the Applicant pool once at start from `APPLICANT_POOL_DIR` (default: the committed pool in `data/applicants`), as of `APPLICANT_POOL_TODAY` (default: `POOL_DATE`, the day the committed pool was generated, so its SCHUFA-Auskünfte do not expire).
-
-- `notes`: the Landlord preferences the chat remembered (`remember_preference`), oldest first: `[{ noteId, note, created }]`, also without a Listing.
 
 ### `PUT /api/v1/landlord/:landlordId/shortlist/:applicantId`
 

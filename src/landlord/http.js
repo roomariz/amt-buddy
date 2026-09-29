@@ -11,6 +11,8 @@ import { normalizeLandlordName } from "./store.js";
 const MAX_NAME_LENGTH = 100;
 const MAX_MESSAGE_LENGTH = 4_000;
 const LANDLORD_PATH = "/api/v1/landlord/";
+const APPLICANT_NOT_FOUND = ["applicant_not_found", "No applicant with this id."];
+const NOTE_NOT_FOUND = ["note_not_found", "No remembered preference with this id."];
 
 class LandlordInputError extends Error {
   constructor(details) {
@@ -266,7 +268,7 @@ export function createLandlordApi({ getStore, getApplicantPool = () => EMPTY_POO
   // landlord does not have → 404.
   async function deleteNote(request, response, landlordId, noteId) {
     if (!getStore().deleteNote(landlordId, noteId)) {
-      sendError(response, 404, "note_not_found", "No remembered preference with this id.");
+      sendError(response, 404, ...NOTE_NOT_FOUND);
       return;
     }
     sendJson(response, 200, { data: { noteId, deleted: true } });
@@ -296,9 +298,9 @@ export function createLandlordApi({ getStore, getApplicantPool = () => EMPTY_POO
 
   // The paths that carry an id after the resource, and the error for an id that cannot be decoded.
   const ID_RESOURCES = {
-    shortlist: ["applicant_not_found", "No applicant with this id."],
-    applicants: ["applicant_not_found", "No applicant with this id."],
-    notes: ["note_not_found", "No remembered preference with this id."],
+    shortlist: APPLICANT_NOT_FOUND,
+    applicants: APPLICANT_NOT_FOUND,
+    notes: NOTE_NOT_FOUND,
   };
 
   return {

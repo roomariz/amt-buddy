@@ -137,6 +137,12 @@ test("remember_preference stores the note for this landlord only; the context sh
   assert.deepEqual(context.preferences.notes.map(({ note }) => note), ["Wants someone who stays long-term.", "No students, please."]);
   assert.deepEqual(context.preferences.criteria, store.getCriteria(landlordId));
   assert.deepEqual((await getContext(other)).preferences.notes, []);
+
+  // Saved criteria, as the chat can quote them: weights to one decimal (50 of 135 → 37 %, 30 → 22.2 %).
+  await call("update_selection_criteria", { weights: { employment: 50 } });
+  const { weights } = (await getContext(landlordId)).preferences.criteria;
+  assert.equal(weights.employment, 37);
+  assert.equal(weights.affordability, 22.2);
 });
 
 test("a whitespace-only note is an input error and nothing is stored", async () => {

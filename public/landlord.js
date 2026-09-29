@@ -491,16 +491,18 @@ function renderShortlist() {
 // --- the remembered preferences ------------------------------------------------------------------
 
 // Deletes one remembered preference; the list drops it once the server confirms (or reports it
-// already gone).
+// already gone). On a failure the list is redrawn as it was, so its Delete button works again.
 async function removeNote(noteId) {
   if (!landlord) return;
   const landlordId = landlord.landlordId;
+  const index = (notes ?? []).findIndex((entry) => entry.noteId === noteId);
   showError(preferencesError, null);
   let result;
   try {
     result = await deleteNote({ fetchImpl: fetch, landlordId, noteId });
   } catch (error) {
     showError(preferencesError, error.message);
+    renderPreferences();
     return;
   }
   if (landlord?.landlordId !== landlordId) return;
@@ -511,8 +513,10 @@ async function removeNote(noteId) {
   if (result.notFound) showError(preferencesError, t("landlord.preferences.notFound"));
   notes = withoutNote(notes ?? [], noteId);
   renderPreferences();
-  // Keep the keyboard focus in the list: on the next delete button, or the section heading.
-  (preferencesList.querySelector("button") ?? $("#preferences-title"))?.focus();
+  // Keep the keyboard focus in the list: on the Delete button that took the deleted one's place
+  // (or the last one), or on the section heading when the list is empty.
+  const buttons = preferencesList.querySelectorAll("button");
+  (buttons[Math.min(Math.max(index, 0), buttons.length - 1)] ?? $("#preferences-title"))?.focus();
 }
 
 function renderPreferences() {

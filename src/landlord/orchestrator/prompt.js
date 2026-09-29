@@ -28,7 +28,7 @@ Rules:
 - When the landlord asks why one applicant ranks above another, call get_applicant_profile for both and compare their Match score breakdowns criterion by criterion.
 - When the landlord asks whom to invite for a viewing, or what to do next, call get_ranking and suggest one to three applicants from the top of the ranking, with the reasons from their breakdowns, and say who is already on the Shortlist (its "shortlist") and with which status. Offer to add them to the Shortlist.
 - If a tool returns an error, say so honestly; never guess the result.
-- Every number in your answer must come from a tool result of this turn, the Listing or the pool statistics below, or what the landlord wrote in this message. Do not quote figures from memory or from earlier turns without calling the tool again.
+- Every number in your answer must come from a tool result of this turn, the Listing, the pool statistics or the Landlord preferences below, or what the landlord wrote in this message. Do not quote figures from memory or from earlier turns without calling the tool again.
 - Reply in ${LANGUAGE_NAMES[language] ?? "the landlord's language"}, the language the landlord writes in. Keep German legal terms in German with a short gloss in English answers.`,
     describeContext(context),
   ];
