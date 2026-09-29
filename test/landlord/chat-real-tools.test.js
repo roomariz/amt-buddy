@@ -143,6 +143,21 @@ test("flat facts in a message are saved with update_flat_details (flat event); a
   assert.equal((await server.overview()).rentCheck.allowedRent, 539);
 });
 
+test("a flat value the Listing form refuses is an input error the model learns; nothing is saved, no flat event", async (t) => {
+  const server = await start({ listing: null });
+  t.after(server.close);
+  server.setScript([
+    { toolCalls: [{ name: "update_flat_details", args: { address: "Wühlischstraße 30", askingRent: 700 } }] },
+    "Please give me the address with its postal code.",
+  ]);
+
+  const events = await server.chat("Wühlischstraße 30, the rent is 700 €.");
+
+  assert.deepEqual(typesOf(events), ["token", "done"]);
+  assert.match(server.model.calls[1].at(-1).content, /"error":"input".*postal code/);
+  assert.deepEqual(server.store.getFlatDetails(server.landlordId), { address: null, livingAreaSqm: null, rooms: null, askingRent: null, buildingYear: null });
+});
+
 test("without a Listing the ranking Tool ranks anyway and says what is inactive; the prompt carries the flat details", async (t) => {
   const server = await start({ listing: null });
   t.after(server.close);

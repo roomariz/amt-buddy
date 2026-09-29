@@ -2,6 +2,10 @@
 // address, size, rooms and rent are all known, the full Listing with its Rent check.
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 
 import { updateFlatDetails } from "../../src/landlord/flat-details.js";
 import { buildListing, ListingInputError } from "../../src/landlord/listing.js";
@@ -112,4 +116,31 @@ test("the flat details are per landlord", async () => {
   const other = store.signIn("Max Mustermann").landlordId;
   await update({ askingRent: 1100 });
   assert.deepEqual(store.getFlatDetails(other), NOTHING);
+});
+
+test("a Listing saved before the flat details existed seeds them", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "amt-buddy-flat-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const path = join(directory, "landlord.sqlite");
+  const { fetchImpl } = createFakeBerlinWfs();
+  const listing = await buildListing({ address: "Wühlischstraße 30, 10245 Berlin", livingAreaSqm: 50, rooms: 2, askingRent: 700, buildingYear: 1905 }, { fetchImpl });
+  const before = createLandlordStore({ path });
+  const { landlordId } = before.signIn("Erika Muster");
+  before.saveListing(landlordId, listing);
+  before.close();
+  // The database as an older store left it: the Listing, no flat_details row.
+  const db = new DatabaseSync(path);
+  db.prepare("DELETE FROM flat_details WHERE landlord_id = ?").run(landlordId);
+  db.close();
+
+  const store = createLandlordStore({ path });
+  t.after(() => store.close());
+
+  assert.deepEqual(store.getFlatDetails(landlordId), {
+    address: "Wühlischstraße 30, 10245 Berlin",
+    livingAreaSqm: 50,
+    rooms: 2,
+    askingRent: 700,
+    buildingYear: 1905,
+  });
 });

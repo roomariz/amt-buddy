@@ -144,7 +144,11 @@ test("changing an inactive criterion's weight still saves it, and the result say
 test("update_selection_criteria changes Requirements only: weights are refused, nothing saved", async () => {
   const { store, landlordId, call } = setup();
 
-  await assert.rejects(call("update_selection_criteria", { weights: { employment: 50 } }), (error) => errorKind(error) === "input");
+  // With valid Requirements, so the refusal is for the weights and not a missing field.
+  await assert.rejects(
+    call("update_selection_criteria", { weights: { employment: 50 }, requirements: { noPets: true } }),
+    (error) => errorKind(error) === "input" && /Unrecognized key: "weights"/.test(error.message) && !/requirements/.test(error.message),
+  );
   assert.deepEqual(store.getCriteria(landlordId), DEFAULT_CRITERIA);
 
   const result = await call("update_selection_criteria", { requirements: { noPets: true } });
@@ -152,6 +156,17 @@ test("update_selection_criteria changes Requirements only: weights are refused, 
   assert.deepEqual(result.criteria.weights, DEFAULT_CRITERIA.weights);
   assert.equal(result.top.length, 3);
   assert.deepEqual(result.inactive, []);
+});
+
+test("update_selection_criteria: a Requirement the contract lets through but the criteria refuse is a Tool input error, nothing saved", async () => {
+  const { store, landlordId, call } = setup();
+
+  // The contract checks only the date's shape; 30 February is refused by updateSelectionCriteria.
+  await assert.rejects(
+    call("update_selection_criteria", { requirements: { latestMoveIn: "2026-02-30" } }),
+    (error) => error.kind === "input" && /requirements\.latestMoveIn/.test(error.message),
+  );
+  assert.deepEqual(store.getCriteria(landlordId), DEFAULT_CRITERIA);
 });
 
 test("adjust_selection_criteria and update_shortlist refuse invalid input as input errors, saving nothing", async () => {
@@ -206,6 +221,19 @@ test("update_flat_details: a value the Listing form refuses is an input error, n
   assert.equal(unknown.rentCheck, null);
   assert.match(unknown.note, /address register has no such address/);
   assert.equal(store.getFlatDetails(landlordId).askingRent, 700);
+});
+
+test("update_flat_details: the refusal names the field and says its message once", async () => {
+  const { call } = setup({ withListing: false });
+
+  await assert.rejects(call("update_flat_details", { address: "Wühlischstraße 30" }), (error) => {
+    assert.equal(
+      error.message,
+      "address: The address needs street, house number and postal code, e.g. 'Wühlischstraße 30, 10245 Berlin'. " +
+        "Nothing was saved: call again without that value to save the others.",
+    );
+    return true;
+  });
 });
 
 test("get_applicant_profile: an excluded applicant comes with the Requirement and its reasons; an unknown id is an input error", async () => {

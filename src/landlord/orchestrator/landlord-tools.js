@@ -47,9 +47,12 @@ const rankPool = ({ applicants, flat, criteria }) =>
 
 // A dashboard function's input error (CriteriaInputError, ShortlistInputError, ListingInputError)
 // as a Tool input error, with its details in the message the model reads; `addendum` follows them.
+// An error whose message is one of its details' (ListingInputError) is not said twice.
 function asToolInputError(error, addendum = "") {
-  const details = (error.details ?? []).map(({ field, message }) => `${field}: ${message}`).join("; ");
-  const message = details && details !== error.message ? `${error.message} ${details}` : error.message;
+  const details = error.details ?? [];
+  const listed = details.map(({ field, message }) => `${field}: ${message}`).join("; ");
+  const repeated = details.some(({ message }) => message === error.message);
+  const message = !listed ? error.message : repeated ? listed : `${error.message} ${listed}`;
   return new LandlordToolInputError(addendum ? `${message} ${addendum}` : message);
 }
 
