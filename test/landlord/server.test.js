@@ -31,6 +31,7 @@ async function start({ store = createLandlordStore({ path: ":memory:" }), wfs = 
     get: (path) => send("GET", path),
     post: (path, body) => send("POST", path, body),
     put: (path, body) => send("PUT", path, body),
+    del: (path) => send("DELETE", path),
   };
 }
 
@@ -405,4 +406,120 @@ test("the Applicant pool directory and its day are configurable", async (t) => {
   assert.ok(all.some(({ applicantId, name }) => applicantId === "A-complete" && name === "Lena Schmidt"));
   assert.ok(!all.some(({ applicantId }) => applicantId.startsWith("A-0")), "not the committed pool");
   assert.ok(poolErrors.some(({ file }) => file === "malformed.md"));
+});
+
+// --- The Shortlist ------------------------------------------------------------------------------
+
+const shortlistPath = (landlordId, applicantId) => `/api/v1/landlord/${landlordId}/shortlist/${applicantId}`;
+
+test("putting an applicant on the Shortlist returns the entry; the dashboard lists it with name, score and status", async (t) => {
+  const server = await start();
+  t.after(server.close);
+  const landlordId = await signIn(server);
+  await server.put(`/api/v1/landlord/${landlordId}/listing`, WUEHLISCH_LISTING);
+  const { ranked } = (await server.get(`/api/v1/landlord/${landlordId}/dashboard`)).body.data;
+  const [first, second] = ranked;
+
+  const added = await server.put(shortlistPath(landlordId, second.applicantId), { status: "to_invite", note: "Stable income" });
+  await server.put(shortlistPath(landlordId, first.applicantId), { status: "invited" });
+  const { shortlist } = (await server.get(`/api/v1/landlord/${landlordId}/dashboard`)).body.data;
+
+  assert.equal(added.status, 200);
+  assert.deepEqual(added.body.data, { applicantId: second.applicantId, status: "to_invite", note: "Stable income" });
+  assert.deepEqual(
+    shortlist.map(({ applicantId, name, status, note, rank, matchScore, excluded }) => ({ applicantId, name, status, note, rank, matchScore, excluded })),
+    [
+      { applicantId: second.applicantId, name: second.name, status: "to_invite", note: "Stable income", rank: 2, matchScore: second.matchScore, excluded: false },
+      { applicantId: first.applicantId, name: first.name, status: "invited", note: null, rank: 1, matchScore: first.matchScore, excluded: false },
+    ],
+  );
+  for (const entry of shortlist) assert.equal(entry.email, undefined);
+});
+
+test("changing a Shortlist entry's status keeps its note; DELETE removes it", async (t) => {
+  const server = await start();
+  t.after(server.close);
+  const landlordId = await signIn(server);
+
+  await server.put(shortlistPath(landlordId, "A-001"), { status: "to_invite", note: "Call Monday" });
+  const changed = await server.put(shortlistPath(landlordId, "A-001"), { status: "declined" });
+  const removed = await server.del(shortlistPath(landlordId, "A-001"));
+  const { shortlist } = (await server.get(`/api/v1/landlord/${landlordId}/dashboard`)).body.data;
+
+  assert.deepEqual(changed.body.data, { applicantId: "A-001", status: "declined", note: "Call Monday" });
+  assert.equal(removed.status, 200);
+  assert.deepEqual(removed.body.data, { applicantId: "A-001", status: "removed", note: null });
+  assert.deepEqual(shortlist, []);
+});
+
+test("without a Listing, Shortlist entries have no rank or score; an excluded applicant is marked excluded", async (t) => {
+  const server = await start();
+  t.after(server.close);
+  const landlordId = await signIn(server);
+  // A-017 is a household too large for 50 m² (see the ranking test above).
+  await server.put(shortlistPath(landlordId, "A-017"), { status: "to_invite" });
+
+  const before = (await server.get(`/api/v1/landlord/${landlordId}/dashboard`)).body.data.shortlist;
+  await server.put(`/api/v1/landlord/${landlordId}/listing`, WUEHLISCH_LISTING);
+  const after = (await server.get(`/api/v1/landlord/${landlordId}/dashboard`)).body.data.shortlist;
+
+  assert.equal(typeof before[0].name, "string");
+  assert.deepEqual([before[0].rank, before[0].matchScore, before[0].excluded], [null, null, false]);
+  assert.deepEqual([after[0].rank, after[0].matchScore, after[0].excluded], [null, null, true]);
+});
+
+test("an invalid status or note is a 422, an applicant outside the pool a 404, and nothing is saved", async (t) => {
+  const server = await start();
+  t.after(server.close);
+  const landlordId = await signIn(server);
+
+  for (const body of [{ status: "maybe" }, {}, { status: "remove" }, { status: "invited", note: "x".repeat(501) }, []]) {
+    const { status, body: error } = await server.put(shortlistPath(landlordId, "A-001"), body);
+    assert.equal(status, 422, JSON.stringify(body));
+    assert.equal(error.error.code, "validation_error");
+  }
+  const unknown = await server.put(shortlistPath(landlordId, "A-999"), { status: "to_invite" });
+  const unknownDelete = await server.del(shortlistPath(landlordId, "A-999"));
+  const { shortlist } = (await server.get(`/api/v1/landlord/${landlordId}/dashboard`)).body.data;
+
+  assert.equal(unknown.status, 404);
+  assert.equal(unknown.body.error.code, "applicant_not_found");
+  assert.equal(unknownDelete.status, 404);
+  assert.deepEqual(shortlist, []);
+});
+
+test("the Shortlist of an unknown landlord is a 404", async (t) => {
+  const server = await start();
+  t.after(server.close);
+
+  const { status, body } = await server.put(shortlistPath("nobody", "A-001"), { status: "to_invite" });
+
+  assert.equal(status, 404);
+  assert.equal(body.error.code, "landlord_not_found");
+});
+
+test("the Shortlist survives re-creating the app on the same database file", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "amt-buddy-landlord-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const path = join(directory, "landlord.sqlite");
+
+  const firstStore = createLandlordStore({ path });
+  const first = await start({ store: firstStore });
+  const landlordId = await signIn(first);
+  await first.put(shortlistPath(landlordId, "A-003"), { status: "invited", note: "Viewing Tuesday" });
+  await first.close();
+  firstStore.close();
+
+  const secondStore = createLandlordStore({ path });
+  const second = await start({ store: secondStore });
+  t.after(async () => {
+    await second.close();
+    secondStore.close();
+  });
+  const { shortlist } = (await second.get(`/api/v1/landlord/${landlordId}/dashboard`)).body.data;
+
+  assert.deepEqual(
+    shortlist.map(({ applicantId, status, note }) => ({ applicantId, status, note })),
+    [{ applicantId: "A-003", status: "invited", note: "Viewing Tuesday" }],
+  );
 });
