@@ -5,7 +5,7 @@ import { createSseParser } from "../chat/sse.js";
 import { TURN_TEXT } from "../chat/turn.js";
 
 export function initialLandlordTurn() {
-  return { phase: "streaming", answer: "", error: null, changed: { criteria: false, shortlist: false, notes: false }, signedOut: false };
+  return { phase: "streaming", answer: "", error: null, changed: { criteria: false, shortlist: false, notes: false, flat: false }, signedOut: false };
 }
 
 // Pure: reduceLandlordTurn(state, event) → new state. Events after the terminal one are ignored.
@@ -17,6 +17,7 @@ export function reduceLandlordTurn(state, event) {
     case "criteria":
     case "shortlist":
     case "notes":
+    case "flat":
       return { ...state, changed: { ...state.changed, [event.type]: true } };
     case "done":
       return { ...state, phase: "done" };
@@ -36,8 +37,8 @@ export function endLandlordTurn(state) {
 
 // Runs one chat turn for `message`, calling onChange(next, previous) on every change. Resolves with
 // the final state, always in phase "done" or "error"; `signedOut` is true when the server does not
-// know the landlord; `changed` says whether the turn changed the Selection criteria, the Shortlist or
-// the remembered Landlord preferences (notes).
+// know the landlord; `changed` says whether the turn changed the Selection criteria, the Shortlist,
+// the remembered Landlord preferences (notes) or the flat details (flat).
 export async function runLandlordTurn({ fetchImpl, landlordId, message, onChange = () => {} }) {
   let state = initialLandlordTurn();
   const commit = (next) => {
@@ -88,8 +89,8 @@ export async function runLandlordTurn({ fetchImpl, landlordId, message, onChange
   return state;
 }
 
-// Whether the turn changed what the dashboard shows (the Selection criteria, the Shortlist or the
-// remembered preferences), so the page fetches it again. A change saved before the turn failed
+// Whether the turn changed what the dashboard shows (the Selection criteria, the Shortlist, the
+// remembered preferences or the flat details), so the page fetches it again. A change saved before the turn failed
 // still counts.
 export function changedDashboard(state) {
   return Object.values(state?.changed ?? {}).some(Boolean);

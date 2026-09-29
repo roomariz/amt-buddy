@@ -47,6 +47,16 @@ export async function fetchDashboard({ fetchImpl, landlordId }) {
   throw new Error(t("landlord.errors.failed"));
 }
 
+// The chat-first page's data (docs/api.md, "GET overview") → { flat, missing, rentCheck, criteria,
+// inactive, ranked, stats, shortlist, … }, or { signedOut: true } when the server does not know the
+// landlord.
+export async function fetchOverview({ fetchImpl, landlordId }) {
+  const { status, body } = await call(fetchImpl, landlordPath(landlordId, "overview"));
+  if (status === 200 && body?.data) return body.data;
+  if (status === 404) return { signedOut: true };
+  throw new Error(t("landlord.errors.failed"));
+}
+
 const shortlistPath = (landlordId, applicantId) => landlordPath(landlordId, `shortlist/${encodeURIComponent(applicantId)}`);
 
 // Adds an applicant to the Shortlist or changes their status (and, when given, note) → { entry },

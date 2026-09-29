@@ -110,6 +110,13 @@ test("a target share above 50 % is capped", () => {
   assert.ok(Math.abs(criteria.weights.affordability - (30 * 50) / 85) < 1e-9);
 });
 
+test("a request of exactly 50 % is applied as asked, not reported as capped", () => {
+  // SCHUFA 20 × 2.5 = 50: at the limit, not above it; the chat must not say it hit the limit.
+  const { applied } = setup().adjust([{ criterion: "schufa", factor: 2.5 }]);
+
+  assert.deepEqual(applied, [{ criterion: "schufa", from: 20, requested: 50, to: 50, capped: false }]);
+});
+
 test("the saved weights are read as shares of their sum", () => {
   // Saved weights that do not sum to 100 (the store holds what it was given).
   const { criteria, applied } = setup({ ...zeroes, affordability: 3, schufa: 1 }).adjust([{ criterion: "schufa", share: 40 }]);
