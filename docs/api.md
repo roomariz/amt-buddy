@@ -385,6 +385,13 @@ The page displays the income limit as a percentage (33 → API ratio 0.33).
 The reusable `updateSelectionCriteria({ store, landlordId, input })` function in
 `src/landlord/criteria.js` validates, merges and saves, returning `{ previous,
 criteria }` for the later chat Tool integration.
+### `GET /api/v1/landlord/:landlordId/applicants/:applicantId`
+
+→ `200 { "data": { "profile", "score", "rentToIncome", "contact" } }`. An unknown applicant returns `404 applicant_not_found`; an unknown landlord returns `404 landlord_not_found`.
+
+- `profile` is the Applicant pool's anonymised profile: household size and counts, net household income, employment type, SCHUFA status, move-in date, pets, smoking, Credibility score, and the complete Document check. Each document has a status and reason; `documentCheck.issues` lists consistency and other document issues.
+- `score` is the current Listing's entry from `rankApplicants`: either `{ applicantId, rank, matchScore, breakdown, rentToIncome }` or `{ applicantId, excludedBy, reasons }`. It is `null` before a Listing is saved. `rentToIncome` is also returned at the top level for excluded applicants; it is `null` without a Listing.
+- `contact` contains only `{ name, email, phone }` for page display. The reusable lookup in `src/landlord/applicant-profile.js` leaves contact out for the later chat Tool. Protected source fields and raw document text are never returned.
 
 ### `POST /api/v1/landlord/:landlordId/chat`
 

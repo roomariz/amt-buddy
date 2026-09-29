@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { createApp } from "../../src/app.js";
 import { createLandlordStore } from "../../src/landlord/store.js";
 import { createFakeBerlinWfs } from "../helpers/fake-berlin-wfs.js";
-import { fetchDashboard, saveCriteria, saveListing, signIn } from "../../public/landlord/api.js";
+import { fetchApplicantProfile, fetchDashboard, saveCriteria, saveListing, signIn } from "../../public/landlord/api.js";
 import { criteriaFormValues, criteriaRequest } from "../../public/landlord/criteria.js";
 import { listingRequest } from "../../public/landlord/listing.js";
 import { rankingRows } from "../../public/landlord/ranking.js";
@@ -85,6 +85,39 @@ test("after saving the Listing the dashboard ranks the pool, and the table can f
   assert.ok(after.ranked.every(({ name }) => typeof name === "string" && name));
   const complete = rankingRows(after.ranked, { completeOnly: true });
   assert.ok(complete.length > 0 && complete.length < after.ranked.length);
+});
+
+test("a ranked row can request its applicant detail with contact and the same score", async (t) => {
+  const { fetchImpl, close } = await start();
+  t.after(close);
+  const { landlordId } = await signIn({ fetchImpl, name: "Erika" });
+  await saveListing({ fetchImpl, landlordId, request: listingRequest(FORM) });
+  const dashboard = await fetchDashboard({ fetchImpl, landlordId });
+  const row = rankingRows(dashboard.ranked)[0];
+
+  const detail = await fetchApplicantProfile({ fetchImpl, landlordId, applicantId: row.applicantId });
+
+  assert.equal(detail.profile.id, row.applicantId);
+  assert.equal(detail.score.matchScore, row.matchScore);
+  assert.equal(detail.score.rentToIncome, row.rentToIncome);
+  assert.deepEqual(detail.score.breakdown, row.breakdown);
+  assert.ok(detail.contact.name && detail.contact.email && detail.contact.phone);
+  assert.equal((await fetchApplicantProfile({ fetchImpl, landlordId, applicantId: "absent" })).notFound, true);
+});
+
+test("an applicant profile shows the score under the landlord's saved criteria", async (t) => {
+  const { fetchImpl, close } = await start();
+  t.after(close);
+  const { landlordId } = await signIn({ fetchImpl, name: "Erika" });
+  await saveListing({ fetchImpl, landlordId, request: listingRequest(FORM) });
+  const before = await fetchDashboard({ fetchImpl, landlordId });
+  const applicantId = "A-001";
+  await saveCriteria({ fetchImpl, landlordId, request: { weights: { affordability: 130 } } });
+  const after = await fetchDashboard({ fetchImpl, landlordId });
+  const profile = await fetchApplicantProfile({ fetchImpl, landlordId, applicantId });
+
+  assert.equal(profile.score.matchScore, after.ranked.find(({ applicantId: id }) => id === applicantId).matchScore);
+  assert.notEqual(profile.score.matchScore, before.ranked.find(({ applicantId: id }) => id === applicantId).matchScore);
 });
 
 test("with a Listing saved, the page opens with the pool summary, the stat tiles and the Recommendation cards", async (t) => {

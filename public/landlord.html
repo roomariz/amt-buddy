@@ -192,7 +192,7 @@
 
           <!-- The ranked applicants and the Excluded section; drawn by landlord.js -->
           <section id="ranking" class="landlord-card" aria-labelledby="ranking-title" hidden>
-            <h2 id="ranking-title" data-i18n="landlord.ranking.title">Bewerber-Ranking</h2>
+            <h2 id="ranking-title" tabindex="-1" data-i18n="landlord.ranking.title">Bewerber-Ranking</h2>
             <p class="landlord-intro" data-i18n="landlord.ranking.intro">
               Jeder Bewerber bekommt aus Ihren Auswahlkriterien einen Match-Score von 0 bis 100: Bezahlbarkeit, SCHUFA, Unterlagen, Glaubwürdigkeit, Beschäftigung und Vorvermieter. Der Name wird nur angezeigt, er zählt nicht.
             </p>
@@ -236,6 +236,16 @@
                 <ul id="excluded-list" class="excluded-list"></ul>
               </div>
             </div>
+          </section>
+
+          <!-- The selected Applicant's profile; drawn by landlord.js -->
+          <section id="applicant-detail" class="landlord-card applicant-detail" aria-labelledby="applicant-detail-title" hidden>
+            <div class="applicant-detail-head">
+              <h2 id="applicant-detail-title" tabindex="-1" data-i18n="landlord.detail.title">Bewerberprofil</h2>
+              <button id="applicant-detail-close" class="applicant-detail-close" type="button" data-i18n="landlord.detail.close">Profil schließen</button>
+            </div>
+            <p id="applicant-detail-status" class="landlord-note" role="status" hidden></p>
+            <div id="applicant-detail-body"></div>
           </section>
 
           <!-- The chat with the Landlord Orchestrator; drawn by landlord.js -->

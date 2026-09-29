@@ -6,7 +6,8 @@
  * table, the stored sign-in); this file only wires it to the DOM. Server text is always set as textContent.
  */
 
-import { fetchDashboard, saveCriteria, saveListing, signIn } from "./landlord/api.js";
+import { fetchApplicantProfile, fetchDashboard, saveCriteria, saveListing, signIn } from "./landlord/api.js";
+import { applicantDetailView } from "./landlord/applicant-detail.js";
 import { criteriaFormValues, criteriaRequest, WEIGHT_FIELDS } from "./landlord/criteria.js";
 import { runLandlordTurn } from "./landlord/chat.js";
 import { renderMarkdown } from "./chat/markdown.js";
@@ -57,6 +58,11 @@ const criteriaControls = $("#criteria-controls");
 const criteriaError = $("#criteria-error");
 const criteriaStatus = $("#criteria-status");
 const resetCriteriaButton = $("#btn-reset-criteria");
+const applicantDetailSection = $("#applicant-detail");
+const applicantDetailTitle = $("#applicant-detail-title");
+const applicantDetailStatus = $("#applicant-detail-status");
+const applicantDetailBody = $("#applicant-detail-body");
+const applicantDetailClose = $("#applicant-detail-close");
 
 function localStore() {
   try {
@@ -73,6 +79,11 @@ let poolOverview = null; // { stats, recommendations } from the dashboard; stats
 let defaultCriteria = null;
 let criteriaStatusKey = null;
 let criteriaErrorKey = null;
+let selectedApplicantId = null;
+let applicantDetail = null;
+let applicantDetailError = null;
+let detailRequest = 0;
+let detailOpener = null;
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -122,6 +133,113 @@ function fact(list, label, value) {
   row.append(el("dt", "", label), el("dd", "", value ?? t("landlord.unknown")));
   list.append(row);
 }
+
+function openButton(applicantId, name) {
+  const button = el("button", "applicant-open", name);
+  button.type = "button";
+  button.setAttribute("aria-label", t("landlord.detail.open", { name }));
+  button.addEventListener("click", () => openApplicant(applicantId, button));
+  return button;
+}
+
+function closeApplicantDetail() {
+  detailRequest += 1;
+  selectedApplicantId = null;
+  applicantDetail = null;
+  applicantDetailError = null;
+  detailOpener = null;
+  applicantDetailSection.hidden = true;
+}
+
+function renderApplicantDetail() {
+  applicantDetailSection.hidden = !selectedApplicantId;
+  if (!selectedApplicantId) return;
+  applicantDetailBody.replaceChildren();
+  applicantDetailTitle.textContent = applicantDetail?.contact.name ?? t("landlord.detail.title");
+  applicantDetailStatus.hidden = Boolean(applicantDetail);
+  applicantDetailStatus.textContent = applicantDetail ? "" : applicantDetailError ?? t("landlord.detail.loading");
+  if (!applicantDetail) return;
+
+  const view = applicantDetailView(applicantDetail);
+  const heading = (key) => applicantDetailBody.append(el("h3", "", t(`landlord.detail.${key}`)));
+  const facts = (items) => {
+    const list = el("dl", "applicant-detail-facts");
+    for (const { label, value } of items) fact(list, label, value);
+    applicantDetailBody.append(list);
+  };
+  facts(view.facts);
+
+  heading("documents");
+  const documents = el("ul", "applicant-detail-list");
+  for (const { label, status, reason } of view.documents) {
+    const item = el("li");
+    item.append(el("strong", "", `${label}: ${status}`));
+    if (reason) item.append(el("p", "", reason));
+    documents.append(item);
+  }
+  applicantDetailBody.append(documents);
+
+  heading("issues");
+  if (view.issues.length) {
+    const issues = el("ul", "applicant-detail-list");
+    for (const { label, message } of view.issues) issues.append(el("li", "", `${label}: ${message}`));
+    applicantDetailBody.append(issues);
+  } else applicantDetailBody.append(el("p", "landlord-hint", t("landlord.detail.noIssues")));
+
+  heading(view.exclusion ? "excluded" : "score");
+  if (view.exclusion) applicantDetailBody.append(el("p", "landlord-note", view.exclusion));
+  else if (view.matchScore === null) applicantDetailBody.append(el("p", "landlord-hint", t("landlord.detail.listingRequired")));
+  else {
+    applicantDetailBody.append(el("p", "applicant-detail-score", `${view.matchScore}/100`));
+    const breakdown = el("div", "applicant-detail-breakdown");
+    for (const { label, percent, weight } of view.breakdown) {
+      const row = el("div", "applicant-detail-breakdown-row");
+      const progress = el("progress");
+      progress.max = 100;
+      progress.value = percent;
+      progress.setAttribute("aria-label", `${label}: ${percent} %`);
+      row.append(el("span", "", label), progress, el("span", "", `${percent} % · ${t("landlord.detail.weight", { weight })}`));
+      breakdown.append(row);
+    }
+    applicantDetailBody.append(breakdown);
+  }
+
+  heading("contact");
+  facts([
+    { label: t("landlord.detail.email"), value: view.email },
+    { label: t("landlord.detail.phone"), value: view.phone },
+  ]);
+}
+
+async function openApplicant(applicantId, opener) {
+  if (!landlord) return;
+  const request = ++detailRequest;
+  detailOpener = opener;
+  selectedApplicantId = applicantId;
+  applicantDetail = null;
+  applicantDetailError = null;
+  renderApplicantDetail();
+  applicantDetailSection.scrollIntoView({ block: "start" });
+  applicantDetailTitle.focus();
+  try {
+    const result = await fetchApplicantProfile({ fetchImpl: fetch, landlordId: landlord.landlordId, applicantId });
+    if (request !== detailRequest) return;
+    if (result.signedOut) return signOut();
+    if (result.notFound) applicantDetailError = t("landlord.detail.unavailable");
+    else applicantDetail = result;
+  } catch (error) {
+    if (request !== detailRequest) return;
+    applicantDetailError = error.message;
+  }
+  renderApplicantDetail();
+}
+
+applicantDetailClose.addEventListener("click", () => {
+  const opener = detailOpener;
+  closeApplicantDetail();
+  if (opener?.isConnected) opener.focus();
+  else $("#ranking-title").focus();
+});
 
 function rangeBar(view, rentCheck) {
   const bar = el("div", "rent-bar");
@@ -213,8 +331,10 @@ function renderPoolOverview() {
     ...cards.map((card) => {
       const item = el("li", "recommendation-card");
       const head = el("div", "recommendation-head");
+      const name = openButton(card.applicantId, card.name);
+      name.classList.add("recommendation-name");
       head.append(
-        el("span", "recommendation-name", card.name),
+        name,
         el("span", "recommendation-score", t("landlord.poolOverview.score", { score: card.matchScore })),
       );
       item.append(head, el("span", "recommendation-rank", t("landlord.poolOverview.rank", { rank: card.rank })), el("p", "recommendation-reason", card.reason));
@@ -279,7 +399,7 @@ function renderRanking() {
         row.append(td);
       };
       cell(String(entry.rank));
-      cell(entry.name);
+      cell(openButton(entry.applicantId, entry.name));
       cell(formatNumber(entry.matchScore), "ranking-score");
       cell(breakdownCell(entry));
       cell(formatPercent(entry.rentToIncome));
@@ -293,7 +413,9 @@ function renderRanking() {
   excludedList.replaceChildren(
     ...ranking.excluded.map((entry) => {
       const item = el("li");
-      item.append(el("span", "excluded-name", entry.name), el("span", "", entry.reasons.map(exclusionText).join(" ")));
+      const name = openButton(entry.applicantId, entry.name);
+      name.classList.add("excluded-name");
+      item.append(name, el("span", "", entry.reasons.map(exclusionText).join(" ")));
       return item;
     }),
   );
@@ -305,6 +427,7 @@ rankingCompleteOnly.addEventListener("change", renderRanking);
 // --- actions -----------------------------------------------------------------------------------
 
 function signOut() {
+  closeApplicantDetail();
   forgetLandlord(localStore());
   landlord = null;
   listing = null;
@@ -330,6 +453,7 @@ async function loadDashboard() {
   try {
     const dashboard = await fetchDashboard({ fetchImpl: fetch, landlordId });
     if (landlord?.landlordId !== landlordId) return;
+    closeApplicantDetail();
     if (dashboard.signedOut) {
       signOut();
       return;
@@ -519,6 +643,7 @@ onLanguageChange(() => {
   renderRentCheck();
   renderPoolOverview();
   renderRanking();
+  renderApplicantDetail();
 });
 
 startI18n();

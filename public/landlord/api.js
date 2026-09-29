@@ -55,5 +55,13 @@ export async function saveCriteria({ fetchImpl, landlordId, request }) {
   if (status === 422 && Array.isArray(body?.error?.details)) {
     return { problems: Object.fromEntries(body.error.details.map((detail) => [detail.field, detail.code])) };
   }
+}
+
+// One Applicant profile for page display. An unknown applicant is distinct from a lost sign-in.
+export async function fetchApplicantProfile({ fetchImpl, landlordId, applicantId }) {
+  const { status, body } = await call(fetchImpl, landlordPath(landlordId, `applicants/${encodeURIComponent(applicantId)}`));
+  if (status === 200 && body?.data) return body.data;
+  if (status === 404 && body?.error?.code === "applicant_not_found") return { notFound: true };
+  if (status === 404 && body?.error?.code === "landlord_not_found") return { signedOut: true };
   throw new Error(t("landlord.errors.failed"));
 }

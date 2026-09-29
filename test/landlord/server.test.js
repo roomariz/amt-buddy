@@ -435,6 +435,89 @@ test("the dashboard joins in the applicant's name for display, with the document
   assert.equal(typeof entry.rentToIncome, "number");
 });
 
+test("applicant detail returns the anonymised profile, document issues, the same score as the dashboard, and contact", async (t) => {
+  const server = await start();
+  t.after(server.close);
+  const landlordId = await signIn(server);
+  await server.put(`/api/v1/landlord/${landlordId}/listing`, WUEHLISCH_LISTING);
+  const dashboard = (await server.get(`/api/v1/landlord/${landlordId}/dashboard`)).body.data;
+  const ranked = dashboard.ranked.find(({ applicantId }) => applicantId === "A-001");
+
+  const { status, body } = await server.get(`/api/v1/landlord/${landlordId}/applicants/A-001`);
+
+  assert.equal(status, 200);
+  assert.deepEqual(Object.keys(body.data), ["profile", "score", "rentToIncome", "contact"]);
+  assert.equal(body.data.profile.id, "A-001");
+  assert.equal(body.data.profile.householdSize, 2);
+  assert.equal(body.data.profile.netHouseholdIncome, 6070);
+  assert.equal(body.data.profile.employmentType, "permanent");
+  assert.equal(body.data.profile.schufaStatus, "negative");
+  assert.equal(body.data.profile.moveInDate, "2026-12-15");
+  assert.equal(body.data.profile.pets, false);
+  assert.equal(body.data.profile.smoking, true);
+  assert.deepEqual(Object.keys(body.data.profile.documentCheck), ["schufa", "incomeProof", "previousLandlord", "complete", "issues"]);
+  assert.equal(body.data.profile.credibilityScore, 100);
+  assert.deepEqual(body.data.score, {
+    applicantId: ranked.applicantId, rank: ranked.rank, matchScore: ranked.matchScore,
+    breakdown: ranked.breakdown, rentToIncome: ranked.rentToIncome,
+  });
+  assert.equal(body.data.rentToIncome, ranked.rentToIncome);
+  assert.deepEqual(body.data.contact, { name: "Julien Neumann", email: "julien.neumann1@example.org", phone: "+49 178 4053388" });
+});
+
+test("applicant detail reports document inconsistency and a requirement exclusion", async (t) => {
+  const server = await start();
+  t.after(server.close);
+  const landlordId = await signIn(server);
+  await server.put(`/api/v1/landlord/${landlordId}/listing`, WUEHLISCH_LISTING);
+
+  const excluded = (await server.get(`/api/v1/landlord/${landlordId}/dashboard`)).body.data.excluded[0];
+  const detail = (await server.get(`/api/v1/landlord/${landlordId}/applicants/${excluded.applicantId}`)).body.data;
+  assert.deepEqual(detail.score, { applicantId: excluded.applicantId, excludedBy: excluded.excludedBy, reasons: excluded.reasons });
+  assert.equal(typeof detail.rentToIncome, "number");
+
+  const directory = fileURLToPath(new URL("../fixtures/applicants/", import.meta.url));
+  const fixtures = await start({ env: { APPLICANT_POOL_DIR: directory, APPLICANT_POOL_TODAY: "2026-09-29" } });
+  t.after(fixtures.close);
+  const fixtureLandlordId = await signIn(fixtures);
+  const inconsistent = (await fixtures.get(`/api/v1/landlord/${fixtureLandlordId}/applicants/A-other-name`)).body.data;
+  assert.equal(inconsistent.profile.documentCheck.incomeProof.status, "inconsistent");
+  assert.ok(inconsistent.profile.documentCheck.issues.some(({ code }) => code === "name_mismatch"));
+  assert.ok(!JSON.stringify(inconsistent).includes("Jonas Schmidt"));
+  assert.ok(inconsistent.profile.credibilityScore < 100);
+  assert.equal(inconsistent.score, null); // no Listing yet
+  assert.equal(inconsistent.rentToIncome, null);
+});
+
+test("applicant detail never exposes protected source fields or extra contact fields", async (t) => {
+  const directory = fileURLToPath(new URL("../fixtures/applicants/", import.meta.url));
+  const server = await start({ env: { APPLICANT_POOL_DIR: directory, APPLICANT_POOL_TODAY: "2026-09-29" } });
+  t.after(server.close);
+  const landlordId = await signIn(server);
+  const { status, body } = await server.get(`/api/v1/landlord/${landlordId}/applicants/A-protected`);
+
+  assert.equal(status, 200);
+  assert.deepEqual(Object.keys(body.data.contact), ["name", "email", "phone"]);
+  assert.deepEqual(Object.keys(body.data.profile), [
+    "id", "householdSize", "household", "netHouseholdIncome", "employmentType", "schufaStatus", "moveInDate", "pets", "smoking", "documentCheck", "credibilityScore",
+  ]);
+  for (const value of ["Italian", "Catholic", "1988-04-12", "female", "a-protected.jpg", "expecting a second child", "Siemens AG", "Kastanienallee", "@lena.berlin"]) {
+    assert.ok(!JSON.stringify(body).includes(value), value);
+  }
+});
+
+test("applicant detail returns 404 for an unknown applicant or landlord", async (t) => {
+  const server = await start();
+  t.after(server.close);
+  const landlordId = await signIn(server);
+  const missing = await server.get(`/api/v1/landlord/${landlordId}/applicants/not-here`);
+  const unknownLandlord = await server.get("/api/v1/landlord/not-here/applicants/A-001");
+  assert.equal(missing.status, 404);
+  assert.equal(missing.body.error.code, "applicant_not_found");
+  assert.equal(unknownLandlord.status, 404);
+  assert.equal(unknownLandlord.body.error.code, "landlord_not_found");
+});
+
 test("the dashboard has the pool stats and the Recommendations, with names joined in", async (t) => {
   const server = await start();
   t.after(server.close);
