@@ -40,6 +40,13 @@ const roundedCriteria = ({ weights, requirements }) => ({
   requirements,
 });
 
+// The points each criterion adds to the Match score: subscore × weight (% of the Match score), to
+// one decimal; null for an inactive criterion. Computed here from the scorer's breakdown (ADR 0004),
+// so the chat compares applicants by points rather than by subscores whose weights differ. They sum
+// to the Match score up to rounding.
+const contributionsOf = (breakdown) =>
+  Object.fromEntries(Object.entries(breakdown).map(([criterion, { subscore, weight }]) => [criterion, subscore === null ? null : oneDecimal(subscore * weight)]));
+
 // A ranked applicant as the model sees it.
 const rankedEntry = ({ applicantId, rank, matchScore, rentToIncome, breakdown }) => ({ applicantId, rank, matchScore, rentToIncome, breakdown });
 
@@ -137,6 +144,7 @@ export function createLandlordTools({ getStore, getApplicantPool, fetchImpl }) {
         rank: score?.rank ?? null,
         matchScore: score?.matchScore ?? null,
         breakdown: score?.breakdown ?? null,
+        contributions: score?.breakdown ? contributionsOf(score.breakdown) : null,
         rentToIncome,
         excludedBy: score?.excludedBy ?? null,
         exclusionReasons: score?.reasons ?? [],

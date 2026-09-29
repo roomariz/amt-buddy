@@ -50,8 +50,25 @@ export function checkLandlordAnswer(answer, { evidence = [], context = {}, userT
   return checkGrounding(masked, { evidence: [...evidence, { result: context }, { result: { derivedRatioForms } }], userText });
 }
 
-// The answer without its sentences that contain one of the ungrounded figures.
+// A lead-in: a line ending with ":" (markdown emphasis after it allowed), its list on the lines below.
+const LEAD_IN = /:[*_\s]*$/;
+
+// The lines without each lead-in whose list was stripped: one that had a line right below it in the
+// answer and now has nothing below it before a blank line or the end. A lead-in followed by a blank
+// line in the answer ("Top applicants:\n\n- A-001 …") is always kept, so a surviving list is never
+// orphaned; a lead-in the sentence strip itself shortened is kept too. Both keep a dangling line at
+// worst, the cheap direction: dropping a lead-in wrongly removes a line from an intact answer.
+function withoutOrphanedLeadIns(stripped, answer) {
+  const answerLines = answer.split("\n");
+  const leadIns = new Set(answerLines.filter((line, index) => LEAD_IN.test(line) && answerLines[index + 1]?.trim()).map((line) => line.trim()));
+  const lines = stripped.split("\n");
+  const kept = lines.filter((line, index) => !(leadIns.has(line.trim()) && !lines[index + 1]?.trim()));
+  return kept.filter((line, index) => line.trim() !== "" || (index > 0 && kept[index - 1].trim() !== "")).join("\n").trim();
+}
+
+// The answer without its sentences that contain one of the ungrounded figures, and without a lead-in
+// left with nothing under it.
 export function stripUngroundedFigures(answer, ungrounded) {
   const { masked, unmask } = maskIds(answer);
-  return unmask(stripUngrounded(masked, ungrounded));
+  return withoutOrphanedLeadIns(unmask(stripUngrounded(masked, ungrounded)), String(answer ?? ""));
 }

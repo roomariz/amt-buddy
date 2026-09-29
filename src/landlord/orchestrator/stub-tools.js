@@ -140,7 +140,11 @@ export const LANDLORD_STUB_HANDLERS = {
     const profile = PROFILES[applicantId];
     if (!profile) throw inputError(`There is no applicant with the id ${applicantId}.`);
     const ranked = RANKED.find((entry) => entry.applicantId === applicantId);
-    return { profile, matchScore: ranked.matchScore, breakdown: ranked.breakdown, excludedBy: null, inactive: [] };
+    // Points per criterion (subscore × weight), as the real Tool computes them.
+    const contributions = Object.fromEntries(
+      Object.entries(ranked.breakdown).map(([criterion, { subscore, weight }]) => [criterion, subscore === null ? null : Math.round(subscore * weight * 10) / 10]),
+    );
+    return { profile, matchScore: ranked.matchScore, breakdown: ranked.breakdown, contributions, excludedBy: null, inactive: [] };
   },
   update_selection_criteria: ({ changes }) => ({
     previous: DEFAULT_CRITERIA,

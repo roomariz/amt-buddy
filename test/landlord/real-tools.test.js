@@ -19,11 +19,11 @@ const listing = await buildListing(
   { fetchImpl: createFakeBerlinWfs().fetchImpl },
 );
 
-function setup({ withListing = true } = {}) {
+function setup({ withListing = true, applicantPool = pool } = {}) {
   const store = createLandlordStore({ path: ":memory:" });
   const { landlordId } = store.signIn("Erika Muster");
   if (withListing) store.saveListing(landlordId, listing);
-  const { tools } = createLandlordTools({ getStore: () => store, getApplicantPool: async () => pool, fetchImpl: createFakeBerlinWfs().fetchImpl });
+  const { tools } = createLandlordTools({ getStore: () => store, getApplicantPool: async () => applicantPool, fetchImpl: createFakeBerlinWfs().fetchImpl });
   const byName = new Map(tools.map((candidate) => [candidate.name, candidate]));
   const call = (name, args = {}) => byName.get(name).invoke(args, { configurable: { landlordId } });
   return { store, landlordId, tools, call };
@@ -303,6 +303,50 @@ test("get_applicant_profile: an excluded applicant comes with the Requirement an
   await assert.rejects(call("get_applicant_profile", { applicantId: "A-999" }), (error) => error.kind === "input");
 });
 
+test("get_applicant_profile: each criterion's contribution is subscore × weight in points, to one decimal", async () => {
+  // A constructed applicant for the Listing (asking rent 900, 60 m², 2 rooms) under the default weights.
+  const present = { status: "present", reason: null };
+  const profile = {
+    ...pool.applicants[0].profile,
+    id: "A-100",
+    householdSize: 2,
+    household: { adults: 2, children: 0, childrenUpToSix: 0 },
+    netHouseholdIncome: 3000,
+    employmentType: "fixed_term",
+    schufaStatus: "clean",
+    credibilityScore: 85,
+    documentCheck: { schufa: present, incomeProof: present, previousLandlord: { status: "not_required", reason: null, arrears: null }, complete: true, issues: [] },
+  };
+  const { call } = setup({ applicantPool: { applicants: [{ id: "A-100", profile }], errors: [] } });
+
+  const result = await call("get_applicant_profile", { applicantId: "A-100" });
+
+  // Affordability: 900 / 3000 = 0.3, (0.4 − 0.3) / 0.15 = 0.6667 × 30 = 20.0; SCHUFA clean 1 × 20;
+  // documents 2 of 2 × 15; credibility 0.85 × 15 = 12.75 → 12.8; fixed-term 0.6 × 15 = 9;
+  // first-time renter 0.5 × 5 = 2.5.
+  assert.deepEqual(result.contributions, { affordability: 20, schufa: 20, documents: 15, credibility: 12.8, employment: 9, previousLandlord: 2.5 });
+  assert.doesNotThrow(() => LANDLORD_TOOL_CONTRACTS.get_applicant_profile.output.parse(result));
+});
+
+test("get_applicant_profile: the contributions sum to the Match score; inactive ones are null, an excluded applicant has none", async () => {
+  for (const withListing of [true, false]) {
+    const { call } = setup({ withListing });
+    const { ranked } = await call("get_ranking");
+    for (const { applicantId } of ranked) {
+      const { contributions, matchScore } = await call("get_applicant_profile", { applicantId });
+      const values = Object.values(contributions);
+      assert.equal(values.length, 6);
+      const sum = values.reduce((total, points) => total + (points ?? 0), 0);
+      assert.ok(Math.abs(sum - matchScore) <= 0.1 * values.length, `${applicantId}: ${sum} against ${matchScore}`);
+      assert.equal(contributions.affordability === null, !withListing, `${applicantId}: affordability is inactive without an asking rent`);
+    }
+  }
+  const { store, landlordId, call } = setup();
+  store.saveCriteria(landlordId, { ...store.getCriteria(landlordId), requirements: { ...store.getCriteria(landlordId).requirements, schufaCleanOnly: true } });
+  const excluded = pool.applicants.find(({ profile }) => profile.schufaStatus !== "clean").id;
+  assert.equal((await call("get_applicant_profile", { applicantId: excluded })).contributions, null);
+});
+
 test("update_shortlist never hands the landlord's earlier note back to the model", async () => {
   const { store, landlordId, call } = setup();
   store.saveShortlistEntry(landlordId, { applicantId: someApplicant, status: "to_invite", note: "Call Mrs. X on Monday" });
@@ -387,6 +431,20 @@ test("the context's Shortlist has ids and statuses only; the system prompt shows
   assert.ok(system.includes(`Shortlist:\n${JSON.stringify([{ applicantId: someApplicant, status: "to_invite" }])}`));
   assert.ok(system.includes(`Top of the current ranking:\n${JSON.stringify(context.top)}`));
   assert.match(system, /current as of this turn/);
+});
+
+test("the system prompt explains the pool stats fields and when a share may be called capped", async () => {
+  const { store, landlordId } = setup();
+  const context = await createLandlordContext({ getStore: () => store, getApplicantPool: async () => pool })(landlordId);
+
+  const system = landlordSystemMessage({ context, language: "en" }).content;
+
+  assert.ok(system.includes(`Applicant pool statistics:\n${JSON.stringify(context.stats)}\nTheir fields:`));
+  for (const field of ["total", "completeDocuments", "canAfford", "cleanSchufa", "excluded", "maxRentToIncome"]) assert.match(system, new RegExp(`\\b${field} = `), field);
+  assert.match(system, /canAffordAtMedian = how many could afford the Mietspiegel median rent "medianRent"/);
+  assert.match(system, /canAfford = how many can afford the asking rent/);
+  assert.match(system, /capped only for a change whose "capped" is true/);
+  assert.match(system, /compare their "contributions" criterion by criterion: name the criteria with the largest differences in points, and only those/);
 });
 
 test("a whitespace-only note is an input error and nothing is stored", async () => {

@@ -55,6 +55,10 @@ const inactive = z.array(
   }),
 );
 
+// Per criterion, the points it adds to the Match score (subscore × weight, one decimal; null while
+// the criterion is inactive).
+const contributions = z.object(Object.fromEntries(SELECTION_CRITERIA.map((criterion) => [criterion, z.number().min(0).max(100).nullable()])));
+
 const rankedApplicant = z.looseObject({
   applicantId,
   rank: z.number().int().min(1),
@@ -123,12 +127,13 @@ export const LANDLORD_TOOL_CONTRACTS = {
   get_applicant_profile: {
     name: "get_applicant_profile",
     description:
-      "Get one applicant's anonymised Applicant profile (household, income, employment type, SCHUFA status, move-in date, pets, smoking), their Document check and Credibility score, and their Match score breakdown, or the Requirement that excluded them.",
+      "Get one applicant's anonymised Applicant profile (household, income, employment type, SCHUFA status, move-in date, pets, smoking), their Document check and Credibility score, their Match score breakdown and the points each criterion adds to it ('contributions'), or the Requirement that excluded them.",
     schema: z.object({ applicantId }),
     output: z.looseObject({
       profile: applicantProfile,
       matchScore: z.number().min(0).max(100).nullable(),
       breakdown: breakdown.nullable(),
+      contributions: contributions.nullable(),
       excludedBy: z.string().nullable(),
       inactive,
     }),
