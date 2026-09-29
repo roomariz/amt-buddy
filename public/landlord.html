@@ -108,6 +108,19 @@
             <p id="recommendations-empty" class="landlord-hint" hidden></p>
           </section>
 
+          <!-- The Shortlist; drawn by landlord.js -->
+          <section id="shortlist" class="landlord-card" aria-labelledby="shortlist-title" hidden>
+            <h2 id="shortlist-title" data-i18n="landlord.shortlist.title">Shortlist</h2>
+            <p class="landlord-intro" data-i18n="landlord.shortlist.intro">
+              Die Bewerber, um die Sie sich kümmern wollen. Der Status hilft Ihnen nur beim Überblick: Amt-Buddy schreibt keinem Bewerber.
+            </p>
+            <p id="shortlist-error" class="landlord-error" role="alert" hidden></p>
+            <ul id="shortlist-list" class="shortlist-list"></ul>
+            <p id="shortlist-empty" class="landlord-hint" hidden data-i18n="landlord.shortlist.empty">
+              Noch niemand auf der Shortlist. Fügen Sie Bewerber aus dem Ranking oder den Empfehlungen hinzu.
+            </p>
+          </section>
+
           <!-- The ranked applicants and the Excluded section; drawn by landlord.js -->
           <section id="ranking" class="landlord-card" aria-labelledby="ranking-title" hidden>
             <h2 id="ranking-title" data-i18n="landlord.ranking.title">Bewerber-Ranking</h2>
@@ -142,6 +155,7 @@
                       <th scope="col" data-i18n="landlord.ranking.breakdown">Aufschlüsselung</th>
                       <th scope="col" data-i18n="landlord.ranking.rentToIncome">Miete / Einkommen</th>
                       <th scope="col" data-i18n="landlord.ranking.documents">Unterlagen</th>
+                      <th scope="col" data-i18n="landlord.shortlist.title">Shortlist</th>
                     </tr>
                   </thead>
                   <tbody id="ranking-rows"></tbody>

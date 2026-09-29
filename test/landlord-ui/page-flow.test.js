@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { createApp } from "../../src/app.js";
 import { createLandlordStore } from "../../src/landlord/store.js";
 import { createFakeBerlinWfs } from "../helpers/fake-berlin-wfs.js";
-import { fetchDashboard, saveListing, signIn } from "../../public/landlord/api.js";
+import { fetchDashboard, removeShortlistEntry, saveListing, saveShortlistEntry, signIn } from "../../public/landlord/api.js";
 import { listingRequest } from "../../public/landlord/listing.js";
 import { rankingRows } from "../../public/landlord/ranking.js";
 import { poolSummary, recommendationCards, statTiles } from "../../public/landlord/pool-overview.js";
@@ -76,6 +76,41 @@ test("with a Listing saved, the page opens with the pool summary, the stat tiles
   const cards = recommendationCards(dashboard.recommendations);
   assert.deepEqual(cards.map(({ applicantId }) => applicantId), dashboard.ranked.slice(0, 2).map(({ applicantId }) => applicantId));
   assert.ok(cards.every(({ name, reason }) => name && reason.startsWith("Dieser Bewerber könnte Ihnen gefallen: ")));
+});
+
+test("adding an applicant from the ranking puts them on the Shortlist; its status and note can change and it can be removed", async (t) => {
+  const { fetchImpl, close } = await start();
+  t.after(close);
+  const { landlordId } = await signIn({ fetchImpl, name: "Erika" });
+  await saveListing({ fetchImpl, landlordId, request: listingRequest(FORM) });
+  const [top] = (await fetchDashboard({ fetchImpl, landlordId })).ranked;
+
+  const added = await saveShortlistEntry({ fetchImpl, landlordId, applicantId: top.applicantId, status: "to_invite" });
+  const noted = await saveShortlistEntry({ fetchImpl, landlordId, applicantId: top.applicantId, status: "invited", note: "Viewing Tuesday" });
+  const listed = (await fetchDashboard({ fetchImpl, landlordId })).shortlist;
+  const removed = await removeShortlistEntry({ fetchImpl, landlordId, applicantId: top.applicantId });
+  const after = (await fetchDashboard({ fetchImpl, landlordId })).shortlist;
+
+  assert.deepEqual(added.entry, { applicantId: top.applicantId, status: "to_invite", note: null });
+  assert.deepEqual(noted.entry, { applicantId: top.applicantId, status: "invited", note: "Viewing Tuesday" });
+  assert.deepEqual(
+    listed.map(({ applicantId, name, status, note, matchScore }) => ({ applicantId, name, status, note, matchScore })),
+    [{ applicantId: top.applicantId, name: top.name, status: "invited", note: "Viewing Tuesday", matchScore: top.matchScore }],
+  );
+  assert.deepEqual(removed, { removed: true });
+  assert.deepEqual(after, []);
+});
+
+test("a Shortlist note the server refuses comes back as a readable problem; an unknown landlord is signed out", async (t) => {
+  const { fetchImpl, close } = await start();
+  t.after(close);
+  const { landlordId } = await signIn({ fetchImpl, name: "Erika" });
+
+  const refused = await saveShortlistEntry({ fetchImpl, landlordId, applicantId: "A-001", status: "invited", note: "x".repeat(501) });
+
+  assert.deepEqual(Object.keys(refused.problems), ["note"]);
+  assert.deepEqual(await saveShortlistEntry({ fetchImpl, landlordId: "gone", applicantId: "A-001", status: "invited" }), { signedOut: true });
+  assert.deepEqual(await removeShortlistEntry({ fetchImpl, landlordId: "gone", applicantId: "A-001" }), { signedOut: true });
 });
 
 test("form fields the server rejects come back as problems by field", async (t) => {

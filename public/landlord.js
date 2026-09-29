@@ -1,18 +1,20 @@
 /**
  * Amt-Buddy /landlord page: sign in with a name, enter the Listing, see its Rent check and the
- * pool stats, the Recommendations and the ranked applicants, and chat with the Landlord Orchestrator.
+ * pool stats, the Recommendations, the Shortlist and the ranked applicants, and chat with the
+ * Landlord Orchestrator.
  *
  * The logic lives in ./landlord/ (server calls, the form and range-bar view model, the ranking
  * table, the stored sign-in); this file only wires it to the DOM. Server text is always set as textContent.
  */
 
-import { fetchDashboard, saveListing, signIn } from "./landlord/api.js";
+import { fetchDashboard, removeShortlistEntry, saveListing, saveShortlistEntry, signIn } from "./landlord/api.js";
 import { runLandlordTurn } from "./landlord/chat.js";
 import { renderMarkdown } from "./chat/markdown.js";
 import { listingFormValues, listingRequest, rentCheckView } from "./landlord/listing.js";
 import { breakdownBars, documentFlags, exclusionText, formatMoney, formatNumber, formatPercent, rankingRows } from "./landlord/ranking.js";
 import { poolSummary, recommendationCards, recommendationsEmptyText, statTiles } from "./landlord/pool-overview.js";
 import { forgetLandlord, rememberLandlord, storedLandlord } from "./landlord/session.js";
+import { isShortlisted, SHORTLIST_STATUSES, shortlistRows } from "./landlord/shortlist.js";
 import { onLanguageChange, startI18n, t } from "./i18n.js";
 
 const $ = (selector) => document.querySelector(selector);
@@ -50,6 +52,10 @@ const poolOverviewSummary = $("#pool-overview-summary");
 const poolOverviewTiles = $("#pool-overview-tiles");
 const recommendationList = $("#recommendation-cards");
 const recommendationsEmpty = $("#recommendations-empty");
+const shortlistSection = $("#shortlist");
+const shortlistError = $("#shortlist-error");
+const shortlistList = $("#shortlist-list");
+const shortlistEmpty = $("#shortlist-empty");
 
 function localStore() {
   try {
@@ -63,6 +69,7 @@ let landlord = storedLandlord(localStore());
 let listing = null;
 let ranking = null; // { ranked, excluded, hint, poolErrors } from the dashboard
 let poolOverview = null; // { stats, recommendations } from the dashboard; stats is null without a Listing
+let shortlist = []; // the Shortlist from the dashboard
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -90,6 +97,7 @@ function renderSignedIn() {
     rentCheckSection.hidden = true;
     rankingSection.hidden = true;
     poolOverviewSection.hidden = true;
+    shortlistSection.hidden = true;
   }
 }
 
@@ -206,13 +214,92 @@ function renderPoolOverview() {
         el("span", "recommendation-name", card.name),
         el("span", "recommendation-score", t("landlord.poolOverview.score", { score: card.matchScore })),
       );
-      item.append(head, el("span", "recommendation-rank", t("landlord.poolOverview.rank", { rank: card.rank })), el("p", "recommendation-reason", card.reason));
+      item.append(
+        head,
+        el("span", "recommendation-rank", t("landlord.poolOverview.rank", { rank: card.rank })),
+        el("p", "recommendation-reason", card.reason),
+        shortlistButton(card.applicantId),
+      );
       return item;
     }),
   );
   const emptyText = recommendationsEmptyText(poolOverview.stats, poolOverview.recommendations);
   recommendationsEmpty.hidden = !emptyText;
   recommendationsEmpty.textContent = emptyText ?? "";
+}
+
+// --- the Shortlist -------------------------------------------------------------------------------
+
+// Sends one Shortlist change, then fetches the dashboard again so every panel shows it.
+async function changeShortlist(request) {
+  showError(shortlistError, null);
+  try {
+    const result = await request({ fetchImpl: fetch, landlordId: landlord.landlordId });
+    if (result.signedOut) {
+      signOut();
+      return;
+    }
+    if (result.problems) showError(shortlistError, Object.values(result.problems).join(" "));
+  } catch (error) {
+    showError(shortlistError, error.message);
+  }
+  await loadDashboard();
+}
+
+// "Add to Shortlist" for the ranking and the Recommendation cards; "On the Shortlist" once added.
+function shortlistButton(applicantId) {
+  const added = isShortlisted(shortlist, applicantId);
+  const button = el("button", "landlord-link-btn shortlist-add", t(added ? "landlord.shortlist.added" : "landlord.shortlist.add"));
+  button.type = "button";
+  button.disabled = added;
+  button.addEventListener("click", () =>
+    changeShortlist((call) => saveShortlistEntry({ ...call, applicantId, status: "to_invite" })),
+  );
+  return button;
+}
+
+function renderShortlist() {
+  shortlistSection.hidden = !ranking;
+  if (!ranking) return;
+  const rows = shortlistRows(shortlist);
+  shortlistEmpty.hidden = rows.length > 0;
+  shortlistList.replaceChildren(
+    ...rows.map((row) => {
+      const item = el("li", `shortlist-entry is-${row.status}`);
+      const head = el("div", "shortlist-head");
+      head.append(el("span", "shortlist-name", row.name), el("span", "shortlist-score", row.score));
+
+      const status = el("select", "shortlist-status");
+      status.setAttribute("aria-label", `${t("landlord.shortlist.statusLabel")}: ${row.name}`);
+      for (const value of SHORTLIST_STATUSES) {
+        const option = el("option", "", t(`landlord.shortlist.status.${value}`));
+        option.value = value;
+        option.selected = value === row.status;
+        status.append(option);
+      }
+      status.addEventListener("change", () =>
+        changeShortlist((call) => saveShortlistEntry({ ...call, applicantId: row.applicantId, status: status.value })),
+      );
+
+      const note = el("input", "shortlist-note");
+      note.value = row.note;
+      note.maxLength = 500;
+      note.placeholder = t("landlord.shortlist.notePlaceholder");
+      note.setAttribute("aria-label", `${t("landlord.shortlist.noteLabel")}: ${row.name}`);
+      note.addEventListener("change", () =>
+        changeShortlist((call) => saveShortlistEntry({ ...call, applicantId: row.applicantId, status: status.value, note: note.value })),
+      );
+
+      const remove = el("button", "landlord-link-btn shortlist-remove", t("landlord.shortlist.remove"));
+      remove.type = "button";
+      remove.addEventListener("click", () => changeShortlist((call) => removeShortlistEntry({ ...call, applicantId: row.applicantId })));
+
+      const controls = el("div", "shortlist-controls");
+      controls.append(status, note, remove);
+      item.append(head, controls);
+      return item;
+    }),
+  );
 }
 
 // --- the ranked applicants -----------------------------------------------------------------------
@@ -273,6 +360,7 @@ function renderRanking() {
       cell(breakdownCell(entry));
       cell(formatPercent(entry.rentToIncome));
       cell(flagsCell(entry.documents));
+      cell(shortlistButton(entry.applicantId));
       return row;
     }),
   );
@@ -299,6 +387,7 @@ function signOut() {
   listing = null;
   ranking = null;
   poolOverview = null;
+  shortlist = [];
   fillForm(listingFormValues(null));
   chatMessages.replaceChildren();
   showFieldProblems();
@@ -306,6 +395,7 @@ function signOut() {
   renderSignedIn();
   renderRentCheck();
   renderPoolOverview();
+  renderShortlist();
   renderRanking();
   signInName.focus();
 }
@@ -321,9 +411,11 @@ async function loadDashboard() {
     const { ranked, excluded, hint, poolErrors, stats, recommendations } = dashboard;
     ranking = { ranked, excluded, hint, poolErrors };
     poolOverview = { stats, recommendations };
+    shortlist = dashboard.shortlist;
     fillForm(listingFormValues(listing));
     renderRentCheck();
     renderPoolOverview();
+    renderShortlist();
     renderRanking();
   } catch (error) {
     showError(listingError, error.message);
@@ -430,6 +522,7 @@ onLanguageChange(() => {
   renderSignedIn();
   renderRentCheck();
   renderPoolOverview();
+  renderShortlist();
   renderRanking();
 });
 

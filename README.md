@@ -69,7 +69,13 @@ whose household is too large for the flat (§ 7 WoAufG Bln) are listed separatel
 as excluded, with the reason. The pool is read at start from `data/applicants`
 (set `APPLICANT_POOL_DIR` and `APPLICANT_POOL_TODAY` to use another pool or day).
 
-Signing in again with the same name brings your flat back, also after a restart.
+Put applicants you want to act on on your **Shortlist** with **Add to Shortlist**
+in the ranking or on a Recommendation card. In the Shortlist panel, set each
+entry's status (to invite, invited, declined), add a short note, or remove it.
+Amt Buddy never contacts applicants; the status only helps you keep track.
+
+Signing in again with the same name brings your flat and your Shortlist back,
+also after a restart.
 The data is kept in `data/landlord.sqlite` (set `LANDLORD_DB_PATH` to use another
 file).
 

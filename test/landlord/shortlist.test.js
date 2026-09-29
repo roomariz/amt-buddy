@@ -43,10 +43,14 @@ test("changing the status keeps the note unless a new one is given; null or blan
   assert.equal(update({ applicantId: "A-001", status: "declined", note: null }).note, null);
 });
 
-test("the Shortlist keeps the order entries were added in, whatever is changed later", () => {
+test("the Shortlist keeps the order entries were added in, whatever is changed later", async () => {
   const { store, landlordId, update } = setup();
+  // Apart in time, so ordering by the last change instead would show.
+  const later = () => new Promise((resolve) => setTimeout(resolve, 5));
   update({ applicantId: "A-003", status: "to_invite" });
+  await later();
   update({ applicantId: "A-001", status: "to_invite" });
+  await later();
   update({ applicantId: "A-003", status: "declined" });
 
   assert.deepEqual(store.getShortlist(landlordId).map(({ applicantId }) => applicantId), ["A-003", "A-001"]);
