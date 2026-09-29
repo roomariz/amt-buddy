@@ -295,13 +295,13 @@ export function getSizeCategory(areaSqm) {
 export const RENT_CAP_PERCENT = 10;
 
 export const RENT_CAP_LEGAL_BASIS =
-  "Mietpreisbremse (§§ 556d–556g BGB): at the start of a lease the net cold rent may exceed the local reference rent (ortsübliche Vergleichsmiete) by at most 10 %. " +
+  `Mietpreisbremse (§§ 556d–556g BGB): at the start of a lease the net cold rent may exceed the local reference rent (ortsübliche Vergleichsmiete) by at most ${RENT_CAP_PERCENT} %. ` +
   "If the previous tenant paid more (Vormiete, § 556e BGB), the landlord may keep that previous rent; the first rental of a flat first used after 1 October 2014 is exempt (§ 556f BGB). " +
   "The tenant can ask the landlord to disclose the previous rent (§ 556g BGB).";
 
 export const RENT_CAP_NOT_CHECKED =
   "The contract rent is taken as the rent agreed at the start of the lease. Not checked: leases concluded before 1 June 2015 (Mietpreisbremse not yet in force in Berlin), " +
-  "modernisation exceptions (§ 556e Abs. 2, § 556f Satz 2 BGB), rent increases in the last year of the previous tenancy, Staffelmiete (graduated rent) and Indexmiete (index-linked rent).";
+  "modernisation exceptions (§ 556e Abs. 2, § 556f Satz 2 BGB), rent increases in the last year of the previous lease, Staffelmiete (graduated rent) and Indexmiete (index-linked rent).";
 
 // The Rent cap (Mietpreisbremse) verdict for a contract rent: Mietspiegel + 10 %, based on
 // the Adjusted reference rent when there is one, otherwise the Mietspiegel median.

@@ -14,7 +14,7 @@ const BOOLEAN_FACTS = new Set(PREVIOUS_RENTAL_FACTS);
 const BOOLEAN_WORDS = { yes: true, ja: true, true: true, no: false, nein: false, false: false };
 
 // Facts that describe the flat and go when the flat changes.
-const FLAT_FACTS = [...RATING_FACTS, ...PREVIOUS_RENTAL_FACTS];
+const FLAT_DESCRIBING_FACTS = [...RATING_FACTS, ...PREVIOUS_RENTAL_FACTS];
 
 // Facts the user (or a lease) can state about their Tenancy.
 export const STATED_FACTS = [
@@ -81,7 +81,7 @@ function coerceBuildingYear(value) {
 function clearAddressDerivedFacts(tenancy, { flatChanged }) {
   for (const name of OFFICIAL_ONLY_FACTS) delete tenancy[name];
   if (tenancy.buildingYear?.source === "official") delete tenancy.buildingYear;
-  if (flatChanged) for (const name of FLAT_FACTS) delete tenancy[name];
+  if (flatChanged) for (const name of FLAT_DESCRIBING_FACTS) delete tenancy[name];
 }
 
 function rank(fact) {

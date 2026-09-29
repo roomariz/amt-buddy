@@ -1228,7 +1228,7 @@ test("a rent check asks whether the flat was rented before, and 'yes' gives a co
         ],
       },
       "Was the flat rented out before you moved in?",
-      { toolCalls: [recordFacts([{ fact: "rentedBefore", value: true }]), ...askMietspiegel.toolCalls] },
+      { toolCalls: [recordFacts([{ fact: "rentedBefore", value: "yes" }]), ...askMietspiegel.toolCalls] },
       "Your Nettokaltmiete (net cold rent) of 780 € is above the Mietspiegel range of 410–555 €. " +
         "Mietpreisbremse (rent cap): the cap is Mietspiegel + 10 %, i.e. 519,75 €, and your rent is 260,25 € above it. " +
         "As the flat was rented before, a higher previous rent (Vormiete) could justify a higher rent; you can ask your landlord to disclose it (§ 556g BGB). " +
@@ -1257,7 +1257,7 @@ test("a rent check asks whether the flat was rented before, and 'yes' gives a co
 
   assert.deepEqual((await orchestrator.getTenancy("t70")).rentedBefore, { value: true, source: "user" });
   assert.deepEqual(stepsOf(second), ["ComplianceAgent:started", "ComplianceAgent:finished"]);
-  assert.deepEqual(calls.at(-1), { name: "calculate_mietspiegel", args: { ...mietspiegelArgs(780), rentedBefore: true } });
+  assert.deepEqual(calls.at(-1), { name: "calculate_mietspiegel", args: pinnedMietspiegelArgs(780) });
   const { rentCap } = lastMietspiegelReport(models);
   assert.equal(rentCap.conditional, true);
   assert.equal(rentCap.capMonthlyRent, 519.75);
