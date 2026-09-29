@@ -83,11 +83,23 @@ export async function runLandlordTurn({ fetchImpl, landlordId, message, onChange
     apply(parser.flush());
   } catch {
     // The connection broke or the turn was cancelled: endLandlordTurn reports it.
-  } finally {
-    if (state.phase !== "streaming") reader.cancel().catch(() => {});
   }
+  // After the done or error event the server still closes the response. Cancelling it here would
+  // show in DevTools as a failed request (net::ERR_ABORTED), so the rest is read in the background
+  // and dropped; the turn does not wait for it.
+  drain(reader);
   commit(endLandlordTurn(state));
   return state;
+}
+
+// Reads a response to its end without using it, then releases it. Never throws.
+async function drain(reader) {
+  try {
+    while (!(await reader.read()).done);
+    reader.releaseLock();
+  } catch {
+    // Broken after the turn ended: nothing left to report.
+  }
 }
 
 // Whether the turn changed what the dashboard shows (the Selection criteria, the Shortlist, the

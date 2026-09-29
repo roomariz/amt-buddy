@@ -463,34 +463,47 @@ signOutButton.addEventListener("click", signOut);
 // --- chat ----------------------------------------------------------------------------------------
 
 // Follows the newest text while the landlord is reading at the bottom; leaves them alone when they
-// scrolled up to reread an earlier turn.
+// scrolled up to reread an earlier turn. `following` is kept by the scroll events rather than
+// measured at each render, so a layout change after the render (the tip under the prompt taking a
+// second line shrinks the turns list) still ends at the last answer, not with it cut off.
+let following = true;
+
 function nearBottom() {
   return chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight < 48;
 }
 
-function stickToBottom(wasNearBottom) {
-  if (wasNearBottom) chatMessages.scrollTop = chatMessages.scrollHeight;
+// Scrolls to the end now and again in the next frame, once the rendered answer has its final height.
+function stickToBottom() {
+  if (!following) return;
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+  requestAnimationFrame(() => {
+    if (following) chatMessages.scrollTop = chatMessages.scrollHeight;
+  });
 }
 
+chatMessages.addEventListener("scroll", () => {
+  following = nearBottom();
+});
+new ResizeObserver(stickToBottom).observe(chatMessages);
+
 function appendChatMessage(role, text) {
-  const follow = nearBottom();
   const item = el("li", `landlord-chat-msg is-${role}`);
   item.setAttribute("aria-label", t(role === "user" ? "landlord.chat.you" : "landlord.chat.amtBuddy"));
   if (text !== undefined) item.textContent = text;
   chatMessages.append(item);
-  stickToBottom(follow || role === "user");
+  if (role === "user") following = true;
+  stickToBottom();
   return item;
 }
 
 // Draws the answer as it streams: markdown (escaped first by renderMarkdown) with the applicants'
 // names next to their ids, escaped and added after rendering (renderAnswerWithNames), or the turn's error.
 function drawTurn(item, state) {
-  const follow = nearBottom();
   item.classList.toggle("is-pending", state.phase === "streaming" && !state.answer);
   item.classList.toggle("is-error", state.phase === "error");
   if (state.phase === "error" && !state.answer) item.textContent = state.error;
   else if (state.answer) item.innerHTML = renderAnswerWithNames(state.answer, namesById);
-  stickToBottom(follow);
+  stickToBottom();
 }
 
 chatForm.addEventListener("submit", async (event) => {

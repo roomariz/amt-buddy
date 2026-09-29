@@ -145,6 +145,57 @@ test("a server that cannot be reached is a lost connection", async () => {
   assert.equal(state.error, TURN_TEXT.connectionLost);
 });
 
+// A cancelled response shows in DevTools as a failed request (net::ERR_ABORTED): after the done
+// event the rest of the response is read to its end, not cancelled, and the turn does not wait
+// for the server to close it.
+test("after done the turn resolves at once, ignores later events and reads the response to its end", async () => {
+  const encoder = new TextEncoder();
+  const chunks = [
+    'event: token\ndata: {"type":"token","text":"A-007 leads."}\n\nevent: done\ndata: {"type":"done"}\n\n',
+    'event: token\ndata: {"type":"token","text":" late"}\n\n',
+    'event: error\ndata: {"type":"error"}\n\n',
+  ];
+  let close;
+  const closed = new Promise((resolve) => (close = resolve));
+  let pulls = 0;
+  let readToEnd = false;
+  let cancelled = false;
+  // highWaterMark 0: pull runs only for a pending read, so the last pull proves the reader asked
+  // for more after the last chunk.
+  const body = new ReadableStream(
+    {
+      async pull(controller) {
+        const index = pulls++;
+        if (index === chunks.length - 1) await closed; // the server closes the response only later
+        if (index < chunks.length) return controller.enqueue(encoder.encode(chunks[index]));
+        controller.close();
+        readToEnd = true;
+      },
+      cancel() {
+        cancelled = true;
+      },
+    },
+    { highWaterMark: 0 },
+  );
+  const fetchImpl = async () => new Response(body, { headers: { "content-type": "text/event-stream" } });
+  const phases = [];
+
+  let timer;
+  const state = await Promise.race([
+    runLandlordTurn({ fetchImpl, landlordId: "l-1", message: "Hi", onChange: (next) => phases.push(next.phase) }),
+    new Promise((_, reject) => (timer = setTimeout(() => reject(new Error("the turn waited for the response to close")), 1000))),
+  ]).finally(() => clearTimeout(timer));
+  close();
+  await new Promise((resolve) => setTimeout(resolve, 50));
+
+  assert.equal(state.phase, "done");
+  assert.equal(state.answer, "A-007 leads.");
+  assert.deepEqual(phases, ["streaming", "done"], "nothing after done reaches the panel");
+  assert.equal(readToEnd, true, "the response was read to its end");
+  assert.equal(cancelled, false, "the response was not cancelled");
+  assert.equal(body.locked, false, "and released");
+});
+
 test("the panel shows each applicant's name next to the id the model used", () => {
   const names = applicantNames({
     ranked: [{ applicantId: "A-007", name: "Olga Rossi" }],
