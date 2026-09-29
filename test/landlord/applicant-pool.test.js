@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 import { readApplicantPool, summarizeApplicantPool } from "../../src/landlord/applicant-pool.js";
+import { rankApplicants } from "../../src/landlord/scorer.js";
 
 const FIXTURES = fileURLToPath(new URL("../fixtures/applicants/", import.meta.url));
 const TODAY = "2026-09-29";
@@ -304,5 +305,10 @@ test("the 50-name corpus accepts its German-alphabet variants and flags destruct
     assert.equal(needsClarification.documentCheck.complete, true, name);
     assert.equal(needsClarification.documentCheck.issues.filter(({ code }) => code === "name_mismatch").length, 3, name);
     assert.doesNotMatch(JSON.stringify(needsClarification), new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    const { ranked } = rankApplicants({
+      profiles: [accepted, needsClarification],
+      listing: { livingAreaSqm: 50, rooms: 2, askingRent: 700 },
+    });
+    assert.equal(ranked[0].matchScore, ranked[1].matchScore, name);
   }
 });
