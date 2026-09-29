@@ -3,6 +3,7 @@
 // edits the criteria (ADR 0004).
 
 import { assessOccupancy } from "../occupancy-assessment.js";
+import { COMPLETE_STATUSES, DOCUMENT_HEADINGS } from "./applicant-pool.js";
 
 // The default Selection criteria: relative weights per criterion and the Requirements (all off
 // except occupancyCompliant).
@@ -111,8 +112,7 @@ function requirementsOf(requirements = {}) {
   return merged;
 }
 
-const DOCUMENTS = ["schufa", "incomeProof", "previousLandlord"];
-const COMPLETE_STATUSES = new Set(["present", "not_required"]);
+const DOCUMENTS = Object.keys(DOCUMENT_HEADINGS);
 const percent = (ratio) => `${round(ratio * 100, 1)} %`;
 
 // Every Requirement the profile fails, in the order of DEFAULT_CRITERIA.requirements:
@@ -160,8 +160,20 @@ function failedRequirements(profile, rentToIncome, listing, requirements) {
   return reasons;
 }
 
-const byId = (a, b) => (a.applicantId < b.applicantId ? -1 : a.applicantId > b.applicantId ? 1 : 0);
+const byApplicantId = (a, b) => (a.applicantId < b.applicantId ? -1 : a.applicantId > b.applicantId ? 1 : 0);
 
+// rankApplicants({ profiles, listing, criteria? }) → { ranked, excluded }
+// - profiles: Applicant profiles (readApplicantPool's `profile`: anonymised, never a name).
+// - listing: { livingAreaSqm, rooms, askingRent } of the Landlord's Listing.
+// - criteria: { weights?, requirements? }; what is left out is DEFAULT_CRITERIA's. Weights are
+//   relative (any non-negative numbers, not all zero) and normalised to sum to 1. Throws a
+//   TypeError for a weight or Requirement value of the wrong kind.
+// - ranked: the applicants who meet every Requirement, best first, ties by applicant id:
+//   [{ applicantId, rank (1…), matchScore (0–100, one decimal), rentToIncome (asking rent / net
+//   household income), breakdown: { <criterion>: { subscore (0–1), weight (% of the Match score) } } }].
+// - excluded: the others, by applicant id: [{ applicantId, excludedBy (the first failed
+//   Requirement), reasons: [{ requirement, message, …the values behind it }] }].
+// Pure and deterministic: the same input always gives the same result, whatever its order.
 export function rankApplicants({ profiles, listing, criteria = {} }) {
   const shares = sharesOf(criteria.weights);
   const requirements = requirementsOf(criteria.requirements);
@@ -181,7 +193,7 @@ export function rankApplicants({ profiles, listing, criteria = {} }) {
     const score = CRITERIA.reduce((sum, criterion) => sum + subscores[criterion] * shares[criterion] * 100, 0);
     scored.push({ applicantId: profile.id, score, breakdown, rentToIncome: round(rentToIncome, 4) });
   }
-  scored.sort((a, b) => b.score - a.score || byId(a, b));
+  scored.sort((a, b) => b.score - a.score || byApplicantId(a, b));
   const ranked = scored.map(({ score, ...entry }, index) => ({ ...entry, rank: index + 1, matchScore: round(score, 1) }));
-  return { ranked, excluded: excluded.sort(byId) };
+  return { ranked, excluded: excluded.sort(byApplicantId) };
 }

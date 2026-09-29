@@ -53,12 +53,13 @@ const LISTING_REQUIRED = {
   message: "Save your flat's Listing first: the applicants are ranked for its rent and size.",
 };
 
-// The document flags the dashboard shows beside an applicant: each document's status, and whether
-// the application is complete.
+// The document flags the dashboard shows beside an applicant: each document's status, whether
+// the previous landlord confirms rent arrears, and whether the application is complete.
 const documentFlagsOf = ({ schufa, incomeProof, previousLandlord, complete }) => ({
   schufa: schufa.status,
   incomeProof: incomeProof.status,
   previousLandlord: previousLandlord.status,
+  arrears: previousLandlord.arrears === true,
   complete,
 });
 
@@ -67,9 +68,9 @@ const documentFlagsOf = ({ schufa, incomeProof, previousLandlord, complete }) =>
 function rankingFor(listing, { applicants }, criteria) {
   if (!listing) return { ranked: [], excluded: [], hint: LISTING_REQUIRED };
   const { ranked, excluded } = rankApplicants({ profiles: applicants.map(({ profile }) => profile), listing, criteria });
-  const byId = new Map(applicants.map((applicant) => [applicant.id, applicant]));
+  const applicantsById = new Map(applicants.map((applicant) => [applicant.id, applicant]));
   const forDisplay = (entry) => {
-    const { contact, profile } = byId.get(entry.applicantId);
+    const { contact, profile } = applicantsById.get(entry.applicantId);
     return { ...entry, name: contact.name, documents: documentFlagsOf(profile.documentCheck) };
   };
   return { ranked: ranked.map(forDisplay), excluded: excluded.map(forDisplay), hint: null };

@@ -10,7 +10,7 @@ import { fetchDashboard, saveListing, signIn } from "./landlord/api.js";
 import { runLandlordTurn } from "./landlord/chat.js";
 import { renderMarkdown } from "./chat/markdown.js";
 import { listingFormValues, listingRequest, rentCheckView } from "./landlord/listing.js";
-import { breakdownBars, documentFlags, exclusionText, rankingRows } from "./landlord/ranking.js";
+import { breakdownBars, documentFlags, exclusionText, formatNumber, formatPercent, rankingRows } from "./landlord/ranking.js";
 import { forgetLandlord, rememberLandlord, storedLandlord } from "./landlord/session.js";
 import { getLanguage, onLanguageChange, startI18n, t } from "./i18n.js";
 
@@ -180,9 +180,6 @@ function renderRentCheck() {
 
 // --- the ranked applicants -----------------------------------------------------------------------
 
-const percentText = (ratio) =>
-  `${new Intl.NumberFormat(getLanguage() === "en" ? "en-GB" : "de-DE", { maximumFractionDigits: 1 }).format(ratio * 100)} %`;
-
 function breakdownCell(entry) {
   const bars = el("div", "ranking-bars");
   for (const bar of breakdownBars(entry)) {
@@ -217,6 +214,8 @@ function renderRanking() {
   if (!ranking) return;
   rankingHint.hidden = !ranking.hint;
   if (ranking.hint) rankingHint.textContent = t("landlord.ranking.hint");
+  rankingPoolErrors.hidden = ranking.poolErrors.length === 0;
+  rankingPoolErrors.textContent = t("landlord.ranking.poolErrors", { count: ranking.poolErrors.length });
   rankingBody.hidden = Boolean(ranking.hint);
   if (ranking.hint) return;
 
@@ -233,17 +232,14 @@ function renderRanking() {
       };
       cell(String(entry.rank));
       cell(entry.name);
-      cell(new Intl.NumberFormat(getLanguage() === "en" ? "en-GB" : "de-DE").format(entry.matchScore), "ranking-score");
+      cell(formatNumber(entry.matchScore), "ranking-score");
       cell(breakdownCell(entry));
-      cell(percentText(entry.rentToIncome));
+      cell(formatPercent(entry.rentToIncome));
       cell(flagsCell(entry.documents));
       return row;
     }),
   );
   rankingEmpty.hidden = rows.length > 0;
-
-  rankingPoolErrors.hidden = ranking.poolErrors.length === 0;
-  rankingPoolErrors.textContent = t("landlord.ranking.poolErrors", { count: ranking.poolErrors.length });
 
   excludedBlock.hidden = ranking.excluded.length === 0;
   excludedList.replaceChildren(

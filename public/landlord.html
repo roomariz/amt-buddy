@@ -105,14 +105,15 @@
               Jeder Bewerber bekommt aus festen Kriterien einen Match-Score von 0 bis 100: Bezahlbarkeit, SCHUFA, Unterlagen, Glaubwürdigkeit, Beschäftigung und Vorvermieter. Der Name wird nur angezeigt, er zählt nicht.
             </p>
             <p id="ranking-hint" class="landlord-note" hidden></p>
+            <p id="ranking-pool-errors" class="landlord-note" hidden></p>
             <div id="ranking-body">
               <div class="ranking-controls">
                 <label class="ranking-control">
                   <span data-i18n="landlord.ranking.sort">Sortieren nach</span>
                   <select id="ranking-sort">
-                    <option value="rank" data-i18n="landlord.ranking.sortBy.rank">Match-Score</option>
+                    <option value="score" data-i18n="landlord.ranking.sortBy.score">Match-Score</option>
                     <option value="name" data-i18n="landlord.ranking.sortBy.name">Name</option>
-                    <option value="rentToIncome" data-i18n="landlord.ranking.sortBy.rentToIncome">Mietbelastung</option>
+                    <option value="rentToIncome" data-i18n="landlord.ranking.sortBy.rentToIncome">Miete / Einkommen</option>
                   </select>
                 </label>
                 <label class="ranking-control ranking-check">
@@ -137,7 +138,6 @@
                 </table>
               </div>
               <p id="ranking-empty" class="landlord-hint" hidden data-i18n="landlord.ranking.empty">Kein Bewerber passt zu diesem Filter.</p>
-              <p id="ranking-pool-errors" class="landlord-note" hidden></p>
               <div id="excluded" hidden>
                 <h3 class="ranking-subtitle" data-i18n="landlord.ranking.excludedTitle">Ausgeschlossen</h3>
                 <p class="landlord-hint ranking-excluded-intro" data-i18n="landlord.ranking.excludedIntro">Diese Bewerber erfüllen eine Ihrer Anforderungen nicht.</p>

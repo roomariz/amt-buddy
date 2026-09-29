@@ -337,8 +337,10 @@ test("the dashboard joins in the applicant's name for display, with the document
     assert.ok(entry.name.trim());
     assert.equal(entry.email, undefined);
     assert.equal(entry.phone, undefined);
-    assert.deepEqual(Object.keys(entry.documents), ["schufa", "incomeProof", "previousLandlord", "complete"]);
+    assert.deepEqual(Object.keys(entry.documents), ["schufa", "incomeProof", "previousLandlord", "arrears", "complete"]);
   }
+  // The committed pool has applicants whose previous landlord confirms rent arrears.
+  assert.ok([...ranked, ...excluded].some(({ documents }) => documents.arrears && documents.previousLandlord === "present"));
   const entry = ranked[0];
   assert.deepEqual(Object.keys(entry.breakdown), ["affordability", "schufa", "documents", "credibility", "employment", "previousLandlord"]);
   assert.equal(typeof entry.rentToIncome, "number");

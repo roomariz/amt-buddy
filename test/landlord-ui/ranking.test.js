@@ -4,8 +4,8 @@ import assert from "node:assert/strict";
 import { breakdownBars, documentFlags, exclusionText, rankingRows } from "../../public/landlord/ranking.js";
 import { setLanguage } from "../../public/i18n.js";
 
-const complete = { schufa: "present", incomeProof: "present", previousLandlord: "present", complete: true };
-const incomplete = { schufa: "expired", incomeProof: "present", previousLandlord: "not_required", complete: false };
+const complete = { schufa: "present", incomeProof: "present", previousLandlord: "present", arrears: false, complete: true };
+const incomplete = { schufa: "expired", incomeProof: "present", previousLandlord: "not_required", arrears: false, complete: false };
 
 // Ranked entries as GET /api/v1/landlord/:landlordId/dashboard returns them.
 const RANKED = [
@@ -16,7 +16,7 @@ const RANKED = [
 
 const ids = (rows) => rows.map(({ applicantId }) => applicantId);
 
-test("the table is in rank order by default and can be sorted by name or rent-to-income", () => {
+test("the table is sorted by Match score by default and can be sorted by name or rent-to-income", () => {
   assert.deepEqual(ids(rankingRows(RANKED)), ["A-003", "A-001", "A-002"]);
   assert.deepEqual(ids(rankingRows(RANKED, { sort: "name" })), ["A-001", "A-002", "A-003"]);
   assert.deepEqual(ids(rankingRows(RANKED, { sort: "rentToIncome" })), ["A-001", "A-003", "A-002"]);
@@ -34,7 +34,7 @@ test("sorting and filtering leave the dashboard's list as it was", () => {
   assert.deepEqual(RANKED, copy);
 });
 
-test("the breakdown bars: each criterion's subscore as a percentage, with its weight and points", () => {
+test("the breakdown bars: each criterion's subscore as a percentage, with its weight", () => {
   const breakdown = {
     affordability: { subscore: 0.4444, weight: 30 },
     schufa: { subscore: 0.5, weight: 20 },
@@ -44,12 +44,12 @@ test("the breakdown bars: each criterion's subscore as a percentage, with its we
     previousLandlord: { subscore: 0.5, weight: 5 },
   };
   assert.deepEqual(breakdownBars({ breakdown }), [
-    { criterion: "affordability", percent: 44, weight: 30, points: 13.3 },
-    { criterion: "schufa", percent: 50, weight: 20, points: 10 },
-    { criterion: "documents", percent: 100, weight: 15, points: 15 },
-    { criterion: "credibility", percent: 70, weight: 15, points: 10.5 },
-    { criterion: "employment", percent: 60, weight: 15, points: 9 },
-    { criterion: "previousLandlord", percent: 50, weight: 5, points: 2.5 },
+    { criterion: "affordability", percent: 44, weight: 30 },
+    { criterion: "schufa", percent: 50, weight: 20 },
+    { criterion: "documents", percent: 100, weight: 15 },
+    { criterion: "credibility", percent: 70, weight: 15 },
+    { criterion: "employment", percent: 60, weight: 15 },
+    { criterion: "previousLandlord", percent: 50, weight: 5 },
   ]);
 });
 
@@ -59,6 +59,11 @@ test("the document flags say which documents are fine", () => {
     { document: "incomeProof", status: "present", ok: true },
     { document: "previousLandlord", status: "not_required", ok: true },
   ]);
+});
+
+test("a previous-landlord confirmation that reports rent arrears is flagged as a problem", () => {
+  const [, , previousLandlord] = documentFlags({ ...complete, arrears: true });
+  assert.deepEqual(previousLandlord, { document: "previousLandlord", status: "arrears", ok: false });
 });
 
 test("an exclusion reason reads in the page language, with its values filled in", () => {

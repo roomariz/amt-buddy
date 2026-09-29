@@ -320,9 +320,11 @@ The Rent check runs `evaluateMietspiegel` with the asking rent as contract rent 
   "rentToIncome": 0.1842,
   "breakdown": { "affordability": { "subscore": 1, "weight": 30 }, "schufa": { "subscore": 1, "weight": 20 }, "…": {} },
   "name": "Lena Schmidt",
-  "documents": { "schufa": "present", "incomeProof": "present", "previousLandlord": "not_required", "complete": true }
+  "documents": { "schufa": "present", "incomeProof": "present", "previousLandlord": "not_required", "arrears": false, "complete": true }
 }
 ```
+
+  `documents` holds each Application document's Document check status, `arrears` (the previous landlord confirms rent arrears) and `complete`.
 
   `subscore` is 0–1, `weight` the criterion's share of the Match score in %. Subscores: affordability 1 at a rent-to-income ratio of at most 25 %, 0 at 40 % or more, linear in between; SCHUFA clean 1, minor entries 0.5, negative or missing 0; documents the share of required documents present and valid; credibility the Credibility score / 100; employment permanent or civil servant 1, fixed-term or self-employed 0.6, student with guarantor 0.5, other 0.3; previous landlord no arrears 1, first-time renter 0.5, missing or unusable 0.3, arrears 0.
 - `excluded`: applicants who fail a Requirement, by id: `{ applicantId, excludedBy, reasons: [{ requirement, message, …values }], name, documents }`. `excludedBy` is the first failed Requirement; the values depend on it (e.g. `occupancyCompliant`: `householdSize`, `requiredAreaSqm` under § 7 WoAufG Bln, `livingAreaSqm`; `maxRentToIncome`: `rentToIncome`, `limit`).
