@@ -35,6 +35,9 @@ export const OrchestratorState = Annotation.Root({
   // Grounding rewrites made this turn, and the figures the last draft could not ground.
   groundingRewrites: lastValue(() => 0),
   ungroundedFigures: lastValue(() => []),
+  // The Transcript (CONTEXT.md): what the user sent and the answers they got, written by code
+  // and only ever appended to. Separate from `messages`, the model's history.
+  transcript: Annotation({ reducer: (current, update) => current.concat(update), default: () => [] }),
 });
 
 // The Supervisor rewrites an ungrounded draft at most this many times.
@@ -104,7 +107,7 @@ export function buildGraph({ models, tools, log, toolTimeoutMs }) {
   async function rejectOutOfScope(state) {
     const text = reply("outOfScope", state.language);
     emit({ type: "token", text });
-    return { messages: [new AIMessage(text)] };
+    return { messages: [new AIMessage(text)], transcript: [{ role: "assistant", text }] };
   }
 
   async function supervisor(state, config) {
@@ -239,7 +242,12 @@ export function buildGraph({ models, tools, log, toolTimeoutMs }) {
     const needsDisclaimer = hasComplianceVerdict(state.evidence) || !state.disclaimerShown;
     const text = needsDisclaimer ? `${state.draft}\n\n${reply("disclaimer", state.language)}` : state.draft;
     emit({ type: "token", text });
-    return { messages: [new AIMessage(text)], disclaimerShown: state.disclaimerShown || needsDisclaimer, draft: "" };
+    return {
+      messages: [new AIMessage(text)],
+      transcript: [{ role: "assistant", text }],
+      disclaimerShown: state.disclaimerShown || needsDisclaimer,
+      draft: "",
+    };
   }
 
   return new StateGraph(OrchestratorState)

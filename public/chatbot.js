@@ -8,11 +8,12 @@
  * through renderMarkdown, which escapes everything first. Nothing here logs messages or uploads.
  */
 
-import { fetchChatMode, MODE_LABEL, runTurn, uploadLease, UPLOAD_TEXT } from "./chat/api.js";
+import { fetchChatMode, fetchThread, MODE_LABEL, runTurn, uploadLease, UPLOAD_TEXT } from "./chat/api.js";
 import { onLanguageChange, startI18n, t } from "./i18n.js";
 import { renderMarkdown } from "./chat/markdown.js";
+import { restoredBubbles } from "./chat/restore.js";
 import { confirmPayload, inputModeFor } from "./chat/tenancy.js";
-import { currentThreadId, startNewThread } from "./chat/thread.js";
+import { currentThreadId, startNewThread, storedThreadId } from "./chat/thread.js";
 import { announcements } from "./chat/turn.js";
 
 const $ = (selector) => document.querySelector(selector);
@@ -52,6 +53,8 @@ function localStore() {
 const newId = () =>
   globalThis.crypto?.randomUUID?.() ?? `t-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 
+// A thread id stored before this page load means a reload: its conversation is restored.
+const reloadedThreadId = storedThreadId(localStore());
 let threadId = currentThreadId(localStore(), newId);
 let stagedFile = null;
 let busy = false;
@@ -188,6 +191,13 @@ function renderTurn(view, state) {
   view.error.hidden = !state.error;
   view.error.textContent = state.error ?? "";
   scrollToBottom();
+}
+
+// A restored answer: drawn like a live one, without step chips or the "working" line.
+function appendRestoredAnswer(markdown) {
+  const view = appendBotTurn();
+  view.working.hidden = true;
+  view.content.innerHTML = renderMarkdown(markdown);
 }
 
 // --- review card (Unconfirmed facts) ---------------------------------------------------------
@@ -360,6 +370,23 @@ function resetToNewChat() {
   chatUserInput.focus();
 }
 
+// After a reload: draws the thread's Transcript again, or leaves the start screen when the server
+// has nothing for it. Input waits for it, so a new message never lands above the restored ones.
+// Restored messages are not announced in the live region.
+async function restoreConversation(id) {
+  setBusy(true);
+  const { transcript } = await fetchThread({ fetchImpl: fetch, threadId: id });
+  // "New chat" was clicked meanwhile: that conversation is gone, and input is free already.
+  if (threadId !== id) return;
+  for (const bubble of restoredBubbles(transcript)) {
+    if (bubble.kind === "user") appendUserMessage(bubble.text);
+    else appendRestoredAnswer(bubble.markdown);
+  }
+  scrollToBottom();
+  setBusy(false);
+  chatUserInput.focus();
+}
+
 function renderChatMode() {
   if (modeNote) modeNote.hidden = chatMode !== "rule_based";
   if (modeLabel) modeLabel.textContent = MODE_LABEL[chatMode] ?? t("mode.unknown");
@@ -468,3 +495,4 @@ sidebarToggleBtn?.setAttribute("aria-controls", "gpt-sidebar");
 setSidebarOpen(!narrowScreen.matches);
 showChatMode();
 chatUserInput.focus();
+if (reloadedThreadId) restoreConversation(reloadedThreadId);

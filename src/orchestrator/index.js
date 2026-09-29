@@ -34,7 +34,8 @@ export function createOrchestrator({
   // `signal` (an AbortSignal) cancels the run, e.g. when the client disconnects; the turn then ends with `error`.
   async function* send({ threadId, message, documentId, confirm, signal } = {}) {
     if (!threadId) throw new TypeError("send() requires a threadId");
-    const text = message?.trim() || (documentId ? DOCUMENT_ONLY_MESSAGE : "");
+    const typed = message?.trim() ?? "";
+    const text = typed || (documentId ? DOCUMENT_ONLY_MESSAGE : "");
     if (!text && !confirm) throw new TypeError("send() requires a message, a documentId or confirm");
 
     const input = {
@@ -42,6 +43,8 @@ export function createOrchestrator({
       confirm: confirm ?? null,
       skipRouter: !text,
       newDocument: Boolean(documentId),
+      // The Transcript's user entry: the text as typed, never the internal markers.
+      transcript: [{ role: "user", text: typed, document: false, confirm: null }],
     };
     if (documentId) input.documentId = documentId;
 
@@ -63,9 +66,15 @@ export function createOrchestrator({
   }
 
   async function getTenancy(threadId) {
-    const snapshot = await graph.getState({ configurable: { thread_id: threadId } });
-    return snapshot.values?.tenancy ?? {};
+    return (await getThread(threadId)).tenancy;
   }
 
-  return { send, getTenancy };
+  // What the thread shows the user: its Transcript and Tenancy (both empty for an unknown thread).
+  // Read-only: calls no model.
+  async function getThread(threadId) {
+    const snapshot = await graph.getState({ configurable: { thread_id: threadId } });
+    return { transcript: snapshot.values?.transcript ?? [], tenancy: snapshot.values?.tenancy ?? {} };
+  }
+
+  return { send, getTenancy, getThread };
 }

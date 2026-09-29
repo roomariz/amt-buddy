@@ -50,6 +50,7 @@ for await (const event of orchestrator.send({ threadId, message, documentId, con
   // write `event` to the SSE stream
 }
 const tenancy = await orchestrator.getTenancy(threadId);
+const thread = await orchestrator.getThread(threadId); // { transcript, tenancy }, see "The Transcript"
 ```
 
 `createOrchestrator({ models, tools, checkpointer?, log?, toolTimeoutMs? })`:
@@ -82,6 +83,11 @@ An out-of-scope message yields `intent`, `token`, `done` and never reaches the S
 - A changed address clears the official facts of the old one, the Feature group ratings, `rentedBefore`, `previousRent` and `firstUsedAfter2014` (they describe the old flat). The first address, and the Canonical address of a stated one, keep the ratings.
 - `source` is `user`, `lease` or `official`. Precedence is user > lease > official, except that the Canonical address (official) always replaces a stated address; it then carries `statedBy` with the source of the address it replaced.
 - A fact is Unconfirmed when `source === "lease"` and `confidence` is missing or below 0.8. Show these on the review card and send the user's answer back as `confirm`.
+
+**The Transcript** (`getThread(threadId)`, read-only, calls no model) is what the user sees of the thread: `getThread()` returns `{ transcript, tenancy }`, both empty (`[]`, `{}`) for an unknown thread. The Transcript is its own channel of the thread's state, only ever appended to by code, separate from the model's message history. Entries are plain JSON:
+
+- `{ role: "user", text, document, confirm }`, added at the start of every turn: `text` is the message as the user typed it (trimmed; empty for an upload or confirm without a message; the internal markers never appear). `document` is `false` and `confirm` is `null` for now (a follow-up fills them in).
+- `{ role: "assistant", text }`, added when a turn ends with an answer: exactly the text of its `token` event (the final answer after grounding, with the disclaimer, or the out-of-scope reply). A turn that ends in `error` or is aborted adds none.
 
 **The legal disclaimer** is appended by code (ADR 0003), in the user's language: to every answer with a Compliance verdict from this turn's Tool results, and otherwise to the conversation's first answer that is not an out-of-scope reply.
 
@@ -134,6 +140,14 @@ The server (`src/app.js`, started by `src/server.js`) exposes the Orchestrator t
 ### `GET /api/v1/orchestrator/status`
 
 `200 { "data": { "mode": "orchestrator" } }` or `{ "data": { "mode": "rule_based" } }`. It only reads the configuration: it does not create the Orchestrator or check the API key. Show a small "AI chat not configured" note in `rule_based` mode.
+
+### `GET /api/v1/orchestrator/threads/:threadId` (restore after a reload)
+
+`200 { "data": { "transcript": [ … ], "tenancy": { … } } }`: the thread's Transcript and Tenancy, as `getThread()` returns them (see "For the UI"). The chat page calls it on load when it already had a stored `threadId`, and draws the conversation again; an empty Transcript leaves the start screen.
+
+- An unknown thread, a server without a chat turn yet (the Orchestrator does not exist yet) and `rule_based` mode all return `200` with `{ "transcript": [], "tenancy": {} }`. The endpoint never creates the Orchestrator and never calls a model.
+- The `threadId` (URL-encoded in the path) follows the chat endpoint's rules: non-empty, at most 200 characters; otherwise `422 { error: { code: "validation_error", message, details } }`.
+- The thread id is the only key, as for posting to the thread. Nothing is logged.
 
 ### `POST /api/v1/orchestrator/documents` (lease upload)
 
@@ -243,6 +257,7 @@ With `rentedBefore` and a valid contract rent, `evaluateMietspiegel` adds `rentC
 
 - **Threads and uploads live in memory.** A server restart loses every conversation and uploaded lease; a `documentId` from before the restart (or older than 30 minutes) makes Lease Analysis ask for the upload again. A second server process would not share them either.
 - **`rule_based` mode has no memory**: each turn is answered on its own; `threadId` and `confirm` are not used.
+- **Restoring a conversation after a reload only works in Orchestrator mode, and only while the server process lives.** After a restart (or in `rule_based` mode) the thread endpoint returns an empty Transcript and the page opens on the start screen. An upload or confirm without a message is not restored yet (its user entry has no text, and `document` / `confirm` are not recorded), and neither is the review card.
 
 - **Re-running a check after a confirmation is a prompt rule, not code.** When the user confirms an Unconfirmed fact, the Supervisor prompt tells the model to re-run the checks that were waiting for it; nothing in the graph tracks the pending check. The second live smoke test covers this and passed on 2026-09-28 with `openai/gpt-4.1`; run it again (or try it by hand) whenever the prompt or model changes.
 - **Re-running the Mietspiegel check once the fifth rating arrives is a prompt rule**, like the re-run after a confirmation above. Offering the follow-up at all is the model's choice.

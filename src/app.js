@@ -167,6 +167,8 @@ const SSE_HEARTBEAT_MS = 15_000;
 const CHAT_FAILED = "Amt-Buddy could not answer this message.";
 const MAX_ID_LENGTH = 200;
 const MAX_MESSAGE_LENGTH = 4_000;
+const THREAD_PATH = "/api/v1/orchestrator/threads/";
+const EMPTY_THREAD = { transcript: [], tenancy: {} };
 
 function sendError(response, status, code, message, details) {
   sendJson(response, status, { error: details ? { code, message, details } : { code, message } });
@@ -314,6 +316,25 @@ export function createApp({
     await streamEvents(response, events, abort);
   }
 
+  // GET /api/v1/orchestrator/threads/:threadId → the thread's Transcript and Tenancy. Never
+  // creates the Orchestrator: without one (rule_based mode, or no chat turn yet) nothing is
+  // remembered. Logs no content.
+  async function handleThread(response, encodedId) {
+    let threadId;
+    try {
+      threadId = decodeURIComponent(encodedId);
+    } catch {
+      threadId = "";
+    }
+    if (!threadId.trim() || threadId.length > MAX_ID_LENGTH) {
+      const message = `'threadId' must be a non-empty string of at most ${MAX_ID_LENGTH} characters.`;
+      sendError(response, 422, "validation_error", message, [{ field: "threadId", code: "invalid_type", message }]);
+      return;
+    }
+    const thread = mode === "orchestrator" && orchestrator ? await orchestrator.getThread(threadId) : EMPTY_THREAD;
+    sendJson(response, 200, { data: thread });
+  }
+
   async function* orchestratorTurn(turn, signal) {
     let chat;
     try {
@@ -374,6 +395,11 @@ export function createApp({
 
     if (request.method === "GET" && url.pathname === "/api/v1/orchestrator/status") {
       sendJson(response, 200, { data: { mode } });
+      return;
+    }
+
+    if (request.method === "GET" && url.pathname.startsWith(THREAD_PATH)) {
+      await handleThread(response, url.pathname.slice(THREAD_PATH.length));
       return;
     }
 
