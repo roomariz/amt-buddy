@@ -2,7 +2,8 @@ import { checkGrounding, stripUngrounded } from "../../orchestrator/grounding.js
 
 // The grounding check (ADR 0003) for the landlord side: every number in an answer must come from a
 // Tool result of this turn, the landlord's state in the system prompt (the Listing, its Rent check,
-// the pool statistics, the Landlord preferences) or the landlord's own message of this turn.
+// the pool statistics, the Landlord preferences, the top of the ranking and the Shortlist) or the
+// landlord's own message of this turn.
 // Applicant ids ("A-007") are names, not figures: they are never checked.
 
 const APPLICANT_ID = /\b[A-Z]-\d+\b/g;

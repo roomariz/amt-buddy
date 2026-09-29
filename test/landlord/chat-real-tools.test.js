@@ -318,6 +318,10 @@ test("no applicant name, contact detail or protected field appears in any messag
   const { ranked, excluded } = await server.dashboard();
   const ids = [...ranked, ...excluded].map(({ applicantId }) => applicantId);
   assert.equal(ids.length, 40);
+  // A Shortlist note naming the applicant (the landlord's free text): the context shows the Shortlist.
+  const { applicants } = await readApplicantPool(APPLICANT_POOL_DIRECTORY, { today: POOL_DATE });
+  const named = applicants.find(({ id }) => id === ids[1]);
+  server.store.saveShortlistEntry(server.landlordId, { applicantId: ids[1], status: "to_invite", note: `Call ${named.contact.name} on Monday` });
   server.setScript([
     {
       toolCalls: [
@@ -337,9 +341,12 @@ test("no applicant name, contact detail or protected field appears in any messag
   await server.chat("Show me everything about every applicant.");
   await server.chat("Thanks.");
 
+  // The system prompts are in what is checked, with the context's top of the ranking and Shortlist.
+  assert.ok(server.model.calls.every((messages) => /Top of the current ranking:/.test(messages[0].content) && /Shortlist:/.test(messages[0].content)));
   const sent = JSON.stringify(server.model.calls);
   const { plain, quoted } = identifyingValues();
   assert.ok(plain.length > 100 && quoted.length > 20, "the pool's identifying values were found");
+  assert.ok(plain.includes(named.contact.name), "the name in the note is among the values checked");
   for (const value of [...plain, ...quoted, "Erika Muster"]) assert.ok(!sent.includes(value), `${value} reached the model`);
   assert.doesNotMatch(sent, /\\"(contact|email|phone|nationality|religion|dateOfBirth|gender|photo|familyPlans)\\":/);
 });
@@ -365,10 +372,28 @@ test("before a Listing too, no applicant name, contact detail or protected field
   await server.chat("Show me everything about every applicant.");
 
   assert.equal(ids.length, 40);
+  assert.ok(server.model.calls.every((messages) => /Top of the current ranking:/.test(messages[0].content)), "the context's top is in what is checked");
   const sent = JSON.stringify(server.model.calls);
   const { plain, quoted } = identifyingValues();
   for (const value of [...plain, ...quoted, "Erika Muster"]) assert.ok(!sent.includes(value), `${value} reached the model`);
   assert.doesNotMatch(sent, /\\"(contact|email|phone|nationality|religion|dateOfBirth|gender|photo|familyPlans)\\":/);
+});
+
+test("a follow-up answered without a Tool call may quote a top applicant's Match score and ratio from the context", async (t) => {
+  const server = await start();
+  t.after(server.close);
+  const { ranked } = await server.dashboard();
+  const { applicantId, matchScore, rentToIncome } = ranked[3];
+  assert.equal(typeof rentToIncome, "number");
+  // The ratio as a percentage to one decimal ("19.3 %" for 0.1933), as the model writes it.
+  const answer = `${applicantId} has a Match score of ${matchScore}; the rent is ${(rentToIncome * 100).toFixed(1)} % of their net income.`;
+  server.setScript([answer]);
+
+  const events = await server.chat("And what about the fourth applicant's rent-to-income ratio?");
+
+  assert.equal(answerOf(events), answer);
+  assert.doesNotMatch(answerOf(events), /I left out figures/);
+  assert.equal(server.model.calls.length, 1, "grounded without a Tool call or a rewrite");
 });
 
 test("'Why is one applicant above another?' is answered from both profiles' breakdowns", async (t) => {

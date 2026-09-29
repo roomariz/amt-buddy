@@ -17,6 +17,8 @@ import { LANDLORD_TOOL_CONTRACTS } from "./tool-contracts.js";
 // How many ranked applicants get_ranking shows, and the criteria and flat Tools' "new top".
 const RANKING_LIMIT = 10;
 const TOP_LIMIT = 3;
+// How many ranked applicants the context shows every turn, so follow-up answers stay grounded.
+const CONTEXT_TOP_LIMIT = 5;
 
 // Why there is no Rent check while flat facts are missing.
 const rentCheckNeeds = (missing) =>
@@ -40,6 +42,9 @@ const roundedCriteria = ({ weights, requirements }) => ({
 
 // A ranked applicant as the model sees it.
 const rankedEntry = ({ applicantId, rank, matchScore, rentToIncome, breakdown }) => ({ applicantId, rank, matchScore, rentToIncome, breakdown });
+
+// The Shortlist by id and status; notes are the landlord's free text and may name people.
+const shortlistEntries = (store, landlordId) => store.getShortlist(landlordId).map(({ applicantId, status }) => ({ applicantId, status }));
 
 // The pool ranked for the flat under the criteria (rankApplicants on the anonymised profiles).
 const rankPool = ({ applicants, flat, criteria }) =>
@@ -115,8 +120,7 @@ export function createLandlordTools({ getStore, getApplicantPool, fetchImpl }) {
         rankedCount: ranked.length,
         ranked: ranked.slice(0, RANKING_LIMIT).map(rankedEntry),
         excludedByReason: countBy(excluded, "excludedBy"),
-        // The Shortlist by id and status; notes are the landlord's free text and may name people.
-        shortlist: state.store.getShortlist(landlordId).map(({ applicantId, status }) => ({ applicantId, status })),
+        shortlist: shortlistEntries(state.store, landlordId),
         inactive,
       };
     },
@@ -247,7 +251,9 @@ export function createLandlordTools({ getStore, getApplicantPool, fetchImpl }) {
 // Orchestrator: what its system prompt shows every turn, loaded from the store so it outlives the
 // chat thread (the long-term memory): the Landlord preferences (saved Selection criteria and the
 // remembered notes), the Listing (with its Rent check; null before one is built), the flat details
-// with what the Listing still needs, and the pool stats and inactive items under those criteria.
+// with what the Listing still needs, the pool stats and inactive items under those criteria, the
+// top of the ranking (the one get_ranking gives, without breakdowns) and the Shortlist, so the
+// model can quote them in a follow-up without calling get_ranking and stay grounded.
 export function createLandlordContext({ getStore, getApplicantPool }) {
   return async (landlordId) => {
     const store = getStore();
@@ -258,7 +264,9 @@ export function createLandlordContext({ getStore, getApplicantPool }) {
     };
     const flat = store.getFlatDetails(landlordId);
     const { applicants } = await getApplicantPool();
-    const { stats, inactive } = rankPool({ applicants, flat: flatToRank(store, landlordId), criteria });
-    return { listing: store.getListing(landlordId), flat, missing: missingForListing(flat), inactive, preferences, stats };
+    const { ranked, stats, inactive } = rankPool({ applicants, flat: flatToRank(store, landlordId), criteria });
+    const top = ranked.slice(0, CONTEXT_TOP_LIMIT).map(({ applicantId, rank, matchScore, rentToIncome }) => ({ applicantId, rank, matchScore, rentToIncome }));
+    const shortlist = shortlistEntries(store, landlordId);
+    return { listing: store.getListing(landlordId), flat, missing: missingForListing(flat), inactive, preferences, stats, top, shortlist };
   };
 }

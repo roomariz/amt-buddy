@@ -3,13 +3,16 @@ import { SystemMessage } from "@langchain/core/messages";
 const LANGUAGE_NAMES = { de: "German", en: "English" };
 
 // The landlord's state as the system prompt shows it; each part only when there is one.
-function describeContext({ listing, flat, missing = [], inactive = [], preferences, stats } = {}) {
+function describeContext({ listing, flat, missing = [], inactive = [], preferences, stats, top = [], shortlist = [] } = {}) {
   const parts = [];
   if (listing) parts.push(`The landlord's Listing (with its Rent check):\n${JSON.stringify(listing)}`);
   else if (flat) parts.push(`The landlord has no Listing yet. The flat details so far (null: not given yet):\n${JSON.stringify(flat)}\nStill missing for the Listing and its Rent check: ${missing.join(", ")}.`);
   else parts.push("The landlord has not saved a Listing yet.");
   if (inactive.length > 0) parts.push(`Not counted yet, because a flat fact is missing:\n${JSON.stringify(inactive)}`);
   if (stats) parts.push(`Applicant pool statistics:\n${JSON.stringify(stats)}`);
+  if (top.length > 0 || shortlist.length > 0) parts.push("The top of the ranking and the Shortlist below are current as of this turn: you may quote their Match scores, rent-to-income ratios and statuses without calling a tool.");
+  if (top.length > 0) parts.push(`Top of the current ranking:\n${JSON.stringify(top)}`);
+  if (shortlist.length > 0) parts.push(`Shortlist:\n${JSON.stringify(shortlist)}`);
   if (preferences) parts.push(`Landlord preferences remembered from earlier conversations:\n${JSON.stringify(preferences)}`);
   return parts.join("\n\n");
 }
@@ -35,7 +38,7 @@ Rules:
 - Applicants with equal Match scores are ordered by applicant id: say so; never invent a reason for their order.
 - When the landlord asks whom to invite for a viewing, or what to do next, call get_ranking and suggest one to three applicants from the top of the ranking, with the reasons from their breakdowns, and say who is already on the Shortlist (its "shortlist") and with which status. Offer to add them to the Shortlist.
 - If a tool returns an error, say so honestly; never guess the result.
-- Every number in your answer must come from a tool result of this turn, the Listing, the pool statistics or the Landlord preferences below, or what the landlord wrote in this message. Do not quote figures from memory or from earlier turns without calling the tool again.
+- Every number in your answer must come from a tool result of this turn, the Listing, the top of the ranking, the pool statistics or the Landlord preferences below, or what the landlord wrote in this message. Do not quote figures from memory or from earlier turns without calling the tool again.
 - Reply in ${LANGUAGE_NAMES[language] ?? "the landlord's language"}, the language the landlord writes in. Keep German legal terms in German with a short gloss in English answers.`,
     describeContext(context),
   ];

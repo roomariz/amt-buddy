@@ -8,6 +8,7 @@ import { POOL_DATE } from "../../src/landlord/applicant-pool-generator.js";
 import { buildListing } from "../../src/landlord/listing.js";
 import { createLandlordContext, createLandlordTools, LANDLORD_TOOL_CONTRACTS, LANDLORD_TOOL_NAMES } from "../../src/landlord/orchestrator/index.js";
 import { DEFAULT_CRITERIA } from "../../src/landlord/scorer.js";
+import { landlordSystemMessage } from "../../src/landlord/orchestrator/prompt.js";
 import { createLandlordStore } from "../../src/landlord/store.js";
 import { errorKind } from "../../src/orchestrator/tool-wrapper.js";
 import { createFakeBerlinWfs } from "../helpers/fake-berlin-wfs.js";
@@ -343,6 +344,47 @@ test("remember_preference stores the note for this landlord only; the context sh
   const { weights } = (await getContext(landlordId)).preferences.criteria;
   assert.equal(weights.schufa, 26);
   assert.equal(weights.affordability, 27.8);
+});
+
+test("the context carries the top 5 of the ranking: id, rank, Match score and rent-to-income only", async () => {
+  // No flat details: ranked anyway, no asking rent, so no ratio.
+  {
+    const { store, landlordId, call } = setup({ withListing: false });
+    const { top } = await createLandlordContext({ getStore: () => store, getApplicantPool: async () => pool })(landlordId);
+    assert.equal(top.length, 5);
+    assert.deepEqual(top.map(({ rank }) => rank), [1, 2, 3, 4, 5]);
+    for (const entry of top) {
+      assert.deepEqual(Object.keys(entry).sort(), ["applicantId", "matchScore", "rank", "rentToIncome"], "no breakdown, name or contact");
+      assert.equal(entry.rentToIncome, null);
+    }
+    const { ranked } = await call("get_ranking");
+    assert.deepEqual(top.map(({ applicantId, matchScore }) => ({ applicantId, matchScore })), ranked.slice(0, 5).map(({ applicantId, matchScore }) => ({ applicantId, matchScore })), "the ranking get_ranking gives");
+  }
+  // The Listing's asking rent of 900: rent / net household income, to four decimals as get_ranking gives it.
+  {
+    const { store, landlordId, call } = setup();
+    const { top } = await createLandlordContext({ getStore: () => store, getApplicantPool: async () => pool })(landlordId);
+    const incomeOf = new Map(pool.applicants.map(({ id, profile }) => [id, profile.netHouseholdIncome]));
+    assert.equal(top.length, 5);
+    for (const { applicantId, rentToIncome } of top) assert.equal(rentToIncome, Math.round((900 / incomeOf.get(applicantId)) * 10000) / 10000, applicantId);
+    const { ranked } = await call("get_ranking");
+    assert.deepEqual(top, ranked.slice(0, 5).map(({ applicantId, rank, matchScore, rentToIncome }) => ({ applicantId, rank, matchScore, rentToIncome })));
+  }
+});
+
+test("the context's Shortlist has ids and statuses only; the system prompt shows it and the top, never a note", async () => {
+  const { store, landlordId } = setup();
+  store.saveShortlistEntry(landlordId, { applicantId: someApplicant, status: "to_invite", note: "Call Mrs. X on Monday" });
+
+  const context = await createLandlordContext({ getStore: () => store, getApplicantPool: async () => pool })(landlordId);
+
+  assert.deepEqual(context.shortlist, [{ applicantId: someApplicant, status: "to_invite" }]);
+  assert.ok(!JSON.stringify(context).includes("Mrs. X"), "the note is not in the context");
+  const system = landlordSystemMessage({ context, language: "en" }).content;
+  assert.ok(!system.includes("Mrs. X"), "the note is not in the system prompt");
+  assert.ok(system.includes(`Shortlist:\n${JSON.stringify([{ applicantId: someApplicant, status: "to_invite" }])}`));
+  assert.ok(system.includes(`Top of the current ranking:\n${JSON.stringify(context.top)}`));
+  assert.match(system, /current as of this turn/);
 });
 
 test("a whitespace-only note is an input error and nothing is stored", async () => {
