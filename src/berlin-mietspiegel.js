@@ -310,36 +310,28 @@ export const RENT_CAP_NOT_CHECKED =
 // used after 1 October 2014 is exempt (§ 556f BGB): it has no cap.
 function evaluateRentCap({ contractRent, referenceMonthlyRent, rentedBefore, previousRent, firstUsedAfter2014 }) {
   const baseCapMonthlyRent = round(referenceMonthlyRent * (1 + RENT_CAP_PERCENT / 100));
+  const verdict = (fields) => ({
+    capPercent: RENT_CAP_PERCENT,
+    referenceMonthlyRent,
+    baseCapMonthlyRent,
+    ...fields,
+    legalBasis: RENT_CAP_LEGAL_BASIS,
+    notChecked: RENT_CAP_NOT_CHECKED,
+  });
   if (!rentedBefore && firstUsedAfter2014 === true) {
-    return {
-      basis: "exempt_new_build",
-      capPercent: RENT_CAP_PERCENT,
-      referenceMonthlyRent,
-      baseCapMonthlyRent,
-      capMonthlyRent: null,
-      conditional: false,
-      status: "exempt",
-      differenceFromCap: 0,
-      legalBasis: RENT_CAP_LEGAL_BASIS,
-      notChecked: RENT_CAP_NOT_CHECKED,
-    };
+    return verdict({ basis: "exempt_new_build", capMonthlyRent: null, conditional: false, status: "exempt", differenceFromCap: 0 });
   }
   const previousAmount = rentedBefore ? positiveAmount(previousRent) : undefined;
   const knownPreviousRent = previousAmount === undefined ? undefined : round(previousAmount);
   const previousRentIsCap = knownPreviousRent !== undefined && knownPreviousRent > baseCapMonthlyRent;
   const capMonthlyRent = previousRentIsCap ? knownPreviousRent : baseCapMonthlyRent;
-  return {
+  return verdict({
     basis: previousRentIsCap ? "previous_rent" : "mietspiegel_plus_10",
-    capPercent: RENT_CAP_PERCENT,
-    referenceMonthlyRent,
-    baseCapMonthlyRent,
     capMonthlyRent,
     conditional: rentedBefore && knownPreviousRent === undefined,
     status: contractRent <= capMonthlyRent ? "within_cap" : "above_cap",
     differenceFromCap: round(contractRent - capMonthlyRent),
-    legalBasis: RENT_CAP_LEGAL_BASIS,
-    notChecked: RENT_CAP_NOT_CHECKED,
-  };
+  });
 }
 
 // A rent (contract or previous) is a positive monthly amount in EUR; anything else is undefined.

@@ -58,7 +58,7 @@ _Avoid_: Old rent, former rent
 
 **First used after 2014**:
 Whether a flat never rented before was first used (first occupied) after 1 October 2014, a Tenancy fact the tenant states (yes/no). The first rental of such a new build is exempt from the Rent cap (§ 556f BGB). It is asked only when the building is not known to be from before 2014. It belongs to the flat, so a changed address clears it.
-_Avoid_: New building, Neubau flag
+_Avoid_: Neubau flag, built after 2014 (the building year is not the date of first use)
 
 ### Answers
 
@@ -71,5 +71,5 @@ The Compliance verdict on the contract rent under §§ 556d–556g BGB: at the s
 _Avoid_: Rent limit, rent brake, Kappungsgrenze (that is the cap on rent increases)
 
 **Grounded claim**:
-A number or Compliance verdict in an answer that can be traced to a Tool result of the current turn, a Tenancy fact, or the tenant's own message in that turn. Only Grounded claims may reach the user.
+A number or Compliance verdict in an answer that can be traced to a Tool result of the current turn (or a missing-facts report from gating), a Tenancy fact, or the tenant's own message in that turn. Only Grounded claims may reach the user.
 _Avoid_: Verified claim, fact-checked

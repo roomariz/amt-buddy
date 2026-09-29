@@ -1386,7 +1386,8 @@ test("'never rented' in a building from 2016 asks whether the flat was first use
           ...askMietspiegel.toolCalls,
         ],
       },
-      "Is your flat a new build, first used (first occupied) only recently?",
+      // The date is grounded by the needs_facts report, so the question needs no rewrite.
+      "Was the flat first used (first occupied) after 1 October 2014?",
       { toolCalls: [recordFacts([{ fact: "firstUsedAfter2014", value: "yes" }]), ...askMietspiegel.toolCalls] },
       "Your Nettokaltmiete (net cold rent) of 780 € is within the Mietspiegel range of 590–845 €. " +
         "Mietpreisbremse (rent cap): the flat is rented for the first time and was first used after 1 October 2014, " +
@@ -1408,12 +1409,10 @@ test("'never rented' in a building from 2016 asks whether the flat was first use
   const first = await collect(orchestrator.send({ threadId: "t73", message: "Berliner Str. 155, built 2016, 50 m², 780 €, never rented. Too much?" }));
 
   assert.deepEqual(stepsOf(first), ["OfficialDataAgent:started", "OfficialDataAgent:finished", "ComplianceAgent:needs_facts"]);
-  assert.deepEqual(JSON.parse(models.supervisor.calls[1].at(-1).content), {
-    status: "needs_facts",
-    checks: ["mietspiegel"],
-    missing: ["firstUsedAfter2014"],
-    unconfirmed: [],
-  });
+  const report = JSON.parse(models.supervisor.calls[1].at(-1).content);
+  assert.deepEqual(report.missing, ["firstUsedAfter2014"]);
+  assert.match(report.legalBasis, /1 October 2014/);
+  assert.match(answerOf(first), /after 1 October 2014\?/, "the question keeps its date");
   assert.equal(calls.some((c) => c.name === "calculate_mietspiegel"), false, "no Mietspiegel call yet");
 
   const second = await collect(orchestrator.send({ threadId: "t73", message: "yes" }));

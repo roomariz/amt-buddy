@@ -1,3 +1,4 @@
+import { RENT_CAP_LEGAL_BASIS } from "../berlin-mietspiegel.js";
 import { SUB_AGENTS } from "./sub-agents.js";
 import { isUnconfirmed } from "./tenancy.js";
 
@@ -70,14 +71,17 @@ export function gateSubAgent(agent, args, tenancy, inputs = {}) {
   });
   const runnable = gated.filter((entry) => !isBlocked(entry)).map((entry) => entry.check);
   const blocked = gated.filter(isBlocked);
+  const missing = union(blocked.map((entry) => entry.missing));
   return {
     run: runnable.length > 0 ? { ...args, checks: runnable } : null,
     needsFacts:
       blocked.length > 0
         ? {
             checks: blocked.map((entry) => entry.check),
-            missing: union(blocked.map((entry) => entry.missing)),
+            missing,
             unconfirmed: union(blocked.map((entry) => entry.unconfirmed)),
+            // The new-build question quotes 1 October 2014; the legal text grounds it.
+            ...(missing.includes("firstUsedAfter2014") && { legalBasis: RENT_CAP_LEGAL_BASIS }),
           }
         : null,
   };
