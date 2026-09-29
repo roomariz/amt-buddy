@@ -39,7 +39,7 @@ export const TOOL_CONTRACTS = {
   calculate_mietspiegel: {
     name: "calculate_mietspiegel",
     description:
-      "Calculate the Berliner Mietspiegel 2026 reference rent range and compare an optional contract net cold rent against it. With the five feature group ratings, also estimate an adjusted reference rent within the range. With a contract rent and whether the flat was rented before, also give the Mietpreisbremse rent cap verdict (Mietspiegel + 10 %).",
+      "Calculate the Berliner Mietspiegel 2026 reference rent range and compare an optional contract net cold rent against it. With the five feature group ratings, also estimate an adjusted reference rent within the range. With a contract rent and whether the flat was rented before, also give the Mietpreisbremse rent cap verdict (Mietspiegel + 10 %, or a higher previous rent).",
     schema: z.object({
       residentialLocation,
       buildingAgeOrYear: z.union([z.number(), z.string()]),
@@ -53,6 +53,11 @@ export const TOOL_CONTRACTS = {
         .boolean()
         .optional()
         .describe("Whether the flat was rented out before; with contractRent adds the rentCap (Mietpreisbremse) verdict"),
+      previousRent: z
+        .number()
+        .positive()
+        .optional()
+        .describe("The previous tenant's monthly net cold rent (Vormiete) in EUR, for a flat rented before; a higher one becomes the rent cap"),
     }),
     output: z.looseObject({ status: z.string() }),
   },

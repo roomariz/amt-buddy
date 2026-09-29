@@ -25,8 +25,10 @@ function extractNumbers(text) {
   return (cleaned.match(NUMBER_PATTERN) ?? []).map((token) => ({ token, value: parseNumber(token) }));
 }
 
+// A number in an answer carries no sign ("170 € below the cap"), so a source figure
+// grounds its magnitude: -170 grounds 170.
 function collect(value, into) {
-  if (typeof value === "number") into.values.add(Math.round(value * 100) / 100);
+  if (typeof value === "number") into.values.add(Math.round(Math.abs(value) * 100) / 100);
   else if (typeof value === "string") {
     for (const { token, value: n } of extractNumbers(value)) {
       if (n === null) into.tokens.add(token);

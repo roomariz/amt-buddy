@@ -303,18 +303,22 @@ export const RENT_CAP_NOT_CHECKED =
   "The contract rent is taken as the rent agreed at the start of the lease. Not checked: leases concluded before 1 June 2015 (Mietpreisbremse not yet in force in Berlin), " +
   "modernisation exceptions (§ 556e Abs. 2, § 556f Satz 2 BGB), rent increases in the last year of the previous lease, Staffelmiete (graduated rent) and Indexmiete (index-linked rent).";
 
-// The Rent cap (Mietpreisbremse) verdict for a contract rent: Mietspiegel + 10 %, based on
-// the Adjusted reference rent when there is one, otherwise the Mietspiegel median.
-// A flat rented before may have had a higher previous rent, so its verdict is conditional.
-function evaluateRentCap({ contractRent, referenceMonthlyRent, rentedBefore }) {
-  const capMonthlyRent = round(referenceMonthlyRent * (1 + RENT_CAP_PERCENT / 100));
+// The Rent cap (Mietpreisbremse) verdict for a contract rent: Mietspiegel + 10 % (the base cap),
+// based on the Adjusted reference rent when there is one, otherwise the Mietspiegel median.
+// A flat rented before keeps a higher previous rent (Vormiete, § 556e BGB) as its cap; while
+// the previous rent is unknown, the verdict is conditional.
+function evaluateRentCap({ contractRent, referenceMonthlyRent, rentedBefore, previousRent }) {
+  const baseCapMonthlyRent = round(referenceMonthlyRent * (1 + RENT_CAP_PERCENT / 100));
+  const knownPreviousRent = rentedBefore ? validPreviousRent(previousRent) : undefined;
+  const previousRentIsCap = knownPreviousRent !== undefined && knownPreviousRent > baseCapMonthlyRent;
+  const capMonthlyRent = previousRentIsCap ? knownPreviousRent : baseCapMonthlyRent;
   return {
-    basis: "mietspiegel_plus_10",
+    basis: previousRentIsCap ? "previous_rent" : "mietspiegel_plus_10",
     capPercent: RENT_CAP_PERCENT,
     referenceMonthlyRent,
-    baseCapMonthlyRent: capMonthlyRent,
+    baseCapMonthlyRent,
     capMonthlyRent,
-    conditional: rentedBefore,
+    conditional: rentedBefore && knownPreviousRent === undefined,
     status: contractRent <= capMonthlyRent ? "within_cap" : "above_cap",
     differenceFromCap: round(contractRent - capMonthlyRent),
     legalBasis: RENT_CAP_LEGAL_BASIS,
@@ -322,8 +326,17 @@ function evaluateRentCap({ contractRent, referenceMonthlyRent, rentedBefore }) {
   };
 }
 
+// A previous rent is a positive monthly net cold rent in EUR; anything else counts as unknown.
+function validPreviousRent(previousRent) {
+  if (previousRent === undefined || previousRent === null || String(previousRent).trim() === "") return undefined;
+  const amount = Number(previousRent);
+  return Number.isFinite(amount) && amount > 0 ? round(amount) : undefined;
+}
+
 // `rentedBefore` (optional boolean): whether the flat was rented out before. With it and a
 // valid contract rent, the result adds a Rent cap (`rentCap`); without it, it is unchanged.
+// `previousRent` (optional, monthly net cold rent in EUR): the previous tenant's rent, used
+// only for a flat rented before.
 export function evaluateMietspiegel(options = {}) {
   const {
     residentialLocation,
@@ -332,6 +345,7 @@ export function evaluateMietspiegel(options = {}) {
     contractRent,
     featureGroups,
     rentedBefore,
+    previousRent,
   } = options;
 
   const loc = String(residentialLocation ?? "").trim().toLocaleLowerCase("de-DE");
@@ -435,6 +449,7 @@ export function evaluateMietspiegel(options = {}) {
           contractRent: contractRentComparison.actualMonthlyRent,
           referenceMonthlyRent: adjustedReferenceRent?.monthlyRent ?? monthlyReferenceRent.median,
           rentedBefore,
+          previousRent,
         })
       : undefined;
 

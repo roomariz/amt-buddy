@@ -8,9 +8,10 @@ export const FEATURE_GROUP_RATINGS = Object.fromEntries(FEATURE_GROUPS.map((grou
 export const RATING_FACTS = Object.values(FEATURE_GROUP_RATINGS);
 
 // Previous-rental facts for the Rent cap (Mietpreisbremse): whether the flat was rented
-// out before. Stated yes/no; they belong to the flat, like the Feature group ratings.
-export const PREVIOUS_RENTAL_FACTS = ["rentedBefore"];
-const BOOLEAN_FACTS = new Set(PREVIOUS_RENTAL_FACTS);
+// out before (yes/no) and the previous tenant's monthly net cold rent (Vormiete). Stated by
+// the tenant; they belong to the flat, like the Feature group ratings.
+export const PREVIOUS_RENTAL_FACTS = ["rentedBefore", "previousRent"];
+const BOOLEAN_FACTS = new Set(["rentedBefore"]);
 const BOOLEAN_WORDS = { yes: true, ja: true, true: true, no: false, nein: false, false: false };
 
 // Facts that describe the flat and go when the flat changes.
@@ -34,7 +35,7 @@ export const OFFICIAL_ONLY_FACTS = ["coordinates", "residentialLocation"];
 
 export const TENANCY_FACTS = [...STATED_FACTS, ...OFFICIAL_ONLY_FACTS];
 
-const NUMERIC_FACTS = new Set(["livingAreaSqm", "contractRent", "rooms", "occupants", "childrenUpToSix"]);
+const NUMERIC_FACTS = new Set(["livingAreaSqm", "contractRent", "previousRent", "rooms", "occupants", "childrenUpToSix"]);
 const SOURCE_RANK = { official: 1, lease: 2, user: 3 };
 
 // Lease facts below this confidence are Unconfirmed facts until the user confirms them.
