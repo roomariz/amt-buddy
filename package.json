@@ -10,7 +10,7 @@
     "pool:summary": "node scripts/applicant-pool-summary.js"
   },
   "engines": {
-    "node": ">=22.5"
+    "node": ">=22.13"
   },
   "dependencies": {
     "@langchain/core": "^1.2.13",
