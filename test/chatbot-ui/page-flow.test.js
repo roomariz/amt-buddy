@@ -384,16 +384,20 @@ test("restore: an upload or a confirm sent with a message keeps the message text
   });
   t.after(server.close);
 
+  const documentId = await uploadTestLease(server);
   await runTurn({
     fetchImpl: server.fetchImpl,
-    request: { threadId: "restore-lease-msg", message: " Here is my lease ", documentId: await uploadTestLease(server) },
+    request: { threadId: "restore-lease-msg", message: " Here is my lease ", documentId },
   });
+  const afterUpload = await fetchThread({ fetchImpl: server.fetchImpl, threadId: "restore-lease-msg" });
+  assert.deepEqual(afterUpload.tenancy.contractRent, { value: 30000, source: "lease", confidence: 0.5 });
   await runTurn({
     fetchImpl: server.fetchImpl,
     request: { threadId: "restore-lease-msg", message: "It is lower", confirm: { contractRent: "780,50" } },
   });
 
-  const { transcript } = await fetchThread({ fetchImpl: server.fetchImpl, threadId: "restore-lease-msg" });
+  const { transcript, tenancy } = await fetchThread({ fetchImpl: server.fetchImpl, threadId: "restore-lease-msg" });
+  assert.deepEqual(tenancy.contractRent, { value: 780.5, source: "user" });
   assert.deepEqual(
     transcript.filter((entry) => entry.role === "user"),
     [

@@ -32,6 +32,8 @@ function labelAndUnit({ name, unit, unitKey }) {
   return { label: t(`facts.${name}`), unit: unitKey ? t(unitKey) : unit };
 }
 
+const leaseFact = (name) => LEASE_FACTS.find((fact) => fact.name === name);
+
 const isUnconfirmed = (fact) =>
   fact?.source === "lease" && !(typeof fact.confidence === "number" && fact.confidence >= CONFIDENCE_THRESHOLD);
 
@@ -74,13 +76,14 @@ export function confirmPayload(fields, inputs) {
 }
 
 // The user bubble for a `confirm` ("Values confirmed – Nettokaltmiete: 780,50 € / Monat"), in the
-// UI language and in the order sent; null when it names no lease fact. Values are shown as sent.
+// UI language and in the order sent; null when it names no lease fact. Values are shown as sent
+// (only plain strings and numbers: anything else did not come from the card).
 export function confirmedValuesText(confirm) {
   const parts = [];
-  for (const [name, value] of Object.entries(confirm ?? {})) {
-    const leaseFact = LEASE_FACTS.find((fact) => fact.name === name);
-    if (!leaseFact) continue;
-    const { label, unit } = labelAndUnit(leaseFact);
+  for (const [name, value] of Object.entries(confirm)) {
+    const fact = leaseFact(name);
+    if (!fact || !["string", "number"].includes(typeof value)) continue;
+    const { label, unit } = labelAndUnit(fact);
     parts.push(`${label}: ${value}${unit ? ` ${unit}` : ""}`);
   }
   return parts.length > 0 ? t("chat.confirmedValues", { summary: parts.join(", ") }) : null;
@@ -88,5 +91,5 @@ export function confirmedValuesText(confirm) {
 
 // The input mode for a fact's field (text, decimal or numeric keyboard).
 export function inputModeFor(name) {
-  return LEASE_FACTS.find((fact) => fact.name === name)?.input ?? "text";
+  return leaseFact(name)?.input ?? "text";
 }

@@ -6,7 +6,10 @@ import { setLanguage } from "../../public/i18n.js";
 
 const user = (text, extra = {}) => ({ role: "user", text, document: false, confirm: null, ...extra });
 const answer = (text) => ({ role: "assistant", text });
-const userBubble = (text, extra = {}) => ({ kind: "user", text, leaseChip: null, confirmed: null, ...extra });
+const userBubble = (text, extra = {}) => ({ kind: "user", text, leaseLabel: null, confirmed: null, ...extra });
+
+// The UI language is global: every test that sets it starts from the default again.
+test.afterEach(() => setLanguage("de"));
 
 test("a Transcript becomes the user and bot bubbles, in order", () => {
   setLanguage("en");
@@ -53,9 +56,9 @@ test("a lease upload shows the lease chip, with or without a message", () => {
     tenancy: {},
   });
   assert.deepEqual(bubbles, [
-    userBubble("", { leaseChip: "Lease uploaded" }),
+    userBubble("", { leaseLabel: "Lease uploaded" }),
     { kind: "bot", markdown: "Read it." },
-    userBubble("Here is my lease", { leaseChip: "Lease uploaded" }),
+    userBubble("Here is my lease", { leaseLabel: "Lease uploaded" }),
   ]);
 });
 
@@ -69,19 +72,37 @@ test("confirmed values are summed up with the fact labels and units, like the li
     tenancy: {},
   });
   assert.deepEqual(bubbles, [
-    userBubble("", { confirmed: "Values confirmed – Nettokaltmiete (net cold rent): 780,50 € / month, Living area: 50 m²" }),
+    userBubble("", {
+      confirmed: "Values confirmed – Nettokaltmiete (net cold rent): 780,50 € / month, Living area: 50 m²",
+    }),
     userBubble("It is lower", { confirmed: "Values confirmed – Rooms: 2" }),
   ]);
+});
+
+test("confirmed values the card cannot have sent (unknown facts, nested values) are left out of the summary", () => {
+  setLanguage("en");
+  const { bubbles } = restoredChat({
+    transcript: [
+      user("", { confirm: { bathroomRating: "positive", rooms: { value: 2 } } }),
+      user("", { confirm: { bathroomRating: "positive", rooms: 2 } }),
+    ],
+    tenancy: {},
+  });
+  assert.deepEqual(bubbles, [userBubble("", { confirmed: "Values confirmed – Rooms: 2" })]);
 });
 
 test("the page's own labels follow the current UI language; answers stay as written", () => {
   setLanguage("de");
   const { bubbles } = restoredChat({
-    transcript: [user("", { document: true }), answer("Read it."), user("", { confirm: { contractRent: "780,50" } })],
+    transcript: [
+      user("", { document: true }),
+      answer("Read it."),
+      user("", { confirm: { contractRent: "780,50" } }),
+    ],
     tenancy: {},
   });
   assert.deepEqual(bubbles, [
-    userBubble("", { leaseChip: "Mietvertrag hochgeladen" }),
+    userBubble("", { leaseLabel: "Mietvertrag hochgeladen" }),
     { kind: "bot", markdown: "Read it." },
     userBubble("", { confirmed: "Werte bestätigt – Nettokaltmiete: 780,50 € / Monat" }),
   ]);
@@ -94,7 +115,8 @@ const unconfirmedRent = {
 
 test("the review card comes back when the Tenancy still has Unconfirmed facts", () => {
   setLanguage("en");
-  const { review } = restoredChat({ transcript: [user("", { document: true }), answer("Is 30000 € right?")], tenancy: unconfirmedRent });
+  const transcript = [user("", { document: true }), answer("Is 30000 € right?")];
+  const { review } = restoredChat({ transcript, tenancy: unconfirmedRent });
   assert.deepEqual(
     review.fields.map(({ name, label, value, unconfirmed }) => ({ name, label, value, unconfirmed })),
     [
@@ -106,7 +128,10 @@ test("the review card comes back when the Tenancy still has Unconfirmed facts", 
 
 test("no review card when every lease value is confirmed, or when there is no answer to put it under", () => {
   const transcript = [user("", { document: true }), answer("Is 30000 € right?")];
-  const confirmed = { contractRent: { value: 780.5, source: "user" }, rooms: { value: 2, source: "lease", confidence: 0.95 } };
+  const confirmed = {
+    contractRent: { value: 780.5, source: "user" },
+    rooms: { value: 2, source: "lease", confidence: 0.95 },
+  };
   assert.equal(restoredChat({ transcript, tenancy: confirmed }).review, null);
   assert.equal(restoredChat({ transcript: [], tenancy: unconfirmedRent }).review, null);
   assert.equal(restoredChat({ transcript: [user("", { document: true })], tenancy: unconfirmedRent }).review, null);

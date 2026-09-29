@@ -38,14 +38,15 @@ export function createOrchestrator({
     const text = typed || (documentId ? DOCUMENT_ONLY_MESSAGE : "");
     if (!text && !confirm) throw new TypeError("send() requires a message, a documentId or confirm");
 
+    const confirmed = confirm ?? null;
     const input = {
       messages: text ? [new HumanMessage(text)] : [],
-      confirm: confirm ?? null,
+      confirm: confirmed,
       skipRouter: !text,
       newDocument: Boolean(documentId),
       // The Transcript's user entry: the text as typed (never the internal markers), whether a
       // lease came with it, and the confirmed values as sent.
-      transcript: [{ role: "user", text: typed, document: Boolean(documentId), confirm: confirm ?? null }],
+      transcript: [{ role: "user", text: typed, document: Boolean(documentId), confirm: confirmed }],
     };
     if (documentId) input.documentId = documentId;
 

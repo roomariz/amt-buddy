@@ -122,17 +122,17 @@ function setStagedFile(file) {
 
 // --- messages ----------------------------------------------------------------------------------
 
-// A user bubble: the lease chip (`chip`: { name, size? }; a restored upload has no size), the
-// message text and the confirmed values, each only when given.
-function appendUserMessage(text, chip = null, confirmed = null) {
+// A user bubble: the lease chip, the message text and the confirmed values, each only when given.
+// The chip shows the file's name and size live, and a generic label when restored (no file kept).
+function appendUserMessage({ text = "", file = null, leaseLabel = null, confirmed = null }) {
   showChatView();
   const row = el("div", "chat-msg-row user-row");
   const bubble = el("div", "user-bubble");
-  if (chip) {
-    const chipNode = el("div", "user-file-chip");
-    chipNode.append(el("span", "chip-icon", "📄"), el("span", "chip-name", chip.name));
-    if (chip.size) chipNode.append(el("span", "chip-size", `(${chip.size})`));
-    bubble.append(chipNode);
+  if (file || leaseLabel) {
+    const chip = el("div", "user-file-chip");
+    chip.append(el("span", "chip-icon", "📄"), el("span", "chip-name", file ? file.name : leaseLabel));
+    if (file) chip.append(el("span", "chip-size", `(${fileSizeLabel(file)})`));
+    bubble.append(chip);
   }
   for (const line of [text, confirmed]) {
     if (line) bubble.append(el("div", "user-msg-text", line));
@@ -273,7 +273,7 @@ async function sendTurn(request, shown, file = null, reviewForm = null) {
   const controller = new AbortController();
   activeTurn = controller;
   const turnThread = threadId;
-  appendUserMessage(shown.text, file && { name: file.name, size: fileSizeLabel(file) });
+  appendUserMessage({ text: shown.text, file });
   const view = appendBotTurn();
   let reviewShown = false;
 
@@ -381,11 +381,8 @@ async function restoreConversation(id) {
   const { bubbles, review } = restoredChat(thread);
   let lastAnswer = null;
   for (const bubble of bubbles) {
-    if (bubble.kind === "user") {
-      appendUserMessage(bubble.text, bubble.leaseChip && { name: bubble.leaseChip }, bubble.confirmed);
-    } else {
-      lastAnswer = appendRestoredAnswer(bubble.markdown);
-    }
+    if (bubble.kind === "user") appendUserMessage(bubble);
+    else lastAnswer = appendRestoredAnswer(bubble.markdown);
   }
   scrollToBottom();
   setBusy(false);
