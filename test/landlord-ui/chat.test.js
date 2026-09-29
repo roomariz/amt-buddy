@@ -13,6 +13,7 @@ import {
   endLandlordTurn,
   initialLandlordTurn,
   reduceLandlordTurn,
+  renderAnswerWithNames,
   runLandlordTurn,
   withApplicantNames,
 } from "../../public/landlord/chat.js";
@@ -156,6 +157,31 @@ test("the panel shows each applicant's name next to the id the model used", () =
     "**A-007 (Olga Rossi)** ranks above A-011 (Jonas Weber); A-020 (Mia Chen) and A-099 are shortlisted. A-0077 is no id we know.",
   );
   assert.equal(withApplicantNames("A-007", applicantNames(null)), "A-007", "no dashboard yet: ids only");
+});
+
+// An applicant's name is the applicant's own text: it must never become markup. It is inserted
+// after the model's Markdown is rendered, HTML-escaped, so a name written as a Markdown link or
+// as HTML shows as plain text (a live link in the chat would be a phishing vector).
+test("names join the rendered answer as plain text: a name is never parsed as Markdown or HTML", () => {
+  const names = applicantNames({
+    ranked: [
+      { applicantId: "A-007", name: "[Klick hier](https://evil.example/phish) **fett**" },
+      { applicantId: "A-011", name: "<img src=x onerror=alert(1)>" },
+      { applicantId: "A-020", name: "Mia Chen" },
+    ],
+  });
+  const html = renderAnswerWithNames("**A-020** leads; A-007 and A-011 follow.", names);
+
+  assert.ok(html.includes("<strong>A-020 (Mia Chen)</strong>"), html);
+  assert.ok(html.includes("A-007 ([Klick hier](https://evil.example/phish) **fett**)"), html);
+  assert.ok(html.includes("A-011 (&lt;img src=x onerror=alert(1)&gt;)"), html);
+  assert.ok(!html.includes("<a "), "no link from a name");
+  assert.equal(html.match(/<strong>/g).length, 1, "only the model's own bold");
+  assert.ok(!html.includes("<img"), "no element from a name");
+});
+
+test("the rendered answer without names is the plain Markdown rendering", () => {
+  assert.ok(renderAnswerWithNames("**A-007** leads.", applicantNames(null)).includes("<strong>A-007</strong>"));
 });
 
 test("the dashboard is fetched again only after a turn that changed the criteria or the Shortlist", () => {

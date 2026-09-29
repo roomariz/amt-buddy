@@ -1,6 +1,7 @@
 // The /landlord page's chat panel as plain data (no DOM): one turn of the Landlord Orchestrator
 // (docs/api.md, "POST /api/v1/landlord/:landlordId/chat") folded into what the panel shows.
 
+import { escapeHtml, renderMarkdown } from "../chat/markdown.js";
 import { createSseParser } from "../chat/sse.js";
 import { TURN_TEXT } from "../chat/turn.js";
 
@@ -105,7 +106,21 @@ export function applicantNames(dashboard) {
   return names;
 }
 
+const APPLICANT_ID = /\b[A-Z]-\d+\b/g;
+
 // The model only knows applicant ids ("A-007"): the panel adds the name after each id it knows.
 export function withApplicantNames(answer, names) {
-  return String(answer ?? "").replace(/\b[A-Z]-\d+\b/g, (id) => (names.has(id) ? `${id} (${names.get(id)})` : id));
+  return String(answer ?? "").replace(APPLICANT_ID, (id) => (names.has(id) ? `${id} (${names.get(id)})` : id));
+}
+
+// The answer's HTML for the page, with the names after the ids. Names are untrusted (a landlord
+// can type anything, also "[x](https://…)" or "<img …>"), so they join after renderMarkdown, escaped,
+// and only in the text between tags, never inside a tag or an attribute.
+export function renderAnswerWithNames(answer, names) {
+  return renderMarkdown(String(answer ?? ""))
+    .split(/(<[^>]*>)/)
+    .map((part) =>
+      part.startsWith("<") ? part : part.replace(APPLICANT_ID, (id) => (names.has(id) ? `${id} (${escapeHtml(names.get(id))})` : id)),
+    )
+    .join("");
 }

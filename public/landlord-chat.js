@@ -6,19 +6,19 @@
  *
  * The logic lives in ./landlord/ (server calls, the slots and sidebar, tips, avatars, rank moves,
  * the stored sign-in); this file only wires it to the DOM. Names and model answers are untrusted:
- * they go in as textContent, answers through renderMarkdown (which escapes first). Only avatarSvg's
- * code-generated markup goes through innerHTML.
+ * they go in as textContent, answers through renderAnswerWithNames (Markdown escaped first, names
+ * escaped and added after rendering, never parsed). Only avatarSvg's code-generated markup goes
+ * through innerHTML.
  */
 
 import { fetchOverview, removeShortlistEntry, saveShortlistEntry, signIn } from "./landlord/api.js";
 import { avatarSvg } from "./landlord/avatar.js";
 import { fillSlots, sidebarRows, slotCard } from "./landlord/board.js";
-import { applicantNames, changedDashboard, runLandlordTurn, withApplicantNames } from "./landlord/chat.js";
+import { applicantNames, changedDashboard, renderAnswerWithNames, runLandlordTurn } from "./landlord/chat.js";
 import { statTiles } from "./landlord/pool-overview.js";
 import { moveText, rankMoves } from "./landlord/rank-moves.js";
 import { forgetLandlord, rememberLandlord, storedLandlord } from "./landlord/session.js";
 import { landlordTips } from "./landlord/tips.js";
-import { renderMarkdown } from "./chat/markdown.js";
 import { onLanguageChange, startI18n, t } from "./i18n.js";
 
 const $ = (selector) => document.querySelector(selector);
@@ -483,13 +483,13 @@ function appendChatMessage(role, text) {
 }
 
 // Draws the answer as it streams: markdown (escaped first by renderMarkdown) with the applicants'
-// names next to their ids, or the turn's error.
+// names next to their ids, escaped and added after rendering (renderAnswerWithNames), or the turn's error.
 function drawTurn(item, state) {
   const follow = nearBottom();
   item.classList.toggle("is-pending", state.phase === "streaming" && !state.answer);
   item.classList.toggle("is-error", state.phase === "error");
   if (state.phase === "error" && !state.answer) item.textContent = state.error;
-  else if (state.answer) item.innerHTML = renderMarkdown(withApplicantNames(state.answer, namesById));
+  else if (state.answer) item.innerHTML = renderAnswerWithNames(state.answer, namesById);
   stickToBottom(follow);
 }
 
