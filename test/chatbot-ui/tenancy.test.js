@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { confidenceLevel, confirmPayload, reviewCard } from "../../public/chat/tenancy.js";
+import { setLanguage } from "../../public/i18n.js";
 
 test("confidence maps to green, yellow and red at the Unconfirmed-fact threshold", () => {
   assert.equal(confidenceLevel(0.95), "high");
@@ -52,6 +53,18 @@ test("the review card lists the lease's values, Unconfirmed facts first, with Ge
       unconfirmed: false,
     },
   ]);
+});
+
+test("in English, the review card has English labels and English number format", (t) => {
+  setLanguage("en");
+  t.after(() => setLanguage("de"));
+  assert.deepEqual(
+    reviewCard(lease).fields.map(({ label, unit, value }) => ({ label, unit, value })),
+    [
+      { label: "Nettokaltmiete (net cold rent)", unit: "€ / month", value: "30000" },
+      { label: "Living area", unit: "m²", value: "60.5" },
+    ],
+  );
 });
 
 test("a lease value without a numeric confidence is Unconfirmed", () => {

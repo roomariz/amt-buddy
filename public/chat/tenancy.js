@@ -1,18 +1,21 @@
 // The review card for Unconfirmed facts (CONTEXT.md): lease values the Orchestrator will not check
 // until the user confirms or corrects them. Driven by the `tenancy` event, answered with `confirm`.
 
+import { getLanguage, t } from "../i18n.js";
+
 // A lease value below this confidence (or without one) is an Unconfirmed fact.
 export const CONFIDENCE_THRESHOLD = 0.8;
 
-// Tenancy facts a lease can state, in the order the card shows them.
+// Tenancy facts a lease can state, in the order the card shows them. Labels live in i18n.js
+// ("facts.<name>"); `unitKey` names a translated unit.
 const LEASE_FACTS = [
-  { name: "address", label: "Adresse", unit: "", input: "text" },
-  { name: "contractRent", label: "Nettokaltmiete", unit: "€ / Monat", input: "decimal" },
-  { name: "livingAreaSqm", label: "Wohnfläche", unit: "m²", input: "decimal" },
-  { name: "rooms", label: "Zimmer", unit: "", input: "decimal" },
-  { name: "buildingYear", label: "Baujahr", unit: "", input: "numeric" },
-  { name: "occupants", label: "Personen im Haushalt", unit: "", input: "numeric" },
-  { name: "childrenUpToSix", label: "Kinder bis 6 Jahre", unit: "", input: "numeric" },
+  { name: "address", unit: "", input: "text" },
+  { name: "contractRent", unitKey: "facts.perMonth", input: "decimal" },
+  { name: "livingAreaSqm", unit: "m²", input: "decimal" },
+  { name: "rooms", unit: "", input: "decimal" },
+  { name: "buildingYear", unit: "", input: "numeric" },
+  { name: "occupants", unit: "", input: "numeric" },
+  { name: "childrenUpToSix", unit: "", input: "numeric" },
 ];
 
 // "high" (green): at or above the threshold; "medium" (yellow): somewhat below it;
@@ -27,20 +30,24 @@ export function confidenceLevel(confidence) {
 const isUnconfirmed = (fact) =>
   fact?.source === "lease" && !(typeof fact.confidence === "number" && fact.confidence >= CONFIDENCE_THRESHOLD);
 
-// German number format for the input (780.5 → "780,5"); the server parses it back.
-const displayValue = (value) => (typeof value === "number" ? String(value).replace(".", ",") : String(value ?? ""));
+// Number format of the UI language for the input (German 780.5 → "780,5"); the server parses
+// both notations back.
+function displayValue(value) {
+  if (typeof value !== "number") return String(value ?? "");
+  return getLanguage() === "de" ? String(value).replace(".", ",") : String(value);
+}
 
 // The card's fields, or null when the Tenancy has no Unconfirmed fact. Lists every value that
 // still comes from the lease, Unconfirmed ones first.
 export function reviewCard(tenancy) {
   if (!tenancy || typeof tenancy !== "object") return null;
   const fields = LEASE_FACTS.filter(({ name }) => tenancy[name]?.source === "lease").map(
-    ({ name, label, unit }) => {
+    ({ name, unit, unitKey }) => {
       const fact = tenancy[name];
       return {
         name,
-        label,
-        unit,
+        label: t(`facts.${name}`),
+        unit: unitKey ? t(unitKey) : unit,
         value: displayValue(fact.value),
         confidence: typeof fact.confidence === "number" ? fact.confidence : null,
         level: confidenceLevel(fact.confidence),

@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { fetchChatMode, runTurn, uploadLease, UPLOAD_TEXT } from "../../public/chat/api.js";
+import { fetchChatMode, MODE_LABEL, runTurn, uploadLease, UPLOAD_TEXT } from "../../public/chat/api.js";
+import { setLanguage } from "../../public/i18n.js";
 import { TURN_TEXT } from "../../public/chat/turn.js";
 
 // A fetch that answers every call with the given Response factory, recording the requests.
@@ -106,4 +107,21 @@ test("an upload the server cannot read gives a friendly reason", async () => {
   }
   const { fetchImpl } = fakeFetch(() => json(500, { error: { code: "internal_error" } }));
   await assert.rejects(uploadLease({ fetchImpl, payload: { text: "x" } }), { message: UPLOAD_TEXT.failed });
+});
+
+test("in English, upload reasons and chat mode names are English", async (t) => {
+  setLanguage("en");
+  t.after(() => setLanguage("de"));
+  const cases = [
+    ["ocr_no_text", "This PDF has no readable text (for example a scanned contract). Please upload a PDF with text or a text file."],
+    ["image_ocr_provider_required", "Images of leases cannot be read yet. Please upload a PDF with text or a text file."],
+    ["file_too_large", "The file is too large (15 MB at most)."],
+    ["empty_text", "The document is empty."],
+    ["something_else", "The lease could not be uploaded. Please try again."],
+  ];
+  for (const [code, text] of cases) {
+    const { fetchImpl } = fakeFetch(() => json(422, { error: { code: "ocr_extraction_error", details: [{ field: "file", code }] } }));
+    await assert.rejects(uploadLease({ fetchImpl, payload: { text: "x" } }), { message: text });
+  }
+  assert.deepEqual({ ...MODE_LABEL }, { orchestrator: "AI chat", rule_based: "Rule mode" });
 });
