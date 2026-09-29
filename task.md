@@ -119,7 +119,7 @@ Upgrade the front-end to support conversational AI, interactive tool previews, a
   - **Task**: Floating, collapsible chat assistant widget with message bubble history, typing indicators, and markdown formatting.
   - **Priority**: High
   - **Status (LangGraph Orchestrator, `/chatbot`)**: Done: full-page free-text chat on the SSE endpoint (`public/chatbot.html`, `public/chatbot.js`, `public/chat/`), answers as safe Markdown (escape first, whitelist), status note in `rule_based` mode, keyboard submit, focus management, `aria-live` status.
-  - **Status (rule-based chatbot, floating widget)**: Implemented (`public/index.html`, `public/app.js`, `public/styles.css`).
+  - **Status (rule-based chatbot, floating widget)**: Removed with the form page; the chat at `/` is the only UI.
 
 - [x] **3.2 Tool Call & Progress Visualization**
   - **Task**: Visual tool execution chips (`⚙️ Tool: <name> (X ms)`) indicating active operations in chat replies.

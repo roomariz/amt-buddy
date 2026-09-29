@@ -1,6 +1,6 @@
 # HTTP API
 
-The endpoints behind the form page. The chat endpoints (`/api/v1/orchestrator/*`) are described in [orchestrator.md](orchestrator.md#http-and-sse-interface).
+Plain JSON endpoints, callable without the chat. The chat endpoints (`/api/v1/orchestrator/*`) are described in [orchestrator.md](orchestrator.md#http-and-sse-interface).
 
 ## `POST /api/v1/address-verifications`
 
