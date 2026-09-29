@@ -110,3 +110,14 @@ test("get_applicant_profile: an excluded applicant comes with the Requirement an
   assert.match(result.exclusionReasons[0].message, /not clean/);
   await assert.rejects(call("get_applicant_profile", { applicantId: "A-999" }), (error) => error.kind === "input");
 });
+
+test("update_shortlist never hands the landlord's earlier note back to the model", async () => {
+  const { store, landlordId, call } = setup();
+  store.saveShortlistEntry(landlordId, { applicantId: someApplicant, status: "to_invite", note: "Call Mrs. X on Monday" });
+
+  const changed = await call("update_shortlist", { applicantId: someApplicant, status: "invited" });
+
+  assert.deepEqual(changed, { applicantId: someApplicant, status: "invited", note: null });
+  assert.equal(store.getShortlist(landlordId)[0].note, "Call Mrs. X on Monday", "the note is kept");
+  assert.equal((await call("update_shortlist", { applicantId: someApplicant, status: "invited", note: "Viewing Friday" })).note, "Viewing Friday");
+});

@@ -4,8 +4,7 @@ import assert from "node:assert/strict";
 import { APPLICANT_POOL_DIRECTORY, readApplicantPool } from "../../src/landlord/applicant-pool.js";
 import { POOL_DATE } from "../../src/landlord/applicant-pool-generator.js";
 import { buildListing } from "../../src/landlord/listing.js";
-import { createLandlordOrchestrator, createLandlordTools } from "../../src/landlord/orchestrator/index.js";
-import { rankApplicants } from "../../src/landlord/scorer.js";
+import { createLandlordContext, createLandlordOrchestrator, createLandlordTools } from "../../src/landlord/orchestrator/index.js";
 import { createLandlordStore } from "../../src/landlord/store.js";
 import { createOpenAIModels } from "../../src/orchestrator/openai.js";
 import { createFakeBerlinWfs } from "../helpers/fake-berlin-wfs.js";
@@ -25,14 +24,11 @@ async function liveLandlord() {
   );
   store.saveListing(landlordId, listing);
   const pool = await readApplicantPool(APPLICANT_POOL_DIRECTORY, { today: POOL_DATE });
-  const getContext = async (id) => ({
-    listing: store.getListing(id),
-    stats: rankApplicants({ profiles: pool.applicants.map(({ profile }) => profile), listing, criteria: store.getCriteria(id) }).stats,
-  });
+  const landlordState = { getStore: () => store, getApplicantPool: async () => pool };
   const orchestrator = createLandlordOrchestrator({
     model: createOpenAIModels().supervisor,
-    tools: createLandlordTools({ getStore: () => store, getApplicantPool: async () => pool }).tools,
-    getContext,
+    tools: createLandlordTools(landlordState).tools,
+    getContext: createLandlordContext(landlordState),
     log: () => {},
   });
   return { store, landlordId, orchestrator };

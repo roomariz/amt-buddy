@@ -218,3 +218,45 @@ test("no applicant name, contact detail or protected field appears in any messag
   for (const value of [...plain, ...quoted, "Erika Muster"]) assert.ok(!sent.includes(value), `${value} reached the model`);
   assert.doesNotMatch(sent, /\\"(contact|email|phone|nationality|religion|dateOfBirth|gender|photo|familyPlans)\\":/);
 });
+
+test("'Why is one applicant above another?' is answered from both profiles' breakdowns", async (t) => {
+  const server = await start();
+  t.after(server.close);
+  const { ranked } = await server.dashboard();
+  const [first, second] = [ranked[0], ranked[5]];
+  const answer = `${first.applicantId} has a Match score of ${first.matchScore}, ${second.applicantId} ${second.matchScore}: affordability ${first.breakdown.affordability.subscore} against ${second.breakdown.affordability.subscore}.`;
+  server.setScript([
+    {
+      toolCalls: [
+        { name: "get_applicant_profile", args: { applicantId: first.applicantId } },
+        { name: "get_applicant_profile", args: { applicantId: second.applicantId } },
+      ],
+    },
+    answer,
+  ]);
+
+  const events = await server.chat(`Why is ${first.applicantId} above ${second.applicantId}?`);
+
+  assert.equal(answerOf(events), answer);
+  assert.equal(server.model.calls.length, 2, "grounded: no rewrite");
+});
+
+test("'Whom should I invite?' is answered from the ranking and the Shortlist", async (t) => {
+  const server = await start();
+  t.after(server.close);
+  const { ranked } = await server.dashboard();
+  const [first, second] = ranked;
+  server.setScript([
+    { toolCalls: [{ name: "update_shortlist", args: { applicantId: second.applicantId, status: "invited" } }] },
+    `${second.applicantId} is invited.`,
+    { toolCalls: [{ name: "get_ranking", args: {} }] },
+    `Invite ${first.applicantId} (Match score ${first.matchScore}); ${second.applicantId} is already invited.`,
+  ]);
+  await server.chat(`I invited ${second.applicantId}.`);
+
+  const events = await server.chat("Whom should I invite for a viewing?");
+
+  assert.equal(answerOf(events), `Invite ${first.applicantId} (Match score ${first.matchScore}); ${second.applicantId} is already invited.`);
+  const ranking = JSON.parse(server.model.calls.at(-1).at(-1).content);
+  assert.deepEqual(ranking.shortlist, [{ applicantId: second.applicantId, status: "invited" }]);
+});

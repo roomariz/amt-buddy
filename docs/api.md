@@ -435,8 +435,8 @@ The six landlord Tools have shared zod contracts in `src/landlord/orchestrator/t
 - `get_ranking`: the top 10 ranked applicants (`applicantId`, `rank`, `matchScore`, `rentToIncome`, `breakdown`), `rankedCount`, the pool `stats`, `excludedByReason` (count per Requirement), the `criteria` and the `shortlist` as `{ applicantId, status }` (notes are left out: they are the landlord's free text). Without a Listing it is an input error asking for the Listing.
 - `get_applicant_profile`: the anonymised profile (names on other people's documents removed), `rank`, `matchScore`, `breakdown`, `rentToIncome`, `excludedBy` and `exclusionReasons`, and `shortlistStatus`.
 - `update_selection_criteria`: `updateSelectionCriteria`; returns `previous` and `criteria` (weights rounded to one decimal, so the chat can quote them) and the new `top` 3.
-- `update_shortlist`: `updateShortlist`, the same checks as the HTTP endpoint.
+- `update_shortlist`: `updateShortlist`, the same checks as the HTTP endpoint; `note` is only the note the model sent in this call (an earlier note is the landlord's free text and is not handed back).
 - `get_rent_check`: the Listing's Rent check, or `null` with a `note` saying why.
 - `remember_preference` is still a stub (Landlord preferences are stored in #47).
 
-`createLandlordStubTools` (fixed data) remains for tests.
+`createLandlordStubTools` (fixed data) remains for tests; `remember_preference` reuses its handler until #47.
