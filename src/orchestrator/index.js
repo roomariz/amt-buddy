@@ -44,6 +44,7 @@ export function createOrchestrator({
       skipRouter: !text,
       newDocument: Boolean(documentId),
       // The Transcript's user entry: the text as typed, never the internal markers.
+      // `document` and `confirm` are not recorded yet (follow-up #32).
       transcript: [{ role: "user", text: typed, document: false, confirm: null }],
     };
     if (documentId) input.documentId = documentId;

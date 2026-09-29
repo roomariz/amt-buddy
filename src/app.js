@@ -184,6 +184,12 @@ class ChatInputError extends Error {
 
 const isPlainObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
 
+// The rule for a threadId, shared by the chat and thread endpoints; null when it holds.
+function threadIdProblem(threadId) {
+  if (typeof threadId === "string" && threadId.trim() && threadId.length <= MAX_ID_LENGTH) return null;
+  return { field: "threadId", code: "required", message: "'threadId' must be a non-empty string." };
+}
+
 // Checks a chat turn's body; returns the validation problems (none: the turn can run).
 function chatTurnProblems(input) {
   if (!isPlainObject(input)) return [{ field: "body", code: "invalid_type", message: "Body must be a JSON object." }];
@@ -195,9 +201,8 @@ function chatTurnProblems(input) {
       problems.push({ field, code: "invalid_type", message: `'${field}' must be a string of at most ${max} characters.` });
     }
   };
-  if (typeof threadId !== "string" || !threadId.trim() || threadId.length > MAX_ID_LENGTH) {
-    problems.push({ field: "threadId", code: "required", message: "'threadId' must be a non-empty string." });
-  }
+  const threadProblem = threadIdProblem(threadId);
+  if (threadProblem) problems.push(threadProblem);
   optionalString("message", message, MAX_MESSAGE_LENGTH);
   optionalString("documentId", documentId, MAX_ID_LENGTH);
   if (confirm !== undefined && confirm !== null && !isPlainObject(confirm)) {
@@ -326,9 +331,9 @@ export function createApp({
     } catch {
       threadId = "";
     }
-    if (!threadId.trim() || threadId.length > MAX_ID_LENGTH) {
-      const message = `'threadId' must be a non-empty string of at most ${MAX_ID_LENGTH} characters.`;
-      sendError(response, 422, "validation_error", message, [{ field: "threadId", code: "invalid_type", message }]);
+    const problem = threadIdProblem(threadId);
+    if (problem) {
+      sendError(response, 422, "validation_error", problem.message, [problem]);
       return;
     }
     const thread = mode === "orchestrator" && orchestrator ? await orchestrator.getThread(threadId) : EMPTY_THREAD;
