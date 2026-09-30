@@ -1,8 +1,10 @@
 /**
  * Amt-Buddy /landlord-chat page, the chat-first prototype beside the classic /landlord dashboard:
  * two Recommendation slots and the pool at a glance on the left, the chat with the Landlord
- * Orchestrator in the middle (with rotating tips under the prompt), the Shortlist on the right.
- * The Selection criteria and the flat details change through the chat only.
+ * Orchestrator in the middle (with a tip under the prompt that moves on with each turn), the
+ * Shortlist with its status expanders on the right. Thumbs up/down on the slots and the Shortlist
+ * are the landlord's own bonus on the ranking. The Selection criteria and the flat details change
+ * through the chat only.
  *
  * The logic lives in ./landlord/ (server calls, the slots and sidebar, tips, avatars, rank moves,
  * the stored sign-in); this file only wires it to the DOM. Names and model answers are untrusted:
@@ -11,13 +13,15 @@
  * through innerHTML.
  */
 
-import { fetchOverview, removeShortlistEntry, saveShortlistEntry, signIn } from "./landlord/api.js";
+import { fetchOverview, removeRating, removeShortlistEntry, saveRating, saveShortlistEntry, signIn } from "./landlord/api.js";
 import { avatarSvg } from "./landlord/avatar.js";
 import { fillSlots, sidebarRows, slotCard } from "./landlord/board.js";
 import { applicantNames, changedDashboard, renderAnswerWithNames, runLandlordTurn } from "./landlord/chat.js";
 import { statTiles } from "./landlord/pool-overview.js";
-import { moveText, rankMoves } from "./landlord/rank-moves.js";
+import { rankMoves } from "./landlord/rank-moves.js";
+import { formatNumber } from "./landlord/ranking.js";
 import { forgetLandlord, rememberLandlord, storedLandlord } from "./landlord/session.js";
+import { statusOptions } from "./landlord/shortlist.js";
 import { landlordTips } from "./landlord/tips.js";
 import { onLanguageChange, startI18n, t } from "./i18n.js";
 
@@ -45,7 +49,6 @@ const shortlistError = $("#shortlist-error");
 const shortlistList = $("#shortlist-list");
 const shortlistEmpty = $("#shortlist-empty");
 
-const TIP_INTERVAL_MS = 8000;
 const FLIGHT_MS = 350;
 
 function localStore() {
@@ -65,16 +68,21 @@ let slots = [null, null]; // applicant ids in the two Recommendation slots
 let skipped = new Set();
 // Rank moves from the last ranking change (criteria or flat details); shown until the next one.
 let moves = new Map();
-// Applicants with an add or remove request running: their buttons stay disabled across redraws,
-// so a double click cannot send the change twice.
+// Applicants with a Shortlist or rating request running: their buttons stay disabled across
+// redraws, so a double click cannot send the change twice.
 const pending = new Set();
+// Ratings shown before the server has them (applicant id → "up" | "down" | null), so a thumb
+// colours at once. Dropped when the request ends: by then the refetched overview has the saved one.
+const optimisticRatings = new Map();
+// The Shortlist status expanders, kept across the redraws that replace the rows: which are open,
+// the status and note typed but not saved yet, and a validation message per entry.
+const openEditors = new Set();
+const drafts = new Map();
+const editorErrors = new Map();
 let overviewRequest = 0;
 let streaming = false;
 let tips = [];
 let tipIndex = 0;
-let tipTimer = null;
-let tipHovered = false;
-let tipFocused = false;
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -96,15 +104,36 @@ function avatar(shape, size) {
   return node;
 }
 
-// "↑2" beside a rank, spoken as "moved up 2"; nothing when the applicant did not move.
-function moveBadge(applicantId) {
-  const move = moveText(moves.get(applicantId));
-  if (!move) return null;
-  const badge = el("span", `lc-move ${moves.get(applicantId) > 0 ? "is-up" : "is-down"}`);
-  const text = el("span", "", move.text);
-  text.setAttribute("aria-hidden", "true");
-  badge.append(text, el("span", "visually-hidden", move.label));
-  return badge;
+const ratingOf = (applicantId, saved) => (optimisticRatings.has(applicantId) ? optimisticRatings.get(applicantId) : saved);
+
+// A note belongs to "to invite" and "invited" only (as sidebarRows' noteAllowed, which is for the
+// saved status); this is for the status picked in the expander but not saved yet.
+const noteAllowedFor = (status) => status === "to_invite" || status === "invited";
+
+// 👍 / 👎 for one applicant. The pressed thumb is the rating (saved, or just clicked); `onRate`
+// gets the thumb and whether it was pressed, since clicking the pressed one takes the rating back.
+// The group's title is the AGG hint.
+function thumbs(rating, focusKey, busy, onRate) {
+  const group = el("div", "lc-thumbs");
+  group.setAttribute("role", "group");
+  group.title = t("landlordChat.ratingHint");
+  const points = formatNumber(overview.bonusPoints);
+  for (const [value, symbol, key] of [["up", "👍", "landlordChat.thumbsUp"], ["down", "👎", "landlordChat.thumbsDown"]]) {
+    const button = el("button", `lc-thumb is-${value}`);
+    button.type = "button";
+    const label = t(key, { points });
+    button.title = label;
+    button.setAttribute("aria-label", label);
+    button.setAttribute("aria-pressed", String(rating === value));
+    button.dataset.focusKey = `${focusKey}:${value}`;
+    button.disabled = busy;
+    const icon = el("span", "", symbol);
+    icon.setAttribute("aria-hidden", "true");
+    button.append(icon);
+    button.addEventListener("click", () => onRate(value, rating === value));
+    group.append(button);
+  }
+  return group;
 }
 
 // Puts `text` into the prompt and focuses it, with the cursor at the end.
@@ -153,18 +182,23 @@ function renderSlots() {
   slotList.replaceChildren(
     ...slots.map((applicantId, index) => {
       if (!applicantId) return el("li", "lc-slot is-empty", t("landlordChat.slotEmpty"));
-      const card = slotCard(byId.get(applicantId), { total: overview.ranked.length });
+      const card = slotCard(byId.get(applicantId), { total: overview.ranked.length, move: moves.get(applicantId) });
       const item = el("li", "lc-slot");
       item.dataset.applicantId = applicantId;
 
       const head = el("div", "lc-slot-head");
       const who = el("div", "lc-slot-who");
-      const meta = el("p", "lc-slot-meta");
-      meta.append(el("span", "", card.rankText));
-      const badge = moveBadge(applicantId);
-      if (badge) meta.append(badge);
-      meta.append(el("span", "lc-slot-score", card.scoreText));
-      who.append(el("h3", "lc-slot-name", card.name), meta);
+      // "Match score 94.7 (↑1)": the move since the last ranking change, spoken as "moved up 1".
+      const score = el("p", "lc-slot-score", card.scoreText);
+      if (card.move) {
+        const move = el("span", `lc-move is-${card.move.direction}`);
+        const text = el("span", "", `(${card.move.text})`);
+        text.setAttribute("aria-hidden", "true");
+        move.append(text, el("span", "visually-hidden", card.move.label));
+        score.append(" ", move);
+      }
+      who.append(el("h3", "lc-slot-name", card.name), score, el("p", "lc-slot-meta", card.rankText));
+      if (card.bonusText) who.append(el("p", "lc-slot-bonus", card.bonusText));
       head.append(avatar(card.householdShape, 48), who);
 
       const busy = pending.has(applicantId);
@@ -173,6 +207,7 @@ function renderSlots() {
         slotButton("landlord-btn lc-add", "add", "landlordChat.addToShortlist", index, busy, () => addToShortlist(applicantId, item)),
         slotButton("landlord-link-btn", "skip", "landlordChat.skip", index, busy, () => skip(applicantId)),
         slotButton("landlord-link-btn", "ask", "landlordChat.ask", index, busy, () => toPrompt(t("landlordChat.askPrompt", { id: applicantId }))),
+        thumbs(ratingOf(applicantId, card.rating), `slot:${index}`, busy, (value, pressed) => rate(applicantId, value, pressed, index)),
       );
       item.append(head, el("p", "lc-slot-reason", card.reason), actions);
       return item;
@@ -199,6 +234,67 @@ function renderTiles() {
   poolErrors.textContent = count ? t("landlord.ranking.poolErrors", { count }) : "";
 }
 
+// The expander under a Shortlist entry: status, a note (for "to invite" and "invited" only), Save.
+// What is typed survives the redraws until it is saved.
+function statusEditor(row, busy) {
+  const id = row.applicantId;
+  const draft = drafts.get(id);
+  const details = el("details", "lc-editor");
+  details.open = openEditors.has(id);
+  details.addEventListener("toggle", () => {
+    if (details.open) openEditors.add(id);
+    else openEditors.delete(id);
+  });
+  const summary = el("summary", "lc-editor-toggle", t("landlordChat.statusToggle"));
+  summary.dataset.focusKey = `status:${id}`;
+
+  const select = el("select");
+  select.setAttribute("aria-label", `${t("landlord.shortlist.statusLabel")}: ${row.name}`);
+  for (const { value, label } of statusOptions()) {
+    const option = el("option", "", label);
+    option.value = value;
+    option.selected = value === (draft?.status ?? row.status);
+    select.append(option);
+  }
+  const statusField = el("label", "lc-editor-field");
+  statusField.append(el("span", "", t("landlord.shortlist.statusLabel")), select);
+
+  const note = el("input");
+  note.maxLength = 500;
+  note.value = draft?.note ?? row.note ?? "";
+  note.placeholder = t("landlord.shortlist.notePlaceholder");
+  note.setAttribute("aria-label", `${t("landlordChat.noteLabel")}: ${row.name}`);
+  const noteField = el("label", "lc-editor-field");
+  noteField.append(el("span", "", t("landlordChat.noteLabel")), note);
+  noteField.hidden = !(draft ? noteAllowedFor(draft.status) : row.noteAllowed);
+
+  const remember = () => drafts.set(id, { status: select.value, note: note.value });
+  select.addEventListener("change", () => {
+    remember();
+    noteField.hidden = !noteAllowedFor(select.value);
+  });
+  note.addEventListener("input", remember);
+
+  const error = el("p", "landlord-error lc-editor-error");
+  error.setAttribute("role", "alert");
+  showError(error, editorErrors.get(id));
+  const save = el("button", "landlord-btn lc-editor-save", t("landlordChat.saveStatus"));
+  save.type = "submit";
+  save.dataset.focusKey = `save:${id}`;
+  save.disabled = busy;
+
+  const form = el("form", "lc-editor-form");
+  form.noValidate = true;
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const status = select.value;
+    saveStatus(id, status, noteAllowedFor(status) ? note.value : null);
+  });
+  form.append(statusField, noteField, error, save);
+  details.append(summary, form);
+  return details;
+}
+
 function renderSidebar() {
   const rows = overview ? sidebarRows(overview.shortlist) : [];
   shortlistEmpty.hidden = !overview || rows.length > 0;
@@ -206,24 +302,29 @@ function renderSidebar() {
     ...rows.map((row, index) => {
       const item = el("li", `lc-entry${row.excluded ? " is-excluded" : ""}`);
       item.dataset.applicantId = row.applicantId;
+      const busy = pending.has(row.applicantId);
       const text = el("div", "lc-entry-text");
-      const place = el("span", "lc-entry-place", row.placeText);
-      const badge = row.excluded ? null : moveBadge(row.applicantId);
-      if (badge) place.append(badge);
-      text.append(el("span", "lc-entry-name", row.name), place, el("span", "lc-entry-status", row.statusText));
+      text.append(
+        el("span", "lc-entry-name", row.name),
+        el("span", "lc-entry-place", row.placeText),
+        el("span", "lc-entry-status", row.statusText),
+      );
 
       const remove = el("button", "landlord-link-btn lc-entry-remove");
       remove.type = "button";
       remove.title = t("landlordChat.remove");
       remove.setAttribute("aria-label", row.removeLabel);
       remove.dataset.focusKey = `remove:${index}`;
-      remove.disabled = pending.has(row.applicantId);
+      remove.disabled = busy;
       const cross = el("span", "", "×");
       cross.setAttribute("aria-hidden", "true");
       remove.append(cross);
       remove.addEventListener("click", () => removeFromShortlist(row.applicantId, index));
 
-      item.append(avatar(row.householdShape, 28), text, remove);
+      const rating = thumbs(ratingOf(row.applicantId, row.rating), `rate:${row.applicantId}`, busy, (value, pressed) =>
+        rate(row.applicantId, value, pressed),
+      );
+      item.append(avatar(row.householdShape, 28), text, remove, rating, statusEditor(row, busy));
       return item;
     }),
   );
@@ -241,6 +342,7 @@ function showTip() {
   const tip = tips[tipIndex];
   tipBox.hidden = !tip;
   if (!tip) return tipBody.replaceChildren();
+  const hadFocus = tipBox.contains(document.activeElement);
   // A tip with an example is a button that puts it into the prompt; the others are plain text.
   const node = tip.example ? el("button", "lc-tip-text", tip.text) : el("span", "lc-tip-text", tip.text);
   if (tip.example) {
@@ -248,38 +350,26 @@ function showTip() {
     node.addEventListener("click", () => toPrompt(tip.example));
   }
   tipBody.replaceChildren(node);
+  if (hadFocus) tipBody.querySelector("button")?.focus();
 }
 
-function stopTips() {
-  clearInterval(tipTimer);
-  tipTimer = null;
-}
-
-// Redraws the tips from the overview. After a load the first ("heaviest") tip shows again; a
-// language switch keeps the tip that was showing. Rotation pauses while the tip is hovered or focused.
-function renderTips({ keepCurrent = false } = {}) {
+// Redraws the tips from the overview (its bonusPoints feed the thumbs tip). After a sign-in or a
+// page load (`first`) the first ("heaviest") tip shows; any other refetch, and a language switch,
+// keep the tip that was showing, or the one now in its place when it no longer applies. Only a
+// finished chat turn moves on to the next tip (nextTip).
+function renderTips({ first = false } = {}) {
   const currentId = tips[tipIndex]?.id;
   tips = overview ? landlordTips(overview) : [];
-  const kept = keepCurrent ? tips.findIndex((tip) => tip.id === currentId) : -1;
-  tipIndex = Math.max(kept, 0);
-  const hadFocus = tipBox.contains(document.activeElement);
+  const kept = first ? 0 : tips.findIndex((tip) => tip.id === currentId);
+  tipIndex = kept >= 0 ? kept : Math.min(tipIndex, Math.max(tips.length - 1, 0));
   showTip();
-  if (hadFocus) tipBody.querySelector("button")?.focus();
-  if (keepCurrent) return;
-  stopTips();
-  if (tips.length > 1) {
-    tipTimer = setInterval(() => {
-      if (tipHovered || tipFocused) return;
-      tipIndex = (tipIndex + 1) % tips.length;
-      showTip();
-    }, TIP_INTERVAL_MS);
-  }
 }
 
-tipBox.addEventListener("mouseenter", () => { tipHovered = true; });
-tipBox.addEventListener("mouseleave", () => { tipHovered = false; });
-tipBox.addEventListener("focusin", () => { tipFocused = true; });
-tipBox.addEventListener("focusout", () => { tipFocused = false; });
+function nextTip() {
+  if (tips.length === 0) return;
+  tipIndex = (tipIndex + 1) % tips.length;
+  showTip();
+}
 
 // --- loading -----------------------------------------------------------------------------------
 
@@ -300,6 +390,7 @@ async function loadOverview({ rankingChanged = false } = {}) {
   if (request !== overviewRequest || landlord?.landlordId !== landlordId) return;
   if (next.signedOut) return signOut();
   showError(boardError, null);
+  const first = !overview;
   if (rankingChanged) {
     moves = rankMoves(overview?.ranked, next.ranked);
     skipped = new Set();
@@ -308,7 +399,7 @@ async function loadOverview({ rankingChanged = false } = {}) {
   namesById = applicantNames(overview);
   refillSlots();
   renderBoard();
-  renderTips();
+  renderTips({ first });
 }
 
 // --- actions -----------------------------------------------------------------------------------
@@ -366,8 +457,9 @@ function fly(flight, applicantId) {
 // Runs one Shortlist change for `applicantId` and refetches the overview. The applicant stays
 // pending (buttons disabled) until the board is redrawn from the refetch, so no redraw in between
 // can re-enable a button for a change already sent. → true when saved; false when it failed (the
-// error is shown in `errorNode`) or the landlord signed out.
-async function changeShortlist(applicantId, errorNode, request) {
+// error is shown in `errorNode`, validation problems through `onProblems` when given) or the
+// landlord signed out.
+async function changeShortlist(applicantId, errorNode, request, onProblems) {
   if (!landlord || pending.has(applicantId)) return false;
   const landlordId = landlord.landlordId;
   pending.add(applicantId);
@@ -387,6 +479,10 @@ async function changeShortlist(applicantId, errorNode, request) {
       return false;
     }
     if (!result.entry) {
+      if (result.problems && onProblems) {
+        onProblems(Object.values(result.problems).join(" "));
+        return false;
+      }
       const message = result.error ?? (result.notFound ? t("landlord.shortlist.notFound") : Object.values(result.problems ?? {}).join(" "));
       showError(errorNode, message || t("landlord.errors.failed"));
       return false;
@@ -418,6 +514,78 @@ async function removeFromShortlist(applicantId, index) {
   if (!active || active === document.body) (next ?? $("#shortlist-title")).focus();
 }
 
+// Saves the status (and note, null where the status has none) from an entry's expander; the
+// expander closes on success, so the row shows the saved status.
+async function saveStatus(applicantId, status, note) {
+  editorErrors.delete(applicantId);
+  const saved = await changeShortlist(
+    applicantId,
+    shortlistError,
+    (call) => saveShortlistEntry({ ...call, status, note }),
+    (message) => editorErrors.set(applicantId, message),
+  );
+  if (!saved) return restoreFocus(`save:${applicantId}`);
+  drafts.delete(applicantId);
+  openEditors.delete(applicantId);
+  renderSidebar();
+  restoreFocus(`status:${applicantId}`);
+}
+
+// A thumb click: rates the applicant `value`, or takes the rating back when that thumb was
+// `pressed`. The thumb colours at once and the overview is refetched, since the bonus moves the
+// ranking; on a failure the thumb is put back. Thumbs down on a slot (`slotIndex`) also skips the
+// applicant, so the card is replaced at once like Skip; they can come back after the next ranking
+// change through the chat, then with the red thumb.
+async function rate(applicantId, value, pressed, slotIndex = null) {
+  if (!landlord || pending.has(applicantId)) return;
+  const landlordId = landlord.landlordId;
+  const next = pressed ? null : value;
+  const inSlot = slotIndex !== null;
+  const errorNode = inSlot ? boardError : shortlistError;
+  const skipsCard = inSlot && next === "down" && !skipped.has(applicantId);
+  // Where the keyboard goes back to: this thumb, or, when the card is gone, the next card's Skip.
+  const focusKey = skipsCard ? `slot:${slotIndex}:skip` : inSlot ? `slot:${slotIndex}:${value}` : `rate:${applicantId}:${value}`;
+  const slotsBefore = slots;
+  pending.add(applicantId);
+  optimisticRatings.set(applicantId, next);
+  if (skipsCard) {
+    skipped.add(applicantId);
+    refillSlots();
+  }
+  renderSlots();
+  renderSidebar();
+  if (skipsCard) (slotList.querySelector(`[data-focus-key="${focusKey}"]`) ?? $("#slots-title")).focus();
+  showError(errorNode, null);
+  let result;
+  try {
+    result = next
+      ? await saveRating({ fetchImpl: fetch, landlordId, applicantId, rating: next })
+      : await removeRating({ fetchImpl: fetch, landlordId, applicantId });
+  } catch (error) {
+    result = { error: error.message };
+  }
+  try {
+    if (landlord?.landlordId !== landlordId) return;
+    if (result.signedOut) return signOut();
+    if (result.rating === undefined) {
+      if (skipsCard) {
+        skipped.delete(applicantId);
+        slots = slotsBefore;
+        refillSlots();
+      }
+      showError(errorNode, result.error ?? t(result.notFound ? "landlord.shortlist.notFound" : "landlord.errors.failed"));
+      return;
+    }
+    await loadOverview();
+  } finally {
+    pending.delete(applicantId);
+    optimisticRatings.delete(applicantId);
+    renderSlots();
+    renderSidebar();
+    restoreFocus(focusKey);
+  }
+}
+
 function clearChat() {
   chatMessages.replaceChildren(chatWelcome);
 }
@@ -432,7 +600,10 @@ function signOut() {
   skipped = new Set();
   moves = new Map();
   pending.clear();
-  stopTips();
+  optimisticRatings.clear();
+  openEditors.clear();
+  drafts.clear();
+  editorErrors.clear();
   tips = [];
   clearChat();
   showError(boardError, null);
@@ -522,10 +693,12 @@ chatForm.addEventListener("submit", async (event) => {
     const state = await runLandlordTurn({ fetchImpl: fetch, landlordId, message, onChange: (next) => drawTurn(answer, next) });
     drawTurn(answer, state);
     if (landlord?.landlordId !== landlordId) return;
-    if (state.signedOut) signOut();
+    if (state.signedOut) return signOut();
     // A turn that changed the criteria, the Shortlist, the remembered preferences or the flat
     // details: refetch. Only criteria and flat details change the ranking itself.
-    else if (changedDashboard(state)) await loadOverview({ rankingChanged: state.changed.criteria || state.changed.flat });
+    if (changedDashboard(state)) await loadOverview({ rankingChanged: state.changed.criteria || state.changed.flat });
+    // One tip per finished turn: the next one shows as the answer ends.
+    nextTip();
   } finally {
     streaming = false;
     chatSendButton.disabled = false;
@@ -542,7 +715,7 @@ chatInput.addEventListener("keydown", (event) => {
 onLanguageChange(() => {
   renderSignedIn();
   renderBoard();
-  renderTips({ keepCurrent: true });
+  renderTips();
 });
 
 startI18n();
