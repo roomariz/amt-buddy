@@ -108,7 +108,7 @@ test("a vague request ('SCHUFA matters more') becomes adjust_selection_criteria 
   assert.deepEqual(typesOf(events), ["criteria", "token", "done"]);
   assert.equal(server.model.calls.length, 2, "grounded: no rewrite");
   const result = JSON.parse(server.model.calls[1].at(-1).content);
-  assert.deepEqual(result.applied, [{ criterion: "schufa", from: 20, requested: 26, to: 26, capped: false }]);
+  assert.deepEqual(result.applied, [{ criterion: "schufa", from: 20, requested: 26, to: 26, capped: false, requestedChange: 30 }]);
   assert.deepEqual(result.othersScaled, { factor: 0.925, criteria: ["affordability", "documents", "credibility", "employment", "previousLandlord"] });
   // What the model sees has no list of all six shares for it to recite.
   assert.equal(result.criteria, undefined);

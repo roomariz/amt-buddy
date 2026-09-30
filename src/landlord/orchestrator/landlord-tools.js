@@ -281,6 +281,9 @@ export function createLandlordTools({ getStore, getApplicantPool, fetchImpl }) {
         requested: oneDecimal(requested),
         to: oneDecimal(to),
         capped,
+        // The relative change asked for, in % of the old share (× 1.3 → 30): a live model said
+        // "30 % more" and the grounding check stripped it, since the factor was only in its own call.
+        requestedChange: from > 0 ? Math.round((requested / from - 1) * 100) : null,
       }));
       const { top, inactive } = criteriaResult(adjusted, await landlordState(landlordId));
       // No full weight lists: given them, a live model recited all six shares after every change,

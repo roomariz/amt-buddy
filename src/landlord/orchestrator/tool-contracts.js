@@ -226,7 +226,7 @@ export const LANDLORD_TOOL_CONTRACTS = {
     }),
     output: z.looseObject({
       applied: z.array(
-        z.looseObject({ criterion: z.enum(SELECTION_CRITERIA), from: z.number(), requested: z.number(), to: z.number().min(0).max(50), capped: z.boolean() }),
+        z.looseObject({ criterion: z.enum(SELECTION_CRITERIA), from: z.number(), requested: z.number(), to: z.number().min(0).max(50), capped: z.boolean(), requestedChange: z.number().nullable() }),
       ),
       // factor: new share / saved share of every criterion not named (0.925 = scaled to 92.5 %);
       // null when there was none to scale.

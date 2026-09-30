@@ -113,7 +113,9 @@ test("adjust_selection_criteria: saves, and returns what was applied, the factor
   const result = await call("adjust_selection_criteria", { changes: [{ criterion: "schufa", by: "factor", value: 1.3 }] });
 
   // The plan's example: SCHUFA 20 → 26, the other five (80) scaled to 74 (74 / 80 = 0.925).
-  assert.deepEqual(result.applied, [{ criterion: "schufa", from: 20, requested: 26, to: 26, capped: false }]);
+  // requestedChange: the relative change asked for, in % of the old share (26 / 20 − 1 = +30 %), so
+  // the chat can say "30 % more" and stay grounded.
+  assert.deepEqual(result.applied, [{ criterion: "schufa", from: 20, requested: 26, to: 26, capped: false, requestedChange: 30 }]);
   assert.deepEqual(result.othersScaled, { factor: 0.925, criteria: ["affordability", "documents", "credibility", "employment", "previousLandlord"] });
   assert.deepEqual(result.top.map(({ rank }) => rank), [1, 2, 3]);
   assert.deepEqual(result.inactive, []);
@@ -136,7 +138,7 @@ test("adjust_selection_criteria reports a capped share, rounded", async () => {
 
   // 30 × 2 = 60, capped at 50; the other five (70) scaled to 50 (50 / 70 = 0.714…): SCHUFA 14.29,
   // documents 10.71, previous landlord 3.57.
-  assert.deepEqual(result.applied, [{ criterion: "affordability", from: 30, requested: 60, to: 50, capped: true }]);
+  assert.deepEqual(result.applied, [{ criterion: "affordability", from: 30, requested: 60, to: 50, capped: true, requestedChange: 100 }]);
   assert.deepEqual(result.othersScaled, { factor: 0.714, criteria: ["schufa", "documents", "credibility", "employment", "previousLandlord"] });
   assert.deepEqual((await call("get_ranking")).criteria.weights, { affordability: 50, schufa: 14.3, documents: 10.7, credibility: 10.7, employment: 10.7, previousLandlord: 3.6 });
   const saved = store.getCriteria(landlordId).weights;
@@ -164,7 +166,7 @@ test("changing an inactive criterion's weight still saves it, and the result say
   const result = await call("adjust_selection_criteria", { changes: [{ criterion: "affordability", by: "factor", value: 1.3 }] });
 
   // 30 → 39; the other five (70) scaled to 61.
-  assert.deepEqual(result.applied, [{ criterion: "affordability", from: 30, requested: 39, to: 39, capped: false }]);
+  assert.deepEqual(result.applied, [{ criterion: "affordability", from: 30, requested: 39, to: 39, capped: false, requestedChange: 30 }]);
   assert.equal(store.getCriteria(landlordId).weights.affordability, 39);
   assert.deepEqual(result.inactive[0], { criterion: "affordability", missing: ["askingRent"] });
   assert.equal(result.top.length, 3);
