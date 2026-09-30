@@ -1418,6 +1418,8 @@ footer a { color: inherit; }
 /* Landlord page: the ranked applicants and the Excluded section */
 .ranking-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; margin: 0 0 12px; font-size: 0.85rem; }
 .ranking-control { display: flex; align-items: center; gap: 8px; color: #5d5d5d; }
+/* The box sits right before its text, not stretched across the cell by the global input rule. */
+.ranking-check input[type="checkbox"] { flex: none; width: auto; margin: 0; padding: 0; }
 .ranking-control select { padding: 6px 8px; border: 1px solid #d9d9d9; border-radius: 8px; font: inherit; background: #fff; }
 .ranking-count { margin-left: auto; color: #5d5d5d; }
 .ranking-table-wrap { overflow-x: auto; }
