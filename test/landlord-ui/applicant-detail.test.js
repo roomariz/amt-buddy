@@ -34,9 +34,9 @@ test("detail view labels profile, document states, issues and score in German an
     for (const lang of ["de", "en"]) {
       setLanguage(lang);
       const view = applicantDetailView(detail);
-      assert.equal(view.name, "Ada Beispiel");
-      assert.equal(view.email, "ada@example.org");
-      assert.equal(view.phone, "+49 30 123");
+      assert.equal(view.name, undefined);
+      assert.equal(view.email, undefined);
+      assert.equal(view.phone, undefined);
       assert.equal(view.facts.length, 9);
       assert.ok(view.facts.every(({ label, value }) => label && value && !label.startsWith("landlord.")));
       assert.equal(view.documents.length, 3);

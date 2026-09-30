@@ -95,6 +95,10 @@ export const DOCUMENT_HEADINGS = {
 // The values of every `Label: value` line with this label in a document's text.
 const fieldValues = (text, label) =>
   [...text.matchAll(new RegExp(`^${label}:[ \\t]*(.*)$`, "gm"))].map((match) => match[1].trim());
+const namesInDocument = (text) => [
+  ...fieldValues(text, "Name"),
+  ...fieldValues(text, "Weitere Namen").flatMap((value) => value.split(/\s*;\s*/u)),
+];
 
 const PRESENT = { status: "present", reason: null };
 
@@ -152,7 +156,7 @@ const nameKey = (name) => String(name).normalize("NFD").replace(/(\p{Script=Lati
 // A name discrepancy asks for clarification, without claiming the document belongs to
 // another person or exposing either name in the anonymised Applicant profile.
 function nameProblem(text, documentName, applicantName) {
-  const names = fieldValues(text, "Name");
+  const names = namesInDocument(text);
   return !names.length || names.some((name) => !nameKey(name) || nameKey(name) !== nameKey(applicantName))
     ? `The name on the ${documentName} needs clarification. This does not affect scoring.` : null;
 }
@@ -327,7 +331,8 @@ function toApplicant(declared, sections, today) {
 // readApplicantPool(directory, { today }) → { applicants, errors }
 // Reads every `.md` file of the Applicant pool directory, in file-name order.
 // - applicants: [{ id, contact: { name, email, phone }, profile }]: the Applicant profile is the
-//   anonymised view everything downstream uses; name and contact are beside it for display only.
+//   anonymised view everything downstream uses; contact stays server-side and is never returned to
+//   landlord clients.
 //   profile: { id, householdSize, household: { adults, children, childrenUpToSix },
 //     netHouseholdIncome, employmentType (EMPLOYMENT_TYPES), schufaStatus ("clean" |
 //     "minor_entries" | "negative" | "missing": also for a report that is unreadable, dated after

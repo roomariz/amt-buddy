@@ -10,7 +10,7 @@
 import { deleteNote, requestClarification, fetchApplicantProfile, fetchDashboard, removeShortlistEntry, saveCriteria, saveListing, saveShortlistEntry, signIn } from "./landlord/api.js";
 import { applicantDetailView } from "./landlord/applicant-detail.js";
 import { criteriaFormValues, criteriaRequest, WEIGHT_FIELDS } from "./landlord/criteria.js";
-import { applicantNames, changedDashboard, runLandlordTurn, withApplicantNames } from "./landlord/chat.js";
+import { changedDashboard, runLandlordTurn } from "./landlord/chat.js";
 import { renderMarkdown } from "./chat/markdown.js";
 import { listingFormValues, listingRequest, rentCheckView } from "./landlord/listing.js";
 import { breakdownBars, documentFlags, exclusionText, formatMoney, formatNumber, formatPercent, rankingRows } from "./landlord/ranking.js";
@@ -89,7 +89,6 @@ let ranking = null; // { ranked, excluded, hint, poolErrors } from the dashboard
 let poolOverview = null; // { stats, recommendations } from the dashboard; stats is null without a Listing
 let shortlist = []; // the Shortlist from the dashboard
 let notes = null; // the remembered Landlord preferences from the dashboard; null until it is loaded
-let namesById = new Map(); // applicant id → name, from the dashboard, for the chat answers
 let defaultCriteria = null;
 let criteriaStatusKey = null;
 let criteriaErrorKey = null;
@@ -179,7 +178,7 @@ function renderApplicantDetail() {
   applicantDetailSection.hidden = !selectedApplicantId;
   if (!selectedApplicantId) return;
   applicantDetailBody.replaceChildren();
-  applicantDetailTitle.textContent = applicantDetail?.contact.name ?? t("landlord.detail.title");
+  applicantDetailTitle.textContent = selectedApplicantId ?? t("landlord.detail.title");
   applicantDetailStatus.hidden = Boolean(applicantDetail);
   applicantDetailStatus.textContent = applicantDetail ? "" : applicantDetailError ?? t("landlord.detail.loading");
   if (!applicantDetail) return;
@@ -231,11 +230,6 @@ function renderApplicantDetail() {
     applicantDetailBody.append(breakdown);
   }
 
-  heading("contact");
-  facts([
-    { label: t("landlord.detail.email"), value: view.email },
-    { label: t("landlord.detail.phone"), value: view.phone },
-  ]);
 }
 
 function renderClarification(view) {
@@ -246,7 +240,7 @@ function renderClarification(view) {
   title.id = "clarification-title";
   const status = el("p", "landlord-note", view.status);
   status.setAttribute("role", "status");
-  panel.append(title, el("p", "", t("landlord.clarification.intro")), status);
+  panel.append(title, el("p", "", t("landlord.clarification.intro")), status, el("p", "landlord-hint", view.landlordMessage));
   const list = el("dl", "applicant-detail-facts");
   fact(list, t("landlord.clarification.affected"), view.documents);
   if (view.deadline) fact(list, t("landlord.clarification.deadline"), view.deadline);
@@ -439,7 +433,7 @@ function renderPoolOverview() {
     ...cards.map((card) => {
       const item = el("li", "recommendation-card");
       const head = el("div", "recommendation-head");
-      const name = openButton(card.applicantId, card.name);
+      const name = openButton(card.applicantId, card.applicantId);
       name.classList.add("recommendation-name");
       head.append(
         name,
@@ -538,11 +532,11 @@ function renderShortlist() {
       const item = el("li", `shortlist-entry is-${row.status}`);
       item.dataset.applicantId = row.applicantId;
       const head = el("div", "shortlist-head");
-      head.append(el("span", "shortlist-name", row.name), el("span", "shortlist-score", row.score));
+      head.append(el("span", "shortlist-name", row.applicantId), el("span", "shortlist-score", row.score));
 
       const status = el("select", "shortlist-status");
       status.dataset.focusKey = `status:${row.applicantId}`;
-      status.setAttribute("aria-label", `${t("landlord.shortlist.statusLabel")}: ${row.name}`);
+      status.setAttribute("aria-label", `${t("landlord.shortlist.statusLabel")}: ${row.applicantId}`);
       for (const { value, label } of statusOptions()) {
         const option = el("option", "", label);
         option.value = value;
@@ -558,7 +552,7 @@ function renderShortlist() {
       note.value = row.note;
       note.maxLength = 500;
       note.placeholder = t("landlord.shortlist.notePlaceholder");
-      note.setAttribute("aria-label", `${t("landlord.shortlist.noteLabel")}: ${row.name}`);
+      note.setAttribute("aria-label", `${t("landlord.shortlist.noteLabel")}: ${row.applicantId}`);
       note.addEventListener("change", () =>
         changeShortlist((call) => saveShortlistEntry({ ...call, applicantId: row.applicantId, status: status.value, note: note.value })),
       );
@@ -682,7 +676,7 @@ function renderRanking() {
         row.append(td);
       };
       cell(String(entry.rank));
-      cell(openButton(entry.applicantId, entry.name));
+      cell(openButton(entry.applicantId, entry.applicantId));
       cell(formatNumber(entry.matchScore), "ranking-score");
       cell(breakdownCell(entry));
       cell(formatPercent(entry.rentToIncome));
@@ -697,7 +691,7 @@ function renderRanking() {
   excludedList.replaceChildren(
     ...ranking.excluded.map((entry) => {
       const item = el("li");
-      const name = openButton(entry.applicantId, entry.name);
+      const name = openButton(entry.applicantId, entry.applicantId);
       name.classList.add("excluded-name");
       item.append(name, el("span", "", entry.reasons.map(exclusionText).join(" ")));
       return item;
@@ -719,7 +713,6 @@ function signOut() {
   poolOverview = null;
   shortlist = [];
   notes = null;
-  namesById = new Map();
   defaultCriteria = null;
   criteriaForm.reset();
   criteriaStatusKey = null;
@@ -762,7 +755,6 @@ function applyDashboard(dashboard) {
   poolOverview = { stats, recommendations };
   shortlist = dashboard.shortlist;
   notes = dashboard.notes ?? [];
-  namesById = applicantNames(dashboard);
   defaultCriteria = dashboard.defaultCriteria;
   for (const [key, value] of Object.entries(criteriaFormValues(dashboard.criteria))) {
     const input = criteriaForm.elements[key];
@@ -887,13 +879,12 @@ function appendChatMessage(role, text) {
   return item;
 }
 
-// Draws the answer as it streams: markdown (escaped first by renderMarkdown) with the applicants'
-// names next to their ids, or the turn's error.
+// Draws the answer as it streams: markdown (escaped first by renderMarkdown), or the turn's error.
 function drawTurn(item, state) {
   item.classList.toggle("is-pending", state.phase === "streaming" && !state.answer);
   item.classList.toggle("is-error", state.phase === "error");
   if (state.phase === "error" && !state.answer) item.textContent = state.error;
-  else if (state.answer) item.innerHTML = renderMarkdown(withApplicantNames(state.answer, namesById));
+  else if (state.answer) item.innerHTML = renderMarkdown(state.answer);
 }
 
 chatForm.addEventListener("submit", async (event) => {

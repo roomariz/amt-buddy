@@ -111,6 +111,7 @@ const NAME_VARIANT_DOCUMENT_BY_APPLICANT_ID = new Map([
   ["A-066", "previousLandlord"],
   ["A-077", "incomeProof"],
 ]);
+const MULTI_NAME_INCOME_EXAMPLES = new Map([["A-011", ["Wei Rossi", "Lina Rossi"]]]);
 
 // --- Dates and amounts, formatted without locale data so the output never varies ---------------
 
@@ -284,6 +285,8 @@ function incomeProofSection(a) {
   if (a.employmentType === "student_with_guarantor") {
     slips.push(`Bürgschaftserklärung\nBürge: ${a.lastName === "Müller" ? "Petra" : "Thomas"} ${a.lastName} (Elternteil)`);
   }
+  const additionalNames = MULTI_NAME_INCOME_EXAMPLES.get(a.id);
+  if (additionalNames) slips.push(`Haushaltseinkommensübersicht\nWeitere Namen: ${additionalNames.join("; ")}`);
   return [`## ${DOCUMENT_HEADINGS.incomeProof}`, "", slips.join("\n\n")].join("\n");
 }
 

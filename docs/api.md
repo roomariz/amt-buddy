@@ -320,7 +320,6 @@ The Rent check runs `evaluateMietspiegel` with the asking rent as contract rent 
   "matchScore": 94.2,
   "rentToIncome": 0.1842,
   "breakdown": { "affordability": { "subscore": 1, "weight": 30 }, "schufa": { "subscore": 1, "weight": 20 }, "…": {} },
-  "name": "Lena Schmidt",
   "documents": { "schufa": "present", "incomeProof": "present", "previousLandlord": "not_required", "arrears": false, "complete": true }
 }
 ```
@@ -328,7 +327,7 @@ The Rent check runs `evaluateMietspiegel` with the asking rent as contract rent 
   `documents` holds each Application document's Document check status, `arrears` (the previous landlord confirms rent arrears) and `complete`.
 
   `subscore` is 0–1, `weight` the criterion's share of the Match score in %. Subscores: affordability 1 at a rent-to-income ratio of at most 25 %, 0 at 40 % or more, linear in between; SCHUFA clean 1, minor entries 0.5, negative or missing 0; documents the share of required documents present and valid; credibility the Credibility score / 100; employment permanent or civil servant 1, fixed-term or self-employed 0.6, student with guarantor 0.5, other 0.3; previous landlord no arrears 1, first-time renter 0.5, missing or unusable 0.3, arrears 0.
-- `excluded`: applicants who fail a Requirement, by id: `{ applicantId, excludedBy, reasons: [{ requirement, message, …values }], name, documents }`. `excludedBy` is the first failed Requirement; the values depend on it (e.g. `occupancyCompliant`: `householdSize`, `requiredAreaSqm` under § 7 WoAufG Bln, `livingAreaSqm`; `maxRentToIncome`: `rentToIncome`, `limit`).
+- `excluded`: applicants who fail a Requirement, by id: `{ applicantId, excludedBy, reasons: [{ requirement, message, …values }], documents }`. `excludedBy` is the first failed Requirement; the values depend on it (e.g. `occupancyCompliant`: `householdSize`, `requiredAreaSqm` under § 7 WoAufG Bln, `livingAreaSqm`; `maxRentToIncome`: `rentToIncome`, `limit`).
 - `stats`: the pool statistics, counted over the whole pool (excluded applicants too), or `null` without a Listing:
 
 ```json
@@ -348,17 +347,16 @@ The Rent check runs `evaluateMietspiegel` with the asking rent as contract rent 
   "reason": {
     "de": "Dieser Bewerber könnte Ihnen gefallen: geringe Mietbelastung (18,4 % des Haushaltsnettoeinkommens), saubere SCHUFA und vollständige Unterlagen. Zu beachten: geringe Glaubwürdigkeit (55/100).",
     "en": "You may like this applicant for their low rent burden (18.4 % of net household income), clean SCHUFA and complete documents. To note: low credibility (55/100)."
-  },
-  "name": "Lena Schmidt"
+  }
 }
 ```
 
   `strengths`: up to three criteria with a subscore of at least 0.75, strongest first (ties by weight); `weakness`: the criterion with the lowest subscore below 0.6 (ties by weight), or `null`. Without a strength, the reason names the Match score instead.
-- `name` is joined in for display only; the scorer never sees names or contact details.
+- Applicant names and contact details are omitted from landlord API responses; applications are identified by id. The scorer never sees names or contact details.
 - `hint`: `{ "code": "listing_required", "message" }` without a Listing (then `ranked` and `excluded` are empty), otherwise `null`.
-- `shortlist`: the landlord's Shortlist, in the order the entries were added: `[{ applicantId, name, status, note, added, rank, matchScore, excluded }]`. `rank` and `matchScore` come from `ranked`; both are `null` without a Listing or when the applicant is excluded (`excluded: true`). `name` is `null` for an applicant no longer in the pool.
+- `shortlist`: the landlord's Shortlist, in the order the entries were added: `[{ applicantId, status, note, added, rank, matchScore, excluded }]`. `rank` and `matchScore` come from `ranked`; both are `null` without a Listing or when the applicant is excluded (`excluded: true`).
 - `notes`: the Landlord preferences the chat remembered (`remember_preference`), oldest first: `[{ noteId, note, created }]`, also without a Listing.
-- `poolErrors`: `[{ file, reason }]`, the pool files that could not be read as an application.
+- `poolErrors`: `[{ file, reason }]`, unreadable pool files. Both fields are replaced with generic labels so malformed source lines and filenames cannot expose applicant identity data.
 
 The server reads the Applicant pool once at start from `APPLICANT_POOL_DIR` (default: the committed pool in `data/applicants`), as of `APPLICANT_POOL_TODAY` (default: `POOL_DATE`, the day the committed pool was generated, so its SCHUFA-Auskünfte do not expire).
 
@@ -413,15 +411,15 @@ The reusable `updateSelectionCriteria({ store, landlordId, input })` function in
 criteria }` for the later chat Tool integration.
 ### `GET /api/v1/landlord/:landlordId/applicants/:applicantId`
 
-→ `200 { "data": { "profile", "score", "rentToIncome", "contact", "clarification" } }`. An unknown applicant returns `404 applicant_not_found`; an unknown landlord returns `404 landlord_not_found`.
+→ `200 { "data": { "profile", "score", "rentToIncome", "clarification" } }`. An unknown applicant returns `404 applicant_not_found`; an unknown landlord returns `404 landlord_not_found`.
 
 - `profile` is the Applicant pool's anonymised profile: household size and counts, net household income, employment type, SCHUFA status, move-in date, pets, smoking, Credibility score, and the complete Document check. Each document has a status and reason; `documentCheck.issues` lists consistency and other document issues.
 - `score` is the current Listing's entry from `rankApplicants`: either `{ applicantId, rank, matchScore, breakdown, rentToIncome }` or `{ applicantId, excludedBy, reasons }`. It is `null` before a Listing is saved. `rentToIncome` is also returned at the top level for excluded applicants; it is `null` without a Listing.
-- `contact` contains only `{ name, email, phone }` for page display. The reusable lookup in `src/landlord/applicant-profile.js` leaves contact out for the later chat Tool. Protected source fields and raw document text are never returned.
+- Names and contact details are not returned. Protected source fields and raw document text are never returned.
 
 ### `POST /api/v1/landlord/:landlordId/applicants/:applicantId/clarification`
 
-Body: `{}`. Returns `200 { "data": { "profile", "score", "rentToIncome", "contact", "clarification" } }`, the refreshed applicant detail. This is a **simulation**: no email, WhatsApp message, or external request is sent.
+Body: `{}`. Returns `200 { "data": { "profile", "score", "rentToIncome", "clarification" } }`, the refreshed applicant detail. This is a **simulation**: no email, WhatsApp message, or external request is sent.
 
 The `clarification` field is also included by the applicant-detail GET. It is `null` when there are no name discrepancies; otherwise:
 
@@ -437,11 +435,11 @@ The `clarification` field is also included by the applicant-detail GET. It is `n
 }
 ```
 
-`request` is `null` before the simulation. A request persists per landlord and applicant in SQLite. The demo deadline is 24 hours from creation. Previously saved seven-day simulated requests are migrated at startup to 24 hours from their original creation time; an older request may therefore already be overdue. At or after the deadline, status is `overdue`; the request stays open, with no automatic rejection or score reduction. Repeated POSTs return the original request without extending its deadline. The UI provides German/English email and WhatsApp drafts with this deadline and a copy button. Each draft asks the applicant to confirm document ownership, explain the name difference, and describe the action and timing for resolving it. If evidence is not yet available, the applicant is asked to respond within 24 hours with a plan to supply it. No applicant response, proof upload, extension, or identity verification is implemented in this demo.
+`request` is `null` before the simulation. A request persists per landlord and applicant in SQLite. The demo deadline is 24 hours from creation. Previously saved seven-day simulated requests are migrated at startup to 24 hours from their original creation time; an older request may therefore already be overdue. At or after the deadline, status is `overdue`; the request stays open, with no automatic rejection or score reduction. Repeated POSTs return the original request without extending its deadline. The UI provides German/English email and WhatsApp drafts with this deadline and a copy button. Both the landlord-facing explanation and the copyable draft omit personal names and contact details while naming affected document types. The draft asks the applicant to confirm whether the documents belong to the application, explain the discrepancy, and describe the action and timing for resolving it. If evidence is not yet available, the applicant is asked to respond within 24 hours with a plan to supply it. No applicant response, proof upload, extension, or identity verification is implemented in this demo.
 
 Unknown landlord/applicant → `404 landlord_not_found` / `404 applicant_not_found`; no name discrepancy → `409 clarification_not_needed`; any body other than an empty object → `422 validation_error`.
 
-Name comparison recognises presentation variants (Dr./Prof. titles, case, spacing, Latin diacritics, hyphens and typographic apostrophes). Missing or different name parts request clarification. This comparison does not verify identity. A `name_mismatch` issue has a neutral message without either person's name and costs zero Credibility points. It does not change document completeness, discard readable SCHUFA or arrears findings, or trigger a Requirement exclusion. Independent issues such as missing documents, expired SCHUFA or inconsistent income continue to apply. The reusable model-facing Applicant profile omits name-discrepancy issues. The HTTP endpoint joins clarification metadata and contact for the UI only; drafts are formatted in the page.
+Name comparison recognises presentation variants (Dr./Prof. titles, case, spacing, Latin diacritics, hyphens and typographic apostrophes). Missing or different name parts request clarification. This comparison does not verify identity. A `name_mismatch` issue has a neutral message without either person's name and costs zero Credibility points. It does not change document completeness, discard readable SCHUFA or arrears findings, or trigger a Requirement exclusion. Independent issues such as missing documents, expired SCHUFA or inconsistent income continue to apply. The reusable model-facing Applicant profile omits name-discrepancy issues. Clarification metadata is returned without personal identity data; drafts are formatted in the page.
 
 ### `POST /api/v1/landlord/:landlordId/chat`
 
@@ -453,7 +451,7 @@ One turn of the Landlord Orchestrator (`src/landlord/orchestrator/`), a LangGrap
 
 → `200 text/event-stream`, the same framing as the tenant chat (`event: <type>` + `data: <the event as JSON>`, `: keep-alive` comments):
 
-- `{ "type": "token", "text": "…" }`: the answer (Markdown), once it has passed the grounding check (ADR 0003): every number comes from a Tool result of this turn, the landlord's Listing, the pool stats or their own message; applicant ids (`A-007`) are not checked as figures. The model only knows applicant ids; the page shows each known applicant's name next to the id.
+- `{ "type": "token", "text": "…" }`: the answer (Markdown), once it has passed the grounding check (ADR 0003): every number comes from a Tool result of this turn, the landlord's Listing, the pool stats or their own message; applicant ids (`A-007`) are not checked as figures. The model and page use applicant ids only.
 - `{ "type": "criteria" }` / `{ "type": "shortlist" }` / `{ "type": "notes" }`: a Tool changed the Selection criteria / the Shortlist / remembered a Landlord preference (it is saved already); after a turn with one of them the page reloads the dashboard.
 - `{ "type": "done" }` or `{ "type": "error", "message" }`: exactly one ends every turn.
 

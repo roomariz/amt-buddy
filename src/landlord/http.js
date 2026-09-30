@@ -14,6 +14,13 @@ const LANDLORD_PATH = "/api/v1/landlord/";
 const APPLICANT_NOT_FOUND = ["applicant_not_found", "No applicant with this id."];
 const NOTE_NOT_FOUND = ["note_not_found", "No remembered preference with this id."];
 
+function anonymisePoolErrors(errors) {
+  return errors.map((_, index) => ({
+    file: `applicant-${index + 1}`,
+    reason: "Applicant file could not be read.",
+  }));
+}
+
 class LandlordInputError extends Error {
   constructor(details) {
     super(details[0]?.message ?? "Landlord request is invalid.");
@@ -72,8 +79,7 @@ const documentFlagsOf = ({ schufa, incomeProof, previousLandlord, complete }) =>
 });
 
 // The ranking of the pool for the Listing, its stats and Recommendations (none without a
-// Listing), with each applicant's name (and, in the ranking, document flags) joined in for
-// display. The scorer sees the anonymised profiles only.
+// Listing), with document flags joined in for display. Applicant identity stays server-side.
 function rankingFor(listing, { applicants }, criteria) {
   if (!listing) return { ranked: [], excluded: [], stats: null, recommendations: [], hint: LISTING_REQUIRED };
   const { ranked, excluded, stats, recommendations } = rankApplicants({
@@ -82,29 +88,26 @@ function rankingFor(listing, { applicants }, criteria) {
     criteria,
   });
   const applicantsById = new Map(applicants.map((applicant) => [applicant.id, applicant]));
-  const nameOf = (applicantId) => applicantsById.get(applicantId).contact.name;
   const forDisplay = (entry) => {
-    const { contact, profile } = applicantsById.get(entry.applicantId);
-    return { ...entry, name: contact.name, documents: documentFlagsOf(profile.documentCheck) };
+    const { profile } = applicantsById.get(entry.applicantId);
+    return { ...entry, documents: documentFlagsOf(profile.documentCheck) };
   };
   return {
     ranked: ranked.map(forDisplay),
     excluded: excluded.map(forDisplay),
     stats,
-    recommendations: recommendations.map((entry) => ({ ...entry, name: nameOf(entry.applicantId) })),
+    recommendations,
     hint: null,
   };
 }
 
-// The Shortlist for display: each entry with the applicant's name and, from the ranking, their
-// rank and Match score (null without a Listing or when excluded; `excluded` says which).
-function shortlistFor(entries, { applicants }, { ranked, excluded }) {
-  const namesById = new Map(applicants.map(({ id, contact }) => [id, contact.name]));
+// The Shortlist for display: each entry with its pseudonymous id and, from the ranking, rank and
+// Match score (null without a Listing or when excluded; `excluded` says which).
+function shortlistFor(entries, { ranked, excluded }) {
   const rankedById = new Map(ranked.map((entry) => [entry.applicantId, entry]));
   const excludedIds = new Set(excluded.map(({ applicantId }) => applicantId));
   return entries.map(({ applicantId, status, note, added }) => ({
     applicantId,
-    name: namesById.get(applicantId) ?? null,
     status,
     note,
     added,
@@ -169,9 +172,9 @@ export function createLandlordApi({ getStore, getApplicantPool = () => EMPTY_POO
         criteria,
         defaultCriteria: DEFAULT_CRITERIA,
         ...ranking,
-        shortlist: shortlistFor(getStore().getShortlist(landlordId), pool, ranking),
+        shortlist: shortlistFor(getStore().getShortlist(landlordId), ranking),
         notes: getStore().listNotes(landlordId),
-        poolErrors: pool.errors,
+        poolErrors: anonymisePoolErrors(pool.errors),
       },
     });
   }
@@ -204,8 +207,8 @@ export function createLandlordApi({ getStore, getApplicantPool = () => EMPTY_POO
     await changeShortlist(response, landlordId, { applicantId, status: "remove" });
   }
 
-  // GET /api/v1/landlord/:landlordId/applicants/:applicantId → profile and its current score,
-  // with contact details joined only for the UI. Unknown applicant → 404.
+  // GET /api/v1/landlord/:landlordId/applicants/:applicantId → anonymised profile and its current
+  // score. Names and contact details stay server-side. Unknown applicant → 404.
   async function applicantDetail(response, landlordId, applicantId) {
     response.setHeader("cache-control", "no-store");
     const pool = await getApplicantPool();
@@ -219,10 +222,9 @@ export function createLandlordApi({ getStore, getApplicantPool = () => EMPTY_POO
       sendError(response, 404, "applicant_not_found", "No applicant with this id.");
       return;
     }
-    const { contact } = pool.applicants.find(({ id }) => id === applicantId);
     const documents = clarificationDocuments(pool.applicants.find(({ id }) => id === applicantId));
     const clarification = documents.length ? { documents, request: getStore().getClarification(landlordId, applicantId) } : null;
-    sendJson(response, 200, { data: { ...result, contact, clarification } });
+    sendJson(response, 200, { data: { ...result, clarification } });
   }
 
   // Simulation only: records the request; no messaging provider is called.

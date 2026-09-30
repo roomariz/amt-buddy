@@ -5,15 +5,12 @@ import { breakdownBars, exclusionText, formatMoney, formatNumber, formatPercent 
 
 const DOCUMENTS = ["schufa", "incomeProof", "previousLandlord"];
 
-export function applicantDetailView({ profile, score, rentToIncome, contact, clarification }) {
+export function applicantDetailView({ profile, score, rentToIncome, clarification }) {
   const { documentCheck } = profile;
   const fact = (key, value) => ({ label: t(`landlord.detail.${key}`), value });
   const yesNo = (value) => t(`landlord.detail.${value ? "yes" : "no"}`);
   return {
-    clarification: clarificationView(clarification, contact),
-    name: contact.name,
-    email: contact.email,
-    phone: contact.phone,
+    clarification: clarificationView(clarification),
     facts: [
       fact("household", t("landlord.detail.householdValue", profile.household)),
       fact("income", formatMoney(profile.netHouseholdIncome)),
@@ -42,22 +39,23 @@ export function applicantDetailView({ profile, score, rentToIncome, contact, cla
 }
 
 
-function clarificationView(clarification, contact) {
+function clarificationView(clarification) {
   if (!clarification) return null;
   const { request, documents } = clarification;
   const deadline = request ? new Intl.DateTimeFormat(getLanguage() === "en" ? "en-GB" : "de-DE", {
     dateStyle: "medium", timeStyle: "short", timeZone: "UTC",
   }).format(new Date(request.deadline)) + " UTC" : null;
   const documentNames = documents.map((document) => t(`landlord.ranking.document.${document}`)).join(", ");
-  const values = { name: contact.name, documents: documentNames, deadline };
+  const values = { documents: documentNames, deadline };
   return {
     canRequest: !request,
     status: t(`landlord.clarification.status.${request?.status ?? "needed"}`),
+    landlordMessage: t("landlord.clarification.landlordMessage"),
     documents: documentNames,
     deadline,
     drafts: request ? [
-      { channel: "email", recipient: contact.email, text: t("landlord.clarification.emailDraft", values) },
-      { channel: "whatsapp", recipient: contact.phone, text: t("landlord.clarification.whatsappDraft", values) },
+      { channel: "email", recipient: t("landlord.clarification.applicant"), text: t("landlord.clarification.emailDraft", values) },
+      { channel: "whatsapp", recipient: t("landlord.clarification.applicant"), text: t("landlord.clarification.whatsappDraft", values) },
     ] : [],
   };
 }

@@ -414,17 +414,17 @@ test("with a Listing the dashboard ranks the committed pool, households too larg
   for (let index = 1; index < ranked.length; index += 1) assert.ok(ranked[index - 1].matchScore >= ranked[index].matchScore);
 });
 
-test("the dashboard joins in the applicant's name for display, with the document flags and no contact details", async (t) => {
+test("the dashboard identifies applicants by id and omits personal identity data", async (t) => {
   const server = await start();
   t.after(server.close);
   const landlordId = await signIn(server);
   await server.put(`/api/v1/landlord/${landlordId}/listing`, WUEHLISCH_LISTING);
 
-  const { ranked, excluded } = (await server.get(`/api/v1/landlord/${landlordId}/dashboard`)).body.data;
+  const dashboard = (await server.get(`/api/v1/landlord/${landlordId}/dashboard`)).body.data;
+  const { ranked, excluded } = dashboard;
 
   for (const entry of [...ranked, ...excluded]) {
-    assert.equal(typeof entry.name, "string", entry.applicantId);
-    assert.ok(entry.name.trim());
+    assert.equal(entry.name, undefined);
     assert.equal(entry.email, undefined);
     assert.equal(entry.phone, undefined);
     assert.deepEqual(Object.keys(entry.documents), ["schufa", "incomeProof", "previousLandlord", "arrears", "complete"]);
@@ -436,7 +436,7 @@ test("the dashboard joins in the applicant's name for display, with the document
   assert.equal(typeof entry.rentToIncome, "number");
 });
 
-test("applicant detail returns the anonymised profile, document issues, the same score as the dashboard, and contact", async (t) => {
+test("applicant detail returns the anonymised profile and score without personal identity data", async (t) => {
   const server = await start();
   t.after(server.close);
   const landlordId = await signIn(server);
@@ -447,7 +447,7 @@ test("applicant detail returns the anonymised profile, document issues, the same
   const { status, body } = await server.get(`/api/v1/landlord/${landlordId}/applicants/A-001`);
 
   assert.equal(status, 200);
-  assert.deepEqual(Object.keys(body.data), ["profile", "score", "rentToIncome", "contact", "clarification"]);
+  assert.deepEqual(Object.keys(body.data), ["profile", "score", "rentToIncome", "clarification"]);
   assert.equal(body.data.profile.id, "A-001");
   assert.equal(body.data.profile.householdSize, 2);
   assert.equal(body.data.profile.netHouseholdIncome, 6070);
@@ -463,7 +463,7 @@ test("applicant detail returns the anonymised profile, document issues, the same
     breakdown: ranked.breakdown, rentToIncome: ranked.rentToIncome,
   });
   assert.equal(body.data.rentToIncome, ranked.rentToIncome);
-  assert.deepEqual(body.data.contact, { name: "Julien Neumann", email: "julien.neumann1@example.org", phone: "+49 178 4053388" });
+  assert.doesNotMatch(JSON.stringify(body.data), /Julien Neumann|julien\.neumann1@example\.org|\+49 178 4053388/);
 });
 
 test("applicant detail reports a name clarification separately from a requirement exclusion", async (t) => {
@@ -491,7 +491,7 @@ test("applicant detail reports a name clarification separately from a requiremen
   assert.equal(inconsistent.rentToIncome, null);
 });
 
-test("applicant detail never exposes protected source fields or extra contact fields", async (t) => {
+test("applicant detail never exposes protected fields or personal identity data", async (t) => {
   const directory = fileURLToPath(new URL("../fixtures/applicants/", import.meta.url));
   const server = await start({ env: { APPLICANT_POOL_DIR: directory, APPLICANT_POOL_TODAY: "2026-09-29" } });
   t.after(server.close);
@@ -499,13 +499,14 @@ test("applicant detail never exposes protected source fields or extra contact fi
   const { status, body } = await server.get(`/api/v1/landlord/${landlordId}/applicants/A-protected`);
 
   assert.equal(status, 200);
-  assert.deepEqual(Object.keys(body.data.contact), ["name", "email", "phone"]);
+  assert.equal(body.data.contact, undefined);
   assert.deepEqual(Object.keys(body.data.profile), [
     "id", "householdSize", "household", "netHouseholdIncome", "employmentType", "schufaStatus", "moveInDate", "pets", "smoking", "documentCheck", "credibilityScore",
   ]);
   for (const value of ["Italian", "Catholic", "1988-04-12", "female", "a-protected.jpg", "expecting a second child", "Siemens AG", "Kastanienallee", "@lena.berlin"]) {
     assert.ok(!JSON.stringify(body).includes(value), value);
   }
+  assert.doesNotMatch(JSON.stringify(body), /Lena Schmidt|lena\.berlin|\+49/);
 });
 
 test("applicant detail returns 404 for an unknown applicant or landlord", async (t) => {
@@ -531,7 +532,7 @@ test("applicant detail responses cannot be cached", async (t) => {
   assert.equal(response.headers.get("cache-control"), "no-store");
 });
 
-test("the dashboard has the pool stats and the Recommendations, with names joined in", async (t) => {
+test("the dashboard has pool stats and anonymised Recommendations", async (t) => {
   const server = await start();
   t.after(server.close);
   const landlordId = await signIn(server);
@@ -552,7 +553,7 @@ test("the dashboard has the pool stats and the Recommendations, with names joine
 
   assert.deepEqual(recommendations.map(({ applicantId }) => applicantId), ranked.slice(0, 2).map(({ applicantId }) => applicantId));
   for (const recommendation of recommendations) {
-    assert.equal(recommendation.name, ranked.find(({ applicantId }) => applicantId === recommendation.applicantId).name);
+    assert.equal(recommendation.name, undefined);
     assert.equal(recommendation.email, undefined);
     assert.match(recommendation.reason.en, /^You may like this applicant for their /);
     assert.match(recommendation.reason.de, /^Dieser Bewerber könnte Ihnen gefallen: /);
@@ -587,9 +588,25 @@ test("the Applicant pool directory and its day are configurable", async (t) => {
   const { ranked, excluded, poolErrors } = (await server.get(`/api/v1/landlord/${landlordId}/dashboard`)).body.data;
   const all = [...ranked, ...excluded];
 
-  assert.ok(all.some(({ applicantId, name }) => applicantId === "A-complete" && name === "Lena Schmidt"));
+  assert.ok(all.some(({ applicantId, name }) => applicantId === "A-complete" && name === undefined));
   assert.ok(!all.some(({ applicantId }) => applicantId.startsWith("A-0")), "not the committed pool");
-  assert.ok(poolErrors.some(({ file }) => file === "malformed.md"));
+  assert.ok(poolErrors.length > 0);
+  assert.ok(poolErrors.every(({ file, reason }) => /^applicant-\d+$/.test(file) && reason === "Applicant file could not be read."));
+});
+
+test("dashboard parser errors redact personal data from raw lines and source filenames", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "amt-buddy-private-applicant-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await writeFile(join(directory, "Rebekah-OConnor-private.md"), "---\nRebekah O'Connor <rebekah.oconnor@example.org> +49 151 12345678\n---\n");
+  const server = await start({ env: { APPLICANT_POOL_DIR: directory } });
+  t.after(server.close);
+  const landlordId = await signIn(server);
+
+  const { status, body } = await server.get(`/api/v1/landlord/${landlordId}/dashboard`);
+
+  assert.equal(status, 200);
+  assert.deepEqual(body.data.poolErrors, [{ file: "applicant-1", reason: "Applicant file could not be read." }]);
+  assert.doesNotMatch(JSON.stringify(body), /Rebekah|OConnor|oconnor@example|\+49 151/);
 });
 
 test("a simulated name clarification persists with a 24-hour deadline and does not change the ranking", async (t) => {
@@ -760,7 +777,7 @@ test("saved seven-day demo requests adopt the 24-hour deadline from their origin
 
 const shortlistPath = (landlordId, applicantId) => `/api/v1/landlord/${landlordId}/shortlist/${applicantId}`;
 
-test("putting an applicant on the Shortlist returns the entry; the dashboard lists it with name, score and status", async (t) => {
+test("putting an applicant on the Shortlist returns the entry; the dashboard lists its id, score and status", async (t) => {
   const server = await start();
   t.after(server.close);
   const landlordId = await signIn(server);
@@ -775,10 +792,10 @@ test("putting an applicant on the Shortlist returns the entry; the dashboard lis
   assert.equal(added.status, 200);
   assert.deepEqual(added.body.data, { applicantId: second.applicantId, status: "to_invite", note: "Stable income" });
   assert.deepEqual(
-    shortlist.map(({ applicantId, name, status, note, rank, matchScore, excluded }) => ({ applicantId, name, status, note, rank, matchScore, excluded })),
+    shortlist.map(({ applicantId, status, note, rank, matchScore, excluded }) => ({ applicantId, status, note, rank, matchScore, excluded })),
     [
-      { applicantId: second.applicantId, name: second.name, status: "to_invite", note: "Stable income", rank: 2, matchScore: second.matchScore, excluded: false },
-      { applicantId: first.applicantId, name: first.name, status: "invited", note: null, rank: 1, matchScore: first.matchScore, excluded: false },
+      { applicantId: second.applicantId, status: "to_invite", note: "Stable income", rank: 2, matchScore: second.matchScore, excluded: false },
+      { applicantId: first.applicantId, status: "invited", note: null, rank: 1, matchScore: first.matchScore, excluded: false },
     ],
   );
   for (const entry of shortlist) assert.equal(entry.email, undefined);
@@ -811,7 +828,7 @@ test("without a Listing, Shortlist entries have no rank or score; an excluded ap
   await server.put(`/api/v1/landlord/${landlordId}/listing`, WUEHLISCH_LISTING);
   const after = (await server.get(`/api/v1/landlord/${landlordId}/dashboard`)).body.data.shortlist;
 
-  assert.equal(typeof before[0].name, "string");
+  assert.equal(before[0].name, undefined);
   assert.deepEqual([before[0].rank, before[0].matchScore, before[0].excluded], [null, null, false]);
   assert.deepEqual([after[0].rank, after[0].matchScore, after[0].excluded], [null, null, true]);
 });
