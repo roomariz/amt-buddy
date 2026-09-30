@@ -168,6 +168,10 @@ function renderSignedIn() {
   signOutButton.hidden = !signedIn;
   nameLabel.hidden = !signedIn;
   nameLabel.textContent = signedIn ? t("landlord.signedInAs", { name: landlord.name }) : "";
+  const navChat = document.querySelector('a.landlord-nav-link[href^="/landlord-chat.html"]');
+  if (navChat) {
+    navChat.href = signedIn ? `/landlord-chat.html?name=${encodeURIComponent(landlord.name)}` : "/landlord-chat.html";
+  }
   updateTabVisibility();
 }
 
@@ -1015,4 +1019,20 @@ onLanguageChange(() => {
 
 startI18n();
 renderSignedIn();
-if (landlord) loadDashboard();
+
+const search = typeof window !== "undefined" && window?.location?.search ? window.location.search : "";
+const urlName = new URLSearchParams(search).get("name")?.trim();
+if (urlName && (!landlord || landlord.name !== urlName)) {
+  signIn({ fetchImpl: fetch, name: urlName })
+    .then((user) => {
+      landlord = user;
+      rememberLandlord(localStore(), landlord);
+      renderSignedIn();
+      return loadDashboard();
+    })
+    .catch(() => {
+      if (landlord) loadDashboard();
+    });
+} else if (landlord) {
+  loadDashboard();
+}

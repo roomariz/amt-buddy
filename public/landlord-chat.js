@@ -34,6 +34,9 @@ const signInName = $("#sign-in-name");
 const signInError = $("#sign-in-error");
 const nameLabel = $("#landlord-name");
 const signOutButton = $("#btn-sign-out");
+const navLinkClassic = $("#nav-link-classic");
+const landlordTabs = $("#landlord-tabs");
+const tabShortlistCount = $("#tab-shortlist-count");
 const board = $("#board");
 const boardError = $("#board-error");
 const slotList = $("#slots");
@@ -55,6 +58,46 @@ const shortlistList = $("#shortlist-list");
 const shortlistEmpty = $("#shortlist-empty");
 
 const FLIGHT_MS = 350;
+let currentTab = "recommendations";
+
+function selectTab(tab) {
+  currentTab = tab;
+  updateTabVisibility();
+}
+
+function updateTabVisibility() {
+  const signedIn = Boolean(landlord);
+  if (landlordTabs) landlordTabs.hidden = !signedIn;
+  if (signInWrap) signInWrap.hidden = signedIn;
+  if (!signedIn) {
+    board.hidden = true;
+    return;
+  }
+  board.hidden = false;
+
+  for (const btn of document.querySelectorAll(".landlord-tab-btn")) {
+    const isActive = btn.dataset.tab === currentTab;
+    btn.classList.toggle("is-active", isActive);
+    btn.setAttribute("aria-selected", String(isActive));
+  }
+
+  board.classList.toggle("is-tab-mode", currentTab !== "board");
+  board.dataset.activeTab = currentTab;
+
+  const slotsSection = $("#slots-section");
+  const chatSection = $("#chat-section");
+  const shortlistSection = $("#shortlist-section");
+
+  if (currentTab === "board") {
+    if (slotsSection) slotsSection.hidden = false;
+    if (chatSection) chatSection.hidden = false;
+    if (shortlistSection) shortlistSection.hidden = false;
+  } else {
+    if (slotsSection) slotsSection.hidden = currentTab !== "recommendations";
+    if (chatSection) chatSection.hidden = currentTab !== "chat";
+    if (shortlistSection) shortlistSection.hidden = currentTab !== "shortlist";
+  }
+}
 
 function localStore() {
   try {
@@ -145,6 +188,9 @@ function thumbs(rating, focusKey, busy, onRate) {
 
 // Puts `text` into the prompt and focuses it, with the cursor at the end.
 function toPrompt(text) {
+  if (currentTab !== "board" && currentTab !== "chat") {
+    selectTab("chat");
+  }
   chatInput.value = text;
   chatInput.focus();
   chatInput.setSelectionRange(text.length, text.length);
@@ -161,11 +207,13 @@ function restoreFocus(key) {
 
 function renderSignedIn() {
   const signedIn = Boolean(landlord);
-  signInWrap.hidden = signedIn;
-  board.hidden = !signedIn;
   signOutButton.hidden = !signedIn;
   nameLabel.hidden = !signedIn;
   nameLabel.textContent = signedIn ? t("landlord.signedInAs", { name: landlord.name }) : "";
+  if (navLinkClassic) {
+    navLinkClassic.href = signedIn ? `/landlord.html?name=${encodeURIComponent(landlord.name)}` : "/landlord.html";
+  }
+  updateTabVisibility();
 }
 
 // Slots keep whoever is still among the best (fillSlots), so acting on one card never moves the other.
@@ -368,6 +416,9 @@ function statusEditor(row, busy) {
 
 function renderSidebar() {
   const rows = overview ? sidebarRows(overview.shortlist) : [];
+  if (tabShortlistCount) {
+    tabShortlistCount.textContent = rows.length > 0 ? `(${rows.length})` : "";
+  }
   shortlistEmpty.hidden = !overview || rows.length > 0;
   shortlistList.replaceChildren(
     ...rows.map((row, index) => {
@@ -503,8 +554,15 @@ function snapshot(card) {
 function fly(flight, applicantId) {
   if (!flight) return;
   const target = shortlistList.querySelector(`[data-applicant-id="${CSS.escape(applicantId)}"]`);
-  if (!target) return;
+  if (!target) {
+    flight.ghost.remove();
+    return;
+  }
   const to = target.getBoundingClientRect();
+  if (to.width === 0 || to.height === 0) {
+    flight.ghost.remove();
+    return;
+  }
   const { ghost, from } = flight;
   document.body.append(ghost);
   target.style.visibility = "hidden";
@@ -805,6 +863,12 @@ chatInput.addEventListener("keydown", (event) => {
   }
 });
 
+document.querySelectorAll(".landlord-tab-btn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    selectTab(btn.dataset.tab);
+  });
+});
+
 onLanguageChange(() => {
   renderSignedIn();
   renderBoard();
@@ -813,4 +877,20 @@ onLanguageChange(() => {
 
 startI18n();
 renderSignedIn();
-if (landlord) loadOverview();
+
+const search = typeof window !== "undefined" && window?.location?.search ? window.location.search : "";
+const urlName = new URLSearchParams(search).get("name")?.trim();
+if (urlName && (!landlord || landlord.name !== urlName)) {
+  signIn({ fetchImpl: fetch, name: urlName })
+    .then((user) => {
+      landlord = user;
+      rememberLandlord(localStore(), landlord);
+      renderSignedIn();
+      return loadOverview();
+    })
+    .catch(() => {
+      if (landlord) loadOverview();
+    });
+} else if (landlord) {
+  loadOverview();
+}

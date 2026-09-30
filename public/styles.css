@@ -2859,33 +2859,30 @@ footer a { color: inherit; }
    ========================================== */
 
 .lc-body {
-  --lc-bg: #ffffff;
+  --lc-bg: #f0f4f9;
   --lc-surface: #ffffff;
-  --lc-surface-2: #f7f7f7;
-  --lc-surface-3: #f0f0f0;
-  --lc-border: #e5e5e5;
-  --lc-border-strong: #d0d0d0;
-  --lc-text: #0d0d0d;
-  --lc-muted: #5d5d5d;
-  --lc-faint: #9a9a9a;
-  --lc-accent: #0d0d0d;
+  --lc-surface-2: #f8fafc;
+  --lc-surface-3: #eff6ff;
+  --lc-border: #e2e8f0;
+  --lc-border-strong: #cbd5e1;
+  --lc-text: #0f172a;
+  --lc-muted: #64748b;
+  --lc-faint: #94a3b8;
+  --lc-accent: #0066ff;
   --lc-accent-fg: #ffffff;
-  --lc-accent-hover: #3a3a3a;
-  --lc-focus: #171714;
-  --lc-error: #b3261e;
-  --lc-error-bg: #fae4df;
-  --lc-error-border: #f2c4ba;
-  --lc-good: #1f5f2e;
-  --lc-good-bg: #e3f1e6;
-  --lc-note-bg: #fff4d6;
-  --lc-note-fg: #5c4400;
-  --lc-link: #1a56b0;
-  --avatar-bg: #e8eef7;
-  --avatar-fg: #4a5b78;
-  /* The weights pie: six categorical colours, validated (dataviz palette check) for colour-blind
-     separation between neighbours in criteria order; the dark set is stepped for the dark surface.
-     Documents, credibility and employment take the palette's darker steps in light mode too, so
-     every slice reaches 3:1 against the white card (the lighter ones measured 2.2–2.8). */
+  --lc-accent-hover: #0052cc;
+  --lc-focus: #0066ff;
+  --lc-error: #ef4444;
+  --lc-error-bg: #fef2f2;
+  --lc-error-border: #fee2e2;
+  --lc-good: #16a34a;
+  --lc-good-bg: #f0fdf4;
+  --lc-note-bg: #fffbeb;
+  --lc-note-fg: #b45309;
+  --lc-link: #0066ff;
+  --avatar-bg: #ebf3ff;
+  --avatar-fg: #0066ff;
+  /* The weights pie: six categorical colours */
   --pie-affordability: #2a78d6;
   --pie-schufa: #eb6834;
   --pie-documents: #199e70;
@@ -2908,9 +2905,9 @@ footer a { color: inherit; }
     --lc-text: #ececec;
     --lc-muted: #a8a8a8;
     --lc-faint: #767676;
-    --lc-accent: #ececec;
-    --lc-accent-fg: #111111;
-    --lc-accent-hover: #c8c8c8;
+    --lc-accent: #3987e5;
+    --lc-accent-fg: #ffffff;
+    --lc-accent-hover: #2a78d6;
     --lc-focus: #ffd84d;
     --lc-error: #ff8a80;
     --lc-error-bg: #3a1d1b;
@@ -2935,20 +2932,23 @@ footer a { color: inherit; }
 /* Elements toggled with `hidden` here get a display of their own below. */
 .lc-body [hidden] { display: none !important; }
 
-.lc-body .gpt-main { height: 100dvh; background: var(--lc-bg); }
+.lc-body .gpt-main { height: 100vh; background: var(--lc-bg); }
 
-/* The shared chrome, in the tokens */
-.lc-body .gpt-topbar { border-bottom-color: var(--lc-border); }
-.lc-body .topbar-title,
-.lc-body .lc-heading { color: var(--lc-text); }
-.lc-body .landlord-nav-link,
-.lc-body .landlord-link-btn,
-.lc-body .landlord-name { color: var(--lc-muted); }
-.lc-body .landlord-nav-link:hover,
-.lc-body .landlord-link-btn:hover { background: var(--lc-surface-3); color: var(--lc-text); }
-.lc-body .landlord-link-btn:disabled { background: none; color: var(--lc-muted); opacity: 0.5; cursor: default; }
-.lc-body .lang-switch { border-color: var(--lc-border-strong); color: var(--lc-muted); }
-.lc-body .lang-switch button:hover { background: var(--lc-surface-3); color: var(--lc-text); }
+/* Buttons & hover protection: avoid global red hover */
+.lc-body button:hover:not(:disabled) {
+  background: var(--lc-surface-3);
+  color: var(--lc-text);
+}
+.lc-body .landlord-tab-btn:hover {
+  background: #f1f5f9;
+  color: #1a56db;
+  border-radius: 10px;
+}
+.lc-body .landlord-tab-btn.is-active:hover {
+  background: #e0edff;
+  color: #1a56db;
+}
+.lc-body .lang-switch button:hover { background: #f1f5f9; color: #0f172a; }
 .lc-body .lang-switch button[aria-pressed="true"] { background: var(--lc-accent); color: var(--lc-accent-fg); }
 .lc-body button:focus-visible,
 .lc-body a:focus-visible,
@@ -2957,7 +2957,7 @@ footer a { color: inherit; }
 .lc-body summary:focus-visible,
 .lc-body textarea:focus-visible,
 .lc-body .lang-switch button:focus-visible { outline: 3px solid var(--lc-focus); outline-offset: 2px; }
-.lc-body .landlord-card { background: var(--lc-surface); border-color: var(--lc-border); }
+
 .lc-body .landlord-intro,
 .lc-body .landlord-hint { color: var(--lc-muted); }
 .lc-body .landlord-error { color: var(--lc-error); }
@@ -2966,86 +2966,111 @@ footer a { color: inherit; }
 .lc-body .landlord-chat-field textarea { background: var(--lc-surface); color: var(--lc-text); border-color: var(--lc-border-strong); }
 .lc-body .landlord-btn { background: var(--lc-accent); color: var(--lc-accent-fg); }
 .lc-body .landlord-btn:hover { background: var(--lc-accent-hover); }
-/* After :hover, so a disabled button does not light up (the global `button:hover` is red). */
 .lc-body .landlord-btn:disabled { background: var(--lc-accent); opacity: 0.5; cursor: default; }
 
-/* The board: three columns that fill the viewport; only the chat turns and the side columns scroll */
+/* The Board: supports Tab View mode or 3-column classic grid */
 .lc-board {
-  flex: 1;
-  min-height: 0;
-  display: grid;
-  grid-template-columns: minmax(260px, 320px) minmax(0, 1fr) minmax(220px, 280px);
-  /* One row exactly the board's height: taller columns scroll instead of growing the page. */
-  grid-template-rows: minmax(0, 1fr);
-  gap: 16px;
-  padding: 16px;
+  width: 100%;
 }
 
-.lc-left,
-.lc-side { min-width: 0; min-height: 0; overflow-y: auto; }
+.lc-board.is-tab-mode {
+  display: block;
+}
 
-.lc-heading { margin: 0 0 6px; font-size: 1rem; font-weight: 700; }
+.lc-board:not(.is-tab-mode) {
+  display: grid;
+  grid-template-columns: minmax(300px, 360px) minmax(0, 1fr) minmax(280px, 340px);
+  gap: 20px;
+  align-items: start;
+}
+
+.lc-card-tab {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 20px;
+  padding: 24px 28px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02), 0 4px 16px rgba(0, 0, 0, 0.02);
+  margin-bottom: 24px;
+}
+
+.lc-heading { margin: 0; font-size: 1.25rem; font-weight: 700; color: #0f172a; }
+.lc-subheading { margin: 0 0 12px; font-size: 1.05rem; font-weight: 700; color: #1e293b; }
 .lc-heading:focus { outline: none; }
 .lc-heading:focus-visible { outline: 3px solid var(--lc-focus); outline-offset: 2px; }
 .lc-left .lc-heading + .lc-error,
 .lc-side .lc-heading + .lc-error { margin-bottom: 10px; }
 .lc-tiles + .lc-pool-errors { margin-top: 10px; font-size: 0.8rem; }
 
-/* The Recommendation slots; the left column is kept compact, so slots, tiles and the weights pie
-   fit a 1280 × 800 window without scrolling. */
-.lc-slots { margin: 0 0 12px; padding: 0; list-style: none; display: grid; gap: 8px; }
+/* The Recommendation slots */
+.lc-board.is-tab-mode .lc-slots {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  gap: 16px;
+  margin: 0 0 24px;
+  padding: 0;
+  list-style: none;
+}
+
+.lc-board:not(.is-tab-mode) .lc-slots {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 0;
+  list-style: none;
+}
 
 .lc-slot {
   min-width: 0;
-  padding: 10px 12px;
+  padding: 18px 20px;
   border: 1px solid var(--lc-border);
   border-radius: 14px;
-  background: var(--lc-surface);
+  background: var(--lc-surface-2);
   color: var(--lc-text);
   list-style: none;
   overflow-wrap: anywhere;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+  transition: all 0.2s ease;
+}
+
+.lc-slot:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
 }
 
 .lc-slot.is-empty { color: var(--lc-muted); font-size: 0.9rem; line-height: 1.45; background: var(--lc-surface-2); }
-
-.lc-slot-head { display: flex; align-items: center; gap: 10px; }
-/* Name, score, rank and bonus take a line each. */
+.lc-slot-head { display: flex; align-items: center; gap: 12px; }
 .lc-slot-who { min-width: 0; }
-.lc-slot-name { margin: 0; font-size: 1rem; }
-.lc-slot-meta { margin: 2px 0 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; color: var(--lc-muted); font-size: 0.8rem; }
-.lc-slot-score { margin: 2px 0 0; font-size: 0.85rem; font-weight: 600; color: var(--lc-good); }
-.lc-slot-bonus { margin: 2px 0 0; font-size: 0.75rem; color: var(--lc-muted); }
-.lc-slot-reason { margin: 6px 0 0; font-size: 0.82rem; line-height: 1.35; }
-/* One line at 1280 px: Add to Shortlist, the Skip and Ask icons, the thumbs. */
-.lc-slot-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 8px; }
-.lc-slot-actions .landlord-btn { margin: 0; padding: 7px 12px; font-size: 0.85rem; }
+.lc-slot-name { margin: 0; font-size: 1.15rem; font-weight: 700; color: #0f172a; }
+.lc-slot-meta { margin: 2px 0 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; color: var(--lc-muted); font-size: 0.82rem; }
+.lc-slot-score { margin: 2px 0 0; font-size: 0.95rem; font-weight: 700; color: var(--lc-good); }
+.lc-slot-bonus { margin: 2px 0 0; font-size: 0.78rem; color: var(--lc-muted); }
+.lc-slot-reason { margin: 8px 0 0; font-size: 0.88rem; line-height: 1.4; color: #334155; }
+.lc-slot-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 14px; }
+.lc-slot-actions .landlord-btn { margin: 0; padding: 8px 16px; font-size: 0.875rem; border-radius: 8px; font-weight: 600; }
 .lc-slot-actions .lc-thumbs { margin-left: auto; }
 
-/* Thumbs up/down: the landlord's bonus. Pressed up is green, pressed down red; a pressed thumb keeps
-   its colour while its request runs (it is disabled then), so the click shows at once. The slot's
-   Skip and Ask icon buttons share the thumbs' look. */
+/* Thumbs & Icons */
 .lc-thumbs { display: inline-flex; gap: 4px; }
 .lc-body .lc-thumb,
 .lc-body .lc-icon-btn {
   width: auto;
-  min-width: 32px;
-  min-height: 32px;
+  min-width: 34px;
+  min-height: 34px;
   margin: 0;
-  padding: 2px 6px;
-  /* Muted, not border-strong: the unpressed outline needs 3:1 against the card in both themes. */
-  border: 1px solid var(--lc-muted);
+  padding: 4px 8px;
+  border: 1px solid var(--lc-border-strong);
   border-radius: 8px;
   background: var(--lc-surface);
   color: var(--lc-text);
-  font-size: 1rem;
+  font-size: 0.95rem;
   line-height: 1;
+  transition: all 0.15s ease;
 }
 .lc-body .lc-thumb span { float: none; }
 .lc-body .lc-icon-btn { display: inline-flex; align-items: center; justify-content: center; font-weight: 700; }
 .lc-body .lc-icon-btn svg { display: block; }
-/* Before the pressed colours: the global `button:hover` is red. */
 .lc-body .lc-thumb:hover,
-.lc-body .lc-icon-btn:hover { background: var(--lc-surface-3); color: var(--lc-text); }
+.lc-body .lc-icon-btn:hover { background: var(--lc-surface-3); color: var(--lc-text); border-color: #94a3b8; }
 .lc-body .lc-icon-btn:disabled { background: var(--lc-surface); opacity: 0.5; cursor: default; }
 .lc-body .lc-thumb.is-up[aria-pressed="true"] { background: var(--lc-good-bg); border-color: var(--lc-good); box-shadow: inset 0 0 0 1px var(--lc-good); }
 .lc-body .lc-thumb.is-down[aria-pressed="true"] { background: var(--lc-error-bg); border-color: var(--lc-error); box-shadow: inset 0 0 0 1px var(--lc-error); }
@@ -3054,12 +3079,11 @@ footer a { color: inherit; }
 
 .lc-avatar { flex: none; display: inline-flex; line-height: 0; }
 .lc-avatar svg { display: block; }
-
 .lc-move { font-size: 0.78rem; font-weight: 700; font-variant-numeric: tabular-nums; }
 .lc-move.is-up { color: var(--lc-good); }
 .lc-move.is-down { color: var(--lc-error); }
 
-/* The Add to Shortlist flight; landlord-chat.js skips it under prefers-reduced-motion */
+/* Flight animation */
 .lc-flight {
   position: fixed;
   z-index: 50;
@@ -3070,32 +3094,35 @@ footer a { color: inherit; }
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
 }
 
-/* At a glance: four compact stat tiles, two to a row in the left column, wide enough for the
-   longest label word ("Ausgeschlossen") so labels wrap between words; hyphens: auto splits longer
-   ones where the browser can. */
-.lc-tiles { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 4px; }
-.lc-tile { display: flex; flex-direction: column; gap: 1px; padding: 5px 6px; border: 1px solid var(--lc-border); border-radius: 8px; background: var(--lc-surface-2); min-width: 0; }
-.lc-tile-value { font-size: 1rem; font-weight: 700; line-height: 1.15; }
-.lc-tile-label { font-size: 0.68rem; color: var(--lc-muted); line-height: 1.25; overflow-wrap: normal; hyphens: auto; }
+/* Glance tiles & Weights */
+.lc-board.is-tab-mode .lc-glance-wrap,
+.lc-board.is-tab-mode .lc-weights-wrap {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--lc-border);
+}
+
+.lc-tiles { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+.lc-tile { display: flex; flex-direction: column; gap: 4px; padding: 10px 14px; border: 1px solid var(--lc-border); border-radius: 12px; background: var(--lc-surface-2); min-width: 0; }
+.lc-tile-value { font-size: 1.25rem; font-weight: 800; color: #0f172a; line-height: 1.15; }
+.lc-tile-label { font-size: 0.75rem; color: var(--lc-muted); line-height: 1.25; font-weight: 500; }
 .lc-tile.is-unavailable, .lc-tile[title] { cursor: help; }
 .lc-tile.is-unavailable .lc-tile-value { color: var(--lc-muted); }
 
-/* The weights pie beside its legend; the legend drops below the pie when the column is too narrow.
-   A slice's outline in the surface colour is the gap between neighbours. Muted: not counted yet. */
-.lc-weights-title { margin-top: 12px; }
-.lc-weights { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.lc-weights-title { margin-top: 0; }
+.lc-weights { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; background: var(--lc-surface-2); border: 1px solid var(--lc-border); border-radius: 14px; padding: 16px 20px; }
 .lc-pie { flex: none; line-height: 0; }
 .lc-pie svg { display: block; }
 .lc-pie-slice { stroke: var(--lc-surface); stroke-width: 2; stroke-linejoin: round; }
 .lc-pie-slice.is-muted,
 .lc-pie-swatch.is-muted { opacity: 0.3; }
 .lc-weights-text { flex: 1 1 150px; min-width: 0; }
-.lc-legend { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 1px; }
-.lc-legend-row { display: flex; align-items: baseline; gap: 6px; font-size: 0.72rem; line-height: 1.25; overflow-wrap: anywhere; }
+.lc-legend { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
+.lc-legend-row { display: flex; align-items: baseline; gap: 6px; font-size: 0.8rem; line-height: 1.3; overflow-wrap: anywhere; }
 .lc-legend-row.is-muted { color: var(--lc-muted); }
 .lc-legend-row[title] { cursor: help; }
 .lc-pie-swatch { flex: none; width: 10px; height: 10px; border-radius: 3px; transform: translateY(1px); }
-.lc-weights-bonus { margin: 4px 0 0; font-size: 0.72rem; line-height: 1.25; color: var(--lc-muted); }
+.lc-weights-bonus { margin: 6px 0 0; font-size: 0.8rem; line-height: 1.3; color: var(--lc-muted); }
 .lc-pie-slice[data-criterion="affordability"], .lc-pie-swatch[data-criterion="affordability"] { fill: var(--pie-affordability); background: var(--pie-affordability); }
 .lc-pie-slice[data-criterion="schufa"], .lc-pie-swatch[data-criterion="schufa"] { fill: var(--pie-schufa); background: var(--pie-schufa); }
 .lc-pie-slice[data-criterion="documents"], .lc-pie-swatch[data-criterion="documents"] { fill: var(--pie-documents); background: var(--pie-documents); }
@@ -3103,33 +3130,113 @@ footer a { color: inherit; }
 .lc-pie-slice[data-criterion="employment"], .lc-pie-swatch[data-criterion="employment"] { fill: var(--pie-employment); background: var(--pie-employment); }
 .lc-pie-slice[data-criterion="previousLandlord"], .lc-pie-swatch[data-criterion="previousLandlord"] { fill: var(--pie-previousLandlord); background: var(--pie-previousLandlord); }
 
-/* The chat: turns scroll, the prompt and the tip stay at the bottom */
-.lc-chat {
-  min-width: 0;
-  min-height: 0;
+/* The Chat */
+.lc-chat.lc-card-tab {
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--lc-border);
-  border-radius: 16px;
-  background: var(--lc-surface);
-  overflow: hidden;
 }
-
-.lc-turns { flex: 1; min-height: 0; overflow-y: auto; margin: 0; padding: 16px; }
-.lc-body .landlord-chat-msg.is-user { background: var(--lc-surface-3); color: var(--lc-text); }
-.lc-body .landlord-chat-msg.is-answer { background: var(--lc-surface-2); border-color: var(--lc-border); color: var(--lc-text); }
-.lc-body .landlord-chat-msg.is-pending { color: var(--lc-muted); }
+.lc-chat-header {
+  margin-bottom: 16px;
+}
+.lc-turns {
+  flex: 1;
+  min-height: 380px;
+  max-height: 52vh;
+  overflow-y: auto;
+  margin: 0 0 16px;
+  padding: 20px;
+  border: 1px solid var(--lc-border);
+  border-radius: 14px;
+  background: var(--lc-surface-2);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.lc-body .landlord-chat-msg {
+  max-width: 80%;
+  padding: 12px 16px;
+  border-radius: 16px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  font-size: 0.95rem;
+}
+.lc-body .landlord-chat-msg.is-user {
+  align-self: flex-end;
+  background: #ebf3ff;
+  color: #0047b3;
+  border-bottom-right-radius: 4px;
+  white-space: pre-wrap;
+  border: 1px solid #cce3ff;
+}
+.lc-body .landlord-chat-msg.is-answer {
+  align-self: flex-start;
+  background: #ffffff;
+  border: 1px solid var(--lc-border);
+  color: var(--lc-text);
+  border-bottom-left-radius: 4px;
+}
+.lc-body .landlord-chat-msg.is-pending { color: var(--lc-muted); font-style: italic; }
 .lc-body .landlord-chat-msg.is-error { background: var(--lc-error-bg); color: var(--lc-error); border-color: var(--lc-error-border); }
 .lc-body .landlord-chat-msg a { color: var(--lc-link); }
 
-.lc-prompt { flex: none; padding: 12px 16px 0; border-top: 1px solid var(--lc-border); }
-.lc-prompt .landlord-btn { margin: 0; }
-.lc-prompt textarea { min-height: 52px; max-height: 30vh; margin: 0; }
+.lc-prompt {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+  padding: 0;
+  border-top: none;
+}
+.lc-prompt .landlord-field { flex: 1; margin: 0; }
+.lc-prompt textarea {
+  width: 100%;
+  min-height: 52px;
+  max-height: 200px;
+  border: 1px solid var(--lc-border-strong);
+  border-radius: 12px;
+  padding: 12px 14px;
+  font-family: inherit;
+  font-size: 0.95rem;
+  background: var(--lc-surface);
+  color: var(--lc-text);
+  box-sizing: border-box;
+}
+.lc-prompt textarea:focus {
+  outline: 2px solid var(--lc-focus);
+  border-color: var(--lc-focus);
+}
+.lc-prompt .landlord-btn {
+  margin: 0;
+  padding: 12px 24px;
+  border-radius: 10px;
+  background: var(--lc-accent);
+  color: #ffffff;
+  font-size: 0.95rem;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  height: 52px;
+  transition: all 0.15s ease;
+}
+.lc-prompt .landlord-btn:hover {
+  background: var(--lc-accent-hover);
+  color: #ffffff;
+}
 
-.lc-tip { flex: none; display: flex; align-items: baseline; gap: 8px; padding: 8px 16px 12px; font-size: 0.82rem; line-height: 1.4; color: var(--lc-muted); }
+.lc-tip {
+  margin-top: 10px;
+  background: var(--lc-surface-2);
+  border: 1px solid var(--lc-border);
+  border-radius: 10px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 10px 14px;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: var(--lc-muted);
+}
 .lc-tip-label { flex: none; font-weight: 700; color: var(--lc-text); }
 .lc-tip-label::before { content: "💡 " / ""; }
-/* Room for two lines, so a rotating tip that wraps doesn't move the prompt. */
 .lc-tip-body { min-width: 0; min-height: calc(2 * 1.4em); }
 .lc-body .lc-tip-text {
   display: inline;
@@ -3146,28 +3253,47 @@ footer a { color: inherit; }
 .lc-body button.lc-tip-text { cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
 .lc-body button.lc-tip-text:hover { background: none; color: var(--lc-text); }
 
-/* The Shortlist sidebar */
-.lc-entries { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+/* The Shortlist sidebar / tab */
+.lc-board.is-tab-mode #shortlist-section .lc-entries {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.lc-board:not(.is-tab-mode) .lc-entries {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
 .lc-entry {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: start;
-  gap: 6px 10px;
-  padding: 10px;
+  gap: 10px 14px;
+  padding: 16px 18px;
   border: 1px solid var(--lc-border);
-  border-radius: 12px;
-  background: var(--lc-surface);
+  border-radius: 14px;
+  background: var(--lc-surface-2);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+  transition: all 0.2s ease;
+}
+.lc-entry:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
 }
 .lc-entry > .lc-editor { grid-column: 2 / -1; }
-.lc-entry.is-excluded { background: var(--lc-surface-2); }
-.lc-entry-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; overflow-wrap: anywhere; }
-.lc-entry-name { font-weight: 700; font-size: 0.92rem; }
-.lc-entry-place { flex: none; display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: baseline; font-size: 0.76rem; color: var(--lc-muted); }
+.lc-entry.is-excluded { background: var(--lc-surface-3); }
+.lc-entry-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; overflow-wrap: anywhere; }
+.lc-entry-name { font-weight: 700; font-size: 1.05rem; color: #0f172a; }
+.lc-entry-place { flex: none; display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: baseline; font-size: 0.82rem; color: var(--lc-link); font-weight: 600; }
 .lc-entry.is-excluded .lc-entry-place { color: var(--lc-error); }
-.lc-entry-status { font-size: 0.76rem; color: var(--lc-muted); }
-/* Compact thumbs left of "#6 · To invite" / "Platz 6 · Eingeladen", on one line; should a wider
-   font not fit, the status ends in an ellipsis rather than wrapping. An exclusion reason is longer
-   and wraps, so it stays readable in full. */
+.lc-entry-status { font-size: 0.82rem; color: var(--lc-muted); }
 .lc-entry-line { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
 .lc-entry-line .lc-thumbs { flex: none; gap: 2px; }
 .lc-entry-facts { min-width: 0; display: flex; align-items: baseline; gap: 0 4px; white-space: nowrap; }
@@ -3175,36 +3301,69 @@ footer a { color: inherit; }
 .lc-entry.is-excluded .lc-entry-facts { flex-wrap: wrap; white-space: normal; }
 .lc-entry.is-excluded .lc-entry-place { flex: 0 1 auto; }
 .lc-entry-facts .lc-entry-status::before { content: "· " / ""; }
-.lc-body .lc-entry .lc-thumb { min-width: 26px; min-height: 26px; padding: 1px 4px; border-radius: 7px; font-size: 0.85rem; }
-.lc-body .lc-entry-remove { flex: none; min-width: 32px; min-height: 32px; padding: 2px 8px; font-size: 1.1rem; line-height: 1; }
+.lc-body .lc-entry .lc-thumb { min-width: 28px; min-height: 28px; padding: 2px 6px; border-radius: 7px; font-size: 0.85rem; }
+.lc-body .lc-entry-remove {
+  flex: none;
+  min-width: 32px;
+  min-height: 32px;
+  padding: 2px 8px;
+  font-size: 1.1rem;
+  line-height: 1;
+  border: 1px solid var(--lc-border);
+  border-radius: 8px;
+  background: var(--lc-surface);
+  color: var(--lc-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.lc-body .lc-entry-remove:hover {
+  background: #fee2e2;
+  color: #b91c1c;
+  border-color: #fca5a5;
+}
 
-/* The status expander under each Shortlist entry */
-.lc-editor-toggle { width: fit-content; font-size: 0.78rem; color: var(--lc-muted); cursor: pointer; }
-.lc-editor-toggle:hover { color: var(--lc-text); }
-.lc-editor-form { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
-.lc-editor-field { display: flex; flex-direction: column; gap: 2px; font-size: 0.75rem; color: var(--lc-muted); }
+/* Status editor */
+.lc-editor-toggle { width: fit-content; font-size: 0.82rem; color: var(--lc-link); font-weight: 500; cursor: pointer; }
+.lc-editor-toggle:hover { color: var(--lc-accent-hover); }
+.lc-editor-form { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.lc-editor-field { display: flex; flex-direction: column; gap: 4px; font-size: 0.8rem; color: var(--lc-muted); }
 .lc-editor-field select,
 .lc-editor-field input {
   min-width: 0;
-  padding: 6px 8px;
+  padding: 8px 10px;
   border: 1px solid var(--lc-border-strong);
   border-radius: 8px;
   background: var(--lc-surface);
   color: var(--lc-text);
   font: inherit;
-  font-size: 0.85rem;
+  font-size: 0.9rem;
 }
-.lc-editor-error { margin: 0; font-size: 0.8rem; }
-.lc-body .lc-editor-save { align-self: flex-start; margin: 0; padding: 6px 12px; font-size: 0.82rem; }
+.lc-editor-error { margin: 0; font-size: 0.82rem; }
+.lc-body .lc-editor-save {
+  align-self: flex-start;
+  margin: 0;
+  padding: 8px 16px;
+  font-size: 0.85rem;
+  border-radius: 8px;
+  background: var(--lc-accent);
+  color: #ffffff;
+  border: none;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.15s ease;
+}
+.lc-body .lc-editor-save:hover {
+  background: var(--lc-accent-hover);
+  color: #ffffff;
+}
 
-/* Narrower than three columns: stack slots, chat, Shortlist; the board scrolls as a page */
 @media (max-width: 999px) {
-  .lc-board { display: flex; flex-direction: column; overflow-y: auto; }
+  .lc-board:not(.is-tab-mode) { display: flex; flex-direction: column; }
   .lc-left,
   .lc-side,
-  .lc-chat { flex: none; overflow: visible; }
+  .lc-chat { flex: none; }
   .lc-slots { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
-  .lc-turns { flex: none; min-height: 200px; max-height: 60vh; }
+  .lc-turns { flex: none; min-height: 250px; max-height: 55vh; }
 }
 
 @media (max-width: 600px) {
@@ -3214,3 +3373,4 @@ footer a { color: inherit; }
   .lc-slots { grid-template-columns: minmax(0, 1fr); }
   .lc-body .landlord-chat-msg { max-width: 100%; }
 }
+

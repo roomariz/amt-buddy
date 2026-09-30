@@ -11,98 +11,196 @@
     <title data-i18n="landlordChat.metaTitle">Amt-Buddy · Vermieter-Chat</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
-  <body class="gpt-body lc-body">
+  <body class="gpt-body landlord-body lc-body">
     <main class="gpt-main landlord-main lc-main">
-      <header class="gpt-topbar">
-        <a class="landlord-nav-link" href="/" data-i18n="landlord.toChat">Zum Mieter-Chat</a>
-        <div class="topbar-center">
-          <span class="topbar-title" data-i18n="landlordChat.title">Amt-Buddy Vermieter · Chat</span>
+      <header class="gpt-topbar landlord-topbar">
+        <div class="topbar-left">
+          <div class="topbar-brand">
+            <span class="brand-title">Amt-Buddy</span>
+            <span class="brand-subtitle" data-i18n="landlord.brandRole">Vermieter</span>
+          </div>
         </div>
         <div class="topbar-actions">
-          <a class="landlord-nav-link" href="/landlord.html" data-i18n="landlordChat.classicLink">Klassische Ansicht</a>
-          <span id="landlord-name" class="landlord-name" hidden></span>
-          <button type="button" id="btn-sign-out" class="landlord-link-btn" hidden data-i18n="landlord.signOut">Abmelden</button>
+          <a class="landlord-nav-link" id="nav-link-classic" href="/landlord.html" data-i18n="landlordChat.classicLink">Klassische Ansicht</a>
+          <span class="topbar-divider" aria-hidden="true">|</span>
+          <a class="landlord-nav-link" href="/" data-i18n="landlord.toChat">Zum Mieter-Chat</a>
+          <span class="topbar-divider" aria-hidden="true">|</span>
           <div class="lang-switch" role="group" aria-label="Sprache" data-i18n-attr="aria-label:lang.label">
             <button type="button" data-lang="de" lang="de" aria-label="Deutsch" aria-pressed="true">DE</button>
             <span aria-hidden="true">|</span>
             <button type="button" data-lang="en" lang="en" aria-label="English" aria-pressed="false">EN</button>
           </div>
+          <span class="topbar-divider" aria-hidden="true">|</span>
+          <span id="landlord-name" class="landlord-name" hidden></span>
+          <button type="button" id="btn-sign-out" class="landlord-link-btn" hidden data-i18n="landlord.signOut">Abmelden</button>
+          <div class="topbar-avatar" aria-hidden="true" title="User Profile">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+              <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
+            </svg>
+          </div>
         </div>
       </header>
 
-      <!-- Sign-in: just a name, the same landlord session as /landlord.html -->
-      <div id="sign-in-wrap" class="gpt-scroll-container">
+      <div class="gpt-scroll-container">
         <div class="landlord-column">
-          <section id="sign-in" class="landlord-card" aria-labelledby="sign-in-title">
-            <h2 id="sign-in-title" data-i18n="landlord.signInTitle">Anmelden</h2>
-            <p class="landlord-intro" data-i18n="landlord.signInIntro">
-              Geben Sie Ihren Namen ein. Ein Passwort gibt es nicht: Mit demselben Namen finden Sie Ihre Wohnung beim nächsten Mal wieder.
-            </p>
-            <form id="sign-in-form" class="landlord-form" novalidate>
-              <label class="landlord-field">
-                <span data-i18n="landlord.name">Ihr Name</span>
-                <input id="sign-in-name" name="name" autocomplete="name" maxlength="100" required />
-              </label>
-              <p id="sign-in-error" class="landlord-error" role="alert" hidden></p>
-              <button type="submit" class="landlord-btn" data-i18n="landlord.signIn">Anmelden</button>
-            </form>
-          </section>
+          <!-- Sign-in: just a name, the same landlord session as /landlord.html -->
+          <div id="sign-in-wrap">
+            <section id="sign-in" class="landlord-card" aria-labelledby="sign-in-title">
+              <div class="card-header">
+                <div class="card-icon-badge" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path>
+                    <polyline points="10 17 15 12 10 7"></polyline>
+                    <line x1="15" y1="12" x2="3" y2="12"></line>
+                  </svg>
+                </div>
+                <div class="card-title-group">
+                  <h2 id="sign-in-title" data-i18n="landlord.signInTitle">Anmelden</h2>
+                  <p class="landlord-intro" data-i18n="landlord.signInIntro">
+                    Geben Sie Ihren Namen ein. Ein Passwort gibt es nicht: Mit demselben Namen finden Sie Ihre Wohnung beim nächsten Mal wieder.
+                  </p>
+                </div>
+              </div>
+              <form id="sign-in-form" class="landlord-form" novalidate>
+                <label class="landlord-field">
+                  <span data-i18n="landlord.name">Ihr Name</span>
+                  <input id="sign-in-name" name="name" autocomplete="name" maxlength="100" required />
+                </label>
+                <p id="sign-in-error" class="landlord-error" role="alert" hidden></p>
+                <button type="submit" class="landlord-btn" data-i18n="landlord.signIn">Anmelden</button>
+              </form>
+            </section>
+          </div>
+
+          <!-- Navigation tabs: visible when signed in -->
+          <nav id="landlord-tabs" class="landlord-tabs-bar" role="tablist" aria-label="Landlord navigation" hidden>
+            <button type="button" role="tab" class="landlord-tab-btn is-active" data-tab="recommendations" id="tab-btn-recommendations" aria-controls="slots-section" aria-selected="true">
+              <svg class="tab-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+              </svg>
+              <span data-i18n="landlordChat.tabs.recommendations">Empfehlungen</span>
+            </button>
+            <button type="button" role="tab" class="landlord-tab-btn" data-tab="chat" id="tab-btn-chat" aria-controls="chat-section" aria-selected="false">
+              <svg class="tab-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+              </svg>
+              <span data-i18n="landlordChat.tabs.chat">Chat</span>
+            </button>
+            <button type="button" role="tab" class="landlord-tab-btn" data-tab="shortlist" id="tab-btn-shortlist" aria-controls="shortlist-section" aria-selected="false">
+              <svg class="tab-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                <circle cx="9" cy="7" r="4"></circle>
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+              </svg>
+              <span data-i18n="landlordChat.tabs.shortlist">Shortlist</span>
+              <span id="tab-shortlist-count" class="tab-count"></span>
+            </button>
+            <button type="button" role="tab" class="landlord-tab-btn" data-tab="board" id="tab-btn-board" aria-controls="board" aria-selected="false">
+              <svg class="tab-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="3" width="7" height="7"></rect>
+                <rect x="14" y="3" width="7" height="7"></rect>
+                <rect x="14" y="14" width="7" height="7"></rect>
+                <rect x="3" y="14" width="7" height="7"></rect>
+              </svg>
+              <span data-i18n="landlordChat.tabs.board">Gesamtansicht</span>
+            </button>
+          </nav>
+
+          <!-- The board: recommendations, chat, shortlist in tab view or 3-column view -->
+          <div id="board" class="lc-board is-tab-mode" hidden>
+            <section id="slots-section" class="lc-left landlord-card lc-card-tab" aria-labelledby="slots-title">
+              <div class="card-header">
+                <div class="card-icon-badge" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+                  </svg>
+                </div>
+                <div class="card-title-group">
+                  <h2 id="slots-title" class="lc-heading" tabindex="-1" data-i18n="landlordChat.slotsTitle">Empfehlungen</h2>
+                  <p class="landlord-intro" data-i18n="landlordChat.slotsIntro">Die am besten passenden Bewerber auf Basis Ihrer aktuellen Kriterien.</p>
+                </div>
+              </div>
+              <p id="board-error" class="landlord-error lc-error" role="alert" hidden></p>
+              <ul id="slots" class="lc-slots"></ul>
+
+              <div class="lc-glance-wrap">
+                <h3 id="glance-title" class="lc-subheading" data-i18n="landlordChat.glanceTitle">Auf einen Blick</h3>
+                <ul id="glance-tiles" class="lc-tiles" aria-labelledby="glance-title"></ul>
+                <p id="pool-errors" class="landlord-note lc-pool-errors" hidden></p>
+              </div>
+
+              <div class="lc-weights-wrap">
+                <h3 id="weights-title" class="lc-subheading lc-weights-title" data-i18n="landlordChat.weightsTitle">Prioritäten</h3>
+                <!-- The pie (an SVG drawn from numbers) beside its legend: the legend is what screen readers get. -->
+                <div id="weights" class="lc-weights" hidden>
+                  <div id="weights-pie" class="lc-pie"></div>
+                  <div class="lc-weights-text">
+                    <ul id="weights-legend" class="lc-legend" aria-labelledby="weights-title"></ul>
+                    <p id="weights-bonus" class="lc-weights-bonus"></p>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section id="chat-section" class="lc-chat landlord-card lc-card-tab" aria-labelledby="chat-title">
+              <div class="card-header lc-chat-header">
+                <div class="card-icon-badge" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                  </svg>
+                </div>
+                <div class="card-title-group">
+                  <h2 id="chat-title" class="lc-heading" data-i18n="landlord.tabs.chat">Chat mit Amt-Buddy</h2>
+                  <p class="landlord-intro" data-i18n="landlordChat.chatIntro">Passen Sie Kriterien an, fragen Sie nach Bewerbern oder optimieren Sie Ihre Auswahl.</p>
+                </div>
+              </div>
+              <ol id="chat-messages" class="landlord-chat-messages lc-turns" aria-live="polite">
+                <!-- Page text, not a model turn: it follows the language switch and survives sign-out. -->
+                <li
+                  id="chat-welcome"
+                  class="landlord-chat-msg is-answer"
+                  data-i18n="landlordChat.welcome"
+                  data-i18n-attr="aria-label:landlord.chat.amtBuddy"
+                ></li>
+              </ol>
+              <form id="chat-form" class="landlord-chat-form lc-prompt" novalidate>
+                <label class="landlord-field landlord-chat-field">
+                  <span class="visually-hidden" data-i18n="landlord.chat.label">Ihre Nachricht</span>
+                  <textarea id="chat-input" name="message" rows="2" maxlength="4000" placeholder="Wer ist mein bester Bewerber?" data-i18n-attr="placeholder:landlord.chat.placeholder"></textarea>
+                </label>
+                <button type="submit" id="btn-chat-send" class="landlord-btn" data-i18n="landlord.chat.send">Senden</button>
+              </form>
+              <!-- Not aria-live: it changes as each answer ends, and the answer is what should be read out. -->
+              <div id="tip" class="lc-tip" hidden>
+                <span class="lc-tip-label" data-i18n="landlordChat.tipLabel">Tipp</span>
+                <span id="tip-body" class="lc-tip-body"></span>
+              </div>
+            </section>
+
+            <aside id="shortlist-section" class="lc-side landlord-card lc-card-tab" aria-labelledby="shortlist-title">
+              <div class="card-header">
+                <div class="card-icon-badge" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="9" cy="7" r="4"></circle>
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                  </svg>
+                </div>
+                <div class="card-title-group">
+                  <h2 id="shortlist-title" class="lc-heading" tabindex="-1" data-i18n="landlordChat.shortlistTitle">Shortlist</h2>
+                  <p class="landlord-intro" data-i18n="landlordChat.shortlistIntro">Ihre ausgewählten Kandidaten zur Einladung oder weiteren Prüfung.</p>
+                </div>
+              </div>
+              <p id="shortlist-error" class="landlord-error lc-error" role="alert" hidden></p>
+              <ul id="shortlist-list" class="lc-entries"></ul>
+              <p id="shortlist-empty" class="landlord-hint" hidden data-i18n="landlordChat.shortlistEmpty">
+                Noch niemand auf der Shortlist. Wählen Sie aus den Empfehlungen.
+              </p>
+            </aside>
+          </div>
         </div>
-      </div>
-
-      <!-- The board: slots and tiles, the chat, the Shortlist; drawn by landlord-chat.js -->
-      <div id="board" class="lc-board" hidden>
-        <section class="lc-left" aria-labelledby="slots-title">
-          <h2 id="slots-title" class="lc-heading" tabindex="-1" data-i18n="landlordChat.slotsTitle">Empfehlungen</h2>
-          <p id="board-error" class="landlord-error lc-error" role="alert" hidden></p>
-          <ul id="slots" class="lc-slots"></ul>
-          <h2 id="glance-title" class="lc-heading" data-i18n="landlordChat.glanceTitle">Auf einen Blick</h2>
-          <ul id="glance-tiles" class="lc-tiles" aria-labelledby="glance-title"></ul>
-          <p id="pool-errors" class="landlord-note lc-pool-errors" hidden></p>
-          <h2 id="weights-title" class="lc-heading lc-weights-title" data-i18n="landlordChat.weightsTitle">Gewichtung</h2>
-          <!-- The pie (an SVG drawn from numbers) beside its legend: the legend is what screen readers get. -->
-          <div id="weights" class="lc-weights" hidden>
-            <div id="weights-pie" class="lc-pie"></div>
-            <div class="lc-weights-text">
-              <ul id="weights-legend" class="lc-legend" aria-labelledby="weights-title"></ul>
-              <p id="weights-bonus" class="lc-weights-bonus"></p>
-            </div>
-          </div>
-        </section>
-
-        <section class="lc-chat" aria-labelledby="chat-title">
-          <h2 id="chat-title" class="visually-hidden" data-i18n="landlord.chat.title">Chat mit Amt-Buddy</h2>
-          <ol id="chat-messages" class="landlord-chat-messages lc-turns" aria-live="polite">
-            <!-- Page text, not a model turn: it follows the language switch and survives sign-out. -->
-            <li
-              id="chat-welcome"
-              class="landlord-chat-msg is-answer"
-              data-i18n="landlordChat.welcome"
-              data-i18n-attr="aria-label:landlord.chat.amtBuddy"
-            ></li>
-          </ol>
-          <form id="chat-form" class="landlord-chat-form lc-prompt" novalidate>
-            <label class="landlord-field landlord-chat-field">
-              <span class="visually-hidden" data-i18n="landlord.chat.label">Ihre Nachricht</span>
-              <textarea id="chat-input" name="message" rows="2" maxlength="4000" placeholder="Wer ist mein bester Bewerber?" data-i18n-attr="placeholder:landlord.chat.placeholder"></textarea>
-            </label>
-            <button type="submit" id="btn-chat-send" class="landlord-btn" data-i18n="landlord.chat.send">Senden</button>
-          </form>
-          <!-- Not aria-live: it changes as each answer ends, and the answer is what should be read out. -->
-          <div id="tip" class="lc-tip" hidden>
-            <span class="lc-tip-label" data-i18n="landlordChat.tipLabel">Tipp</span>
-            <span id="tip-body" class="lc-tip-body"></span>
-          </div>
-        </section>
-
-        <aside class="lc-side" aria-labelledby="shortlist-title">
-          <h2 id="shortlist-title" class="lc-heading" tabindex="-1" data-i18n="landlordChat.shortlistTitle">Shortlist</h2>
-          <p id="shortlist-error" class="landlord-error lc-error" role="alert" hidden></p>
-          <ul id="shortlist-list" class="lc-entries"></ul>
-          <p id="shortlist-empty" class="landlord-hint" hidden data-i18n="landlordChat.shortlistEmpty">
-            Noch niemand auf der Shortlist. Wählen Sie aus den Empfehlungen.
-          </p>
-        </aside>
       </div>
     </main>
 

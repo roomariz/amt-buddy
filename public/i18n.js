@@ -368,6 +368,15 @@ const de = {
     metaDescription: "Amt-Buddy für Vermieter als Chat: die zwei besten Bewerber im Blick, die Shortlist daneben, und die Auswahl im Gespräch anpassen.",
     classicLink: "Klassische Ansicht",
     chatLink: "Chat-Ansicht (Prototyp)",
+    tabs: {
+      recommendations: "Empfehlungen",
+      chat: "Chat",
+      shortlist: "Shortlist",
+      board: "Gesamtansicht",
+    },
+    slotsIntro: "Die am besten passenden Bewerber auf Basis Ihrer aktuellen Kriterien.",
+    chatIntro: "Passen Sie Kriterien an, fragen Sie nach Bewerbern oder optimieren Sie Ihre Auswahl.",
+    shortlistIntro: "Ihre ausgewählten Kandidaten zur Einladung oder weiteren Prüfung.",
     welcome:
       "Hallo! Ich bin Amt-Buddy und helfe Ihnen, Bewerber auszuwählen. Links sehen Sie zwei Ihrer am besten passenden Bewerber, rechts Ihre Shortlist. Sagen Sie mir, was Ihnen wichtig ist, dann passe ich meine Empfehlungen an. Die Tipps unter dem Eingabefeld zeigen, was ich kann.",
     slotsTitle: "Empfehlungen",
@@ -815,6 +824,15 @@ const en = {
     metaDescription: "Amt-Buddy for landlords as a chat: your two best applicants in view, the Shortlist beside them, and the selection tuned by talking.",
     classicLink: "Classic dashboard",
     chatLink: "Chat view (prototype)",
+    tabs: {
+      recommendations: "Recommendations",
+      chat: "Chat",
+      shortlist: "Shortlist",
+      board: "Board view",
+    },
+    slotsIntro: "Your best-matching applicants based on current criteria.",
+    chatIntro: "Tune criteria, ask about applicants, or refine your selection.",
+    shortlistIntro: "Your shortlisted candidates to invite or review.",
     welcome:
       "Hello! I'm Amt-Buddy, here to help you choose applicants. On the left are two of your best-matching applicants, on the right your Shortlist. Tell me what matters to you and I'll adapt my recommendations. The tips below the input show what I can do.",
     slotsTitle: "Recommendations",
