@@ -1386,7 +1386,7 @@ footer a { color: inherit; }
 .landlord-layout > .gpt-scroll-container { min-width: 0; }
 .landlord-chat-panel {
   flex: none;
-  width: 400px;
+  width: clamp(440px, 36vw, 640px);
   display: flex;
   flex-direction: column;
   min-height: 0;

@@ -47,6 +47,16 @@
               </form>
             </section>
 
+            <!-- The pool overview: pool summary, stat tiles and Recommendations; drawn by landlord.js -->
+            <section id="pool-overview" class="landlord-card" aria-labelledby="pool-overview-title" aria-live="polite" hidden>
+              <h2 id="pool-overview-title" data-i18n="landlord.poolOverview.title">Ihre Bewerber auf einen Blick</h2>
+              <p id="pool-overview-summary" class="pool-summary"></p>
+              <ul id="pool-overview-tiles" class="pool-tiles"></ul>
+              <h3 class="ranking-subtitle" data-i18n="landlord.poolOverview.recommendationsTitle">Empfehlungen</h3>
+              <ul id="recommendation-cards" class="recommendation-cards"></ul>
+              <p id="recommendations-empty" class="landlord-hint" hidden></p>
+            </section>
+
             <!-- The Listing -->
             <section id="listing" class="landlord-card" aria-labelledby="listing-title" hidden>
               <h2 id="listing-title" data-i18n="landlord.listingTitle">Ihre Wohnung</h2>
@@ -199,16 +209,6 @@
                 <p id="criteria-error" class="landlord-error" role="alert" hidden></p>
                 <p id="criteria-status" class="landlord-hint" role="status"></p>
               </form>
-            </section>
-
-            <!-- The pool overview: pool summary, stat tiles and Recommendations; drawn by landlord.js -->
-            <section id="pool-overview" class="landlord-card" aria-labelledby="pool-overview-title" aria-live="polite" hidden>
-              <h2 id="pool-overview-title" data-i18n="landlord.poolOverview.title">Ihre Bewerber auf einen Blick</h2>
-              <p id="pool-overview-summary" class="pool-summary"></p>
-              <ul id="pool-overview-tiles" class="pool-tiles"></ul>
-              <h3 class="ranking-subtitle" data-i18n="landlord.poolOverview.recommendationsTitle">Empfehlungen</h3>
-              <ul id="recommendation-cards" class="recommendation-cards"></ul>
-              <p id="recommendations-empty" class="landlord-hint" hidden></p>
             </section>
 
             <!-- The Shortlist; drawn by landlord.js -->
