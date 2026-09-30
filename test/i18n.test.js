@@ -74,7 +74,7 @@ test("an unknown language is ignored and an unknown key shows as itself", () => 
 
 test("every text the landlord page's script looks up exists in both languages", async () => {
   const sources = await Promise.all(
-    ["landlord.js", "landlord-chat.js", "landlord/api.js", "landlord/board.js", "landlord/tips.js", "landlord/avatar.js", "landlord/rank-moves.js", "landlord/weights-pie.js", "landlord/top-message.js"].map((file) => readFile(new URL(`../public/${file}`, import.meta.url), "utf8")),
+    ["landlord.js", "landlord-chat.js", "landlord/api.js", "landlord/board.js", "landlord/tips.js", "landlord/avatar.js", "landlord/rank-moves.js", "landlord/weights-pie.js"].map((file) => readFile(new URL(`../public/${file}`, import.meta.url), "utf8")),
   );
   const keys = sources.flatMap((source) => [...source.matchAll(/\bt\("([^"]+)"/g)].map((m) => m[1]));
   assert.ok(keys.length > 5);

@@ -23,7 +23,6 @@ import { formatNumber } from "./landlord/ranking.js";
 import { forgetLandlord, rememberLandlord, storedLandlord } from "./landlord/session.js";
 import { statusOptions } from "./landlord/shortlist.js";
 import { landlordTips } from "./landlord/tips.js";
-import { topApplicantsMessage } from "./landlord/top-message.js";
 import { weightsPie, weightsPieSvg } from "./landlord/weights-pie.js";
 import { onLanguageChange, startI18n, t } from "./i18n.js";
 
@@ -449,7 +448,6 @@ function nextTip() {
 // Fetches the overview and redraws. `rankingChanged` (a turn changed the criteria or the flat
 // details): the rank moves are measured against the ranking shown so far, and the skipped
 // applicants come back into consideration. A response overtaken by a later request is dropped.
-// Resolves to true only when this response was drawn.
 async function loadOverview({ rankingChanged = false } = {}) {
   if (!landlord) return;
   const landlordId = landlord.landlordId;
@@ -474,7 +472,6 @@ async function loadOverview({ rankingChanged = false } = {}) {
   refillSlots();
   renderBoard();
   renderTips({ first });
-  return true;
 }
 
 // --- actions -----------------------------------------------------------------------------------
@@ -757,34 +754,6 @@ function drawTurn(item, state) {
   stickToBottom();
 }
 
-// The second message after a turn that changed the ranking: the current top 3 by rank, from the
-// refetched overview (topApplicantsMessage), not the model. Built from DOM nodes with textContent,
-// since names are untrusted. Like the other bubbles, its text stays in the language it was written in.
-function appendTopApplicants() {
-  const message = topApplicantsMessage(overview?.ranked);
-  if (!message) return;
-  const shapes = new Map(overview.ranked.map((entry) => [entry.applicantId, entry.householdShape]));
-  const list = el("ol", "lc-top-list");
-  for (const entry of message.items) {
-    const row = el("li", "lc-top-item");
-    row.value = entry.rank;
-    const card = el("div", "lc-top-card");
-    const body = el("div", "lc-top-body");
-    const name = entry.name === entry.applicantId ? entry.name : `${entry.name} (${entry.applicantId})`;
-    const score = el("p", "lc-top-score");
-    score.append(el("span", "lc-top-points", entry.scoreText));
-    if (entry.bonusText) score.append(" · ", el("span", "lc-top-bonus", entry.bonusText));
-    body.append(el("p", "lc-top-name", name), score, el("p", "lc-top-reason", entry.reason));
-    card.append(avatar(shapes.get(entry.applicantId), 28), body);
-    row.append(card);
-    list.append(row);
-  }
-  const item = appendChatMessage("answer");
-  item.classList.add("lc-top-message");
-  item.append(el("p", "lc-top-intro", message.intro), list);
-  stickToBottom();
-}
-
 chatForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const message = chatInput.value.trim();
@@ -803,13 +772,8 @@ chatForm.addEventListener("submit", async (event) => {
     if (landlord?.landlordId !== landlordId) return;
     if (state.signedOut) return signOut();
     // A turn that changed the criteria, the Shortlist, the remembered preferences or the flat
-    // details: refetch. Only criteria (with the bonus) and flat details change the ranking itself;
-    // after such a turn, if it ended without an error, the new top 3 follow the answer.
-    const rankingChanged = state.changed.criteria || state.changed.flat;
-    if (changedDashboard(state)) {
-      const drawn = await loadOverview({ rankingChanged });
-      if (drawn && rankingChanged && state.phase === "done") appendTopApplicants();
-    }
+    // details: refetch. Only criteria and flat details change the ranking itself.
+    if (changedDashboard(state)) await loadOverview({ rankingChanged: state.changed.criteria || state.changed.flat });
     // One tip per finished turn: the next one shows as the answer ends.
     nextTip();
   } finally {

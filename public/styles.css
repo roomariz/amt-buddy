@@ -1761,17 +1761,6 @@ footer a { color: inherit; }
 .lc-body .landlord-chat-msg.is-pending { color: var(--lc-muted); }
 .lc-body .landlord-chat-msg.is-error { background: var(--lc-error-bg); color: var(--lc-error); border-color: var(--lc-error-border); }
 .lc-body .landlord-chat-msg a { color: var(--lc-link); }
-/* The top 3 after a turn that changed the ranking: an answer bubble holding a numbered card list. */
-.lc-top-list { margin: 0; padding-left: 1.4em; }
-.lc-top-item::marker { color: var(--lc-muted); font-weight: 600; }
-.lc-top-item + .lc-top-item { margin-top: 6px; }
-.lc-top-card { display: flex; align-items: flex-start; gap: 10px; padding: 8px 10px; border: 1px solid var(--lc-border); border-radius: 10px; background: var(--lc-surface); }
-.lc-top-body { min-width: 0; }
-.lc-body .lc-top-card p { margin: 0; }
-.lc-top-name { font-weight: 600; }
-.lc-body .lc-top-card .lc-top-score { margin-top: 2px; font-size: 0.82rem; color: var(--lc-muted); }
-.lc-top-points { font-weight: 600; color: var(--lc-good); }
-.lc-body .lc-top-card .lc-top-reason { margin-top: 4px; font-size: 0.82rem; line-height: 1.35; }
 
 .lc-prompt { flex: none; padding: 12px 16px 0; border-top: 1px solid var(--lc-border); }
 .lc-prompt .landlord-btn { margin: 0; }

@@ -343,8 +343,6 @@ const de = {
     welcome:
       "Hallo! Ich bin Amt-Buddy und helfe Ihnen, Bewerber auszuwählen. Links sehen Sie zwei Ihrer am besten passenden Bewerber, rechts Ihre Shortlist. Sagen Sie mir, was Ihnen wichtig ist, dann passe ich meine Empfehlungen an. Die Tipps unter dem Eingabefeld zeigen, was ich kann.",
     slotsTitle: "Empfehlungen",
-    topIntro: "Das sind jetzt Ihre drei am besten passenden Bewerber:",
-    topIntroFew: "Das sind jetzt Ihre am besten passenden Bewerber:",
     slotRank: "Platz {rank} von {total}",
     slotScore: "Match-Score {score}",
     addToShortlist: "Auf die Shortlist",
@@ -764,8 +762,6 @@ const en = {
     welcome:
       "Hello! I'm Amt-Buddy, here to help you choose applicants. On the left are two of your best-matching applicants, on the right your Shortlist. Tell me what matters to you and I'll adapt my recommendations. The tips below the input show what I can do.",
     slotsTitle: "Recommendations",
-    topIntro: "Here are your three best-matching applicants now:",
-    topIntroFew: "Here are your best-matching applicants now:",
     slotRank: "#{rank} of {total}",
     slotScore: "Match score {score}",
     addToShortlist: "Add to Shortlist",
