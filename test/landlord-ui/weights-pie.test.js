@@ -53,13 +53,14 @@ test("saved weights that do not sum to 100 are drawn as shares of their sum", ()
 
 test("the legend: largest share first (ties in criteria order), inactive criteria marked, EN", () => {
   const pie = inLanguage("en", () => weightsPie({ criteria: { weights: DEFAULT_WEIGHTS }, inactive: NO_RENT, bonusPoints: 5 }));
+  // A criterion not counted yet carries a hover hint saying what would make it count.
   assert.deepEqual(pie.legend, [
-    { criterion: "affordability", text: "Affordability 30 % – not counted yet", counted: false },
-    { criterion: "schufa", text: "SCHUFA 20 %", counted: true },
-    { criterion: "documents", text: "Documents 15 %", counted: true },
-    { criterion: "credibility", text: "Credibility 15 %", counted: true },
-    { criterion: "employment", text: "Employment 15 %", counted: true },
-    { criterion: "previousLandlord", text: "Previous landlord 5 %", counted: true },
+    { criterion: "affordability", text: "Affordability 30 % – not counted yet", counted: false, hint: "To count affordability, tell me the asking rent." },
+    { criterion: "schufa", text: "SCHUFA 20 %", counted: true, hint: null },
+    { criterion: "documents", text: "Documents 15 %", counted: true, hint: null },
+    { criterion: "credibility", text: "Credibility 15 %", counted: true, hint: null },
+    { criterion: "employment", text: "Employment 15 %", counted: true, hint: null },
+    { criterion: "previousLandlord", text: "Previous landlord 5 %", counted: true, hint: null },
   ]);
   assert.equal(pie.slices[0].counted, false, "the affordability slice is muted too");
   assert.equal(pie.bonusText, "👍/👎 ±5 points (your bonus)");
@@ -70,6 +71,7 @@ test("German, with fractional shares and bonus points", () => {
   const weights = { affordability: 27.8, schufa: 26, documents: 13.9, credibility: 13.9, employment: 13.9, previousLandlord: 4.6 };
   const pie = inLanguage("de", () => weightsPie({ criteria: { weights }, inactive: NO_RENT, bonusPoints: 6.5 }));
   assert.equal(pie.legend[0].text, "Bezahlbarkeit 27,8 % – zählt noch nicht");
+  assert.equal(pie.legend[0].hint, "Damit die Bezahlbarkeit zählt, nennen Sie mir die Kaltmiete.");
   assert.equal(pie.legend[1].text, "SCHUFA 26 %");
   assert.equal(pie.bonusText, "👍/👎 ±6,5 Punkte (Ihr Bonus)");
   assert.equal(pie.ariaLabel, "So sind die Kriterien gewichtet");
@@ -85,6 +87,7 @@ test("the SVG: an image labelled for screen readers, one path per slice with its
   assert.equal(svg.match(/<path\b/g).length, 6);
   for (const criterion of Object.keys(DEFAULT_WEIGHTS)) assert.ok(svg.includes(`data-criterion="${criterion}"`), criterion);
   assert.equal(svg.match(/\bis-muted\b/g).length, 1, "only affordability is muted");
+  assert.ok(svg.includes("To count affordability, tell me the asking rent."), "the muted slice's tooltip gives the hint");
   assert.match(svg, /\bwidth="120"/, "120 px by default");
   assert.match(weightsPieSvg(pie, { size: 90 }), /\bwidth="90"/);
 });

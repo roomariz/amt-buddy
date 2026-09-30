@@ -286,12 +286,17 @@ function renderWeights() {
   const pie = weightsPie(overview);
   weightsPieBox.innerHTML = weightsPieSvg(pie, { size: 96 });
   weightsLegend.replaceChildren(
-    ...pie.legend.map(({ criterion, text, counted }) => {
+    ...pie.legend.map(({ criterion, text, counted, hint }) => {
       const item = el("li", `lc-legend-row${counted ? "" : " is-muted"}`);
       const swatch = el("span", `lc-pie-swatch${counted ? "" : " is-muted"}`);
       swatch.dataset.criterion = criterion;
       swatch.setAttribute("aria-hidden", "true");
       item.append(swatch, el("span", "", text));
+      // What would make it count: a hover tip, and read out after the text for screen readers.
+      if (hint) {
+        item.title = hint;
+        item.append(el("span", "visually-hidden", hint));
+      }
       return item;
     }),
   );

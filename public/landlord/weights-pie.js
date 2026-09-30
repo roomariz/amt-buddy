@@ -20,7 +20,8 @@ const FALLBACK_COLOURS = {
 
 // { criteria: { weights }, inactive, bonusPoints } (the overview's) → { slices, legend, bonusText,
 // ariaLabel }. The saved weights, not the active ones: the landlord sees what they chose, and a
-// criterion that waits for a flat fact keeps its slice, muted. Weights are drawn as shares of their
+// criterion that waits for a flat fact keeps its slice, muted, with a `hint` saying what would make
+// it count (null for a counted one). Weights are drawn as shares of their
 // sum, since the saved ones are rounded to one decimal and need not add up to exactly 100.
 export function weightsPie({ criteria: { weights }, inactive = [], bonusPoints = 5 }) {
   const waiting = new Set(inactive.map((entry) => entry.criterion).filter(Boolean));
@@ -48,7 +49,8 @@ export function weightsPie({ criteria: { weights }, inactive = [], bonusPoints =
     .sort((a, b) => b.share - a.share || CRITERIA.indexOf(a.criterion) - CRITERIA.indexOf(b.criterion))
     .map(({ criterion, label, share, counted }) => {
       const text = t("landlordChat.weightShare", { criterion: label, share: formatNumber(share) });
-      return { criterion, text: counted ? text : `${text} – ${t("landlordChat.notCounted")}`, counted };
+      if (counted) return { criterion, text, counted, hint: null };
+      return { criterion, text: `${text} – ${t("landlordChat.notCounted")}`, counted, hint: t(`landlordChat.notCountedHint.${criterion}`) };
     });
 
   return {
@@ -71,13 +73,14 @@ function pointAt(centre, radius, angle) {
 }
 
 // The pie from weightsPie → an <svg> string for innerHTML. Only numbers and escaped texts go in.
-// Each slice has its legend text as a <title> (the hover tooltip); screen readers get the svg's
+// Each slice has its legend text as a <title> (the hover tooltip), a muted one followed by its hint;
+// screen readers get the svg's
 // label and the legend list beside it. The slices' outline in the surface colour (styles.css)
 // leaves a gap between neighbours, which also separates two colours that are close.
 export function weightsPieSvg(pie, { size = 120 } = {}) {
   const centre = size / 2;
   const radius = size / 2 - 1;
-  const titles = new Map(pie.legend.map(({ criterion, text }) => [criterion, text]));
+  const titles = new Map(pie.legend.map(({ criterion, text, hint }) => [criterion, hint ? `${text}. ${hint}` : text]));
   const shapes = pie.slices.map(({ criterion, counted, startAngle, endAngle }) => {
     const attributes = `data-criterion="${escape(criterion)}" class="lc-pie-slice${counted ? "" : " is-muted"}" fill="${FALLBACK_COLOURS[criterion] ?? "#888888"}"`;
     const title = `<title>${escape(titles.get(criterion) ?? criterion)}</title>`;

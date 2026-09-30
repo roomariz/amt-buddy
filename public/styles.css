@@ -1733,6 +1733,7 @@ footer a { color: inherit; }
 .lc-legend { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 1px; }
 .lc-legend-row { display: flex; align-items: baseline; gap: 6px; font-size: 0.72rem; line-height: 1.25; overflow-wrap: anywhere; }
 .lc-legend-row.is-muted { color: var(--lc-muted); }
+.lc-legend-row[title] { cursor: help; }
 .lc-pie-swatch { flex: none; width: 10px; height: 10px; border-radius: 3px; transform: translateY(1px); }
 .lc-weights-bonus { margin: 4px 0 0; font-size: 0.72rem; line-height: 1.25; color: var(--lc-muted); }
 .lc-pie-slice[data-criterion="affordability"], .lc-pie-swatch[data-criterion="affordability"] { fill: var(--pie-affordability); background: var(--pie-affordability); }

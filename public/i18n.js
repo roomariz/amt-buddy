@@ -355,6 +355,9 @@ const de = {
     weightsLabel: "So sind die Kriterien gewichtet",
     weightShare: "{criterion} {share} %",
     notCounted: "zählt noch nicht",
+    notCountedHint: {
+      affordability: "Damit die Bezahlbarkeit zählt, nennen Sie mir die Kaltmiete.",
+    },
     bonusLegend: "👍/👎 ±{points} Punkte (Ihr Bonus)",
     shortlistTitle: "Shortlist",
     shortlistEmpty: "Noch niemand auf der Shortlist. Wählen Sie aus den Empfehlungen.",
@@ -767,6 +770,9 @@ const en = {
     weightsLabel: "How the criteria are weighted",
     weightShare: "{criterion} {share} %",
     notCounted: "not counted yet",
+    notCountedHint: {
+      affordability: "To count affordability, tell me the asking rent.",
+    },
     bonusLegend: "👍/👎 ±{points} points (your bonus)",
     shortlistTitle: "Shortlist",
     shortlistEmpty: "Nobody on the Shortlist yet. Pick from the recommendations.",
