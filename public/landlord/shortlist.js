@@ -15,12 +15,11 @@ function scoreText({ matchScore, excluded }) {
 // The status menu's options: [{ value, label }], the label in the page language.
 export const statusOptions = () => SHORTLIST_STATUSES.map((value) => ({ value, label: t(`landlord.shortlist.status.${value}`) }));
 
-// The dashboard's Shortlist → the panel's rows: [{ applicantId, name, score, status, note }], in the
-// order the entries were added. An applicant no longer in the pool shows their id.
+// The dashboard's Shortlist → the panel's rows: [{ applicantId, score, status, note }], in the
+// order the entries were added. The applicant id is the only visible identifier.
 export function shortlistRows(shortlist) {
   return shortlist.map((entry) => ({
     applicantId: entry.applicantId,
-    name: entry.name ?? entry.applicantId,
     score: scoreText(entry),
     status: entry.status,
     note: entry.note ?? "",
@@ -31,7 +30,7 @@ export const isShortlisted = (shortlist, applicantId) => shortlist.some((entry) 
 
 // The Shortlist after a saved change ({ applicantId, status, note } as the server answered it):
 // a removal ("removed") takes the entry off, a change keeps its position, and a new entry goes to
-// the end with its name, rank and Match score from the dashboard's ranking ({ ranked, excluded }).
+// the end with its rank and Match score from the dashboard's ranking ({ ranked, excluded }).
 // Returns a new list, so the page can update without fetching the whole dashboard again.
 export function applyShortlistChange(shortlist, { applicantId, status, note }, { ranked, excluded }) {
   if (status === "removed") return shortlist.filter((entry) => entry.applicantId !== applicantId);
@@ -44,7 +43,6 @@ export function applyShortlistChange(shortlist, { applicantId, status, note }, {
     ...shortlist,
     {
       applicantId,
-      name: rankedEntry?.name ?? excludedEntry?.name ?? null,
       status,
       note,
       rank: rankedEntry?.rank ?? null,

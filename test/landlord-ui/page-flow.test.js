@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { createApp } from "../../src/app.js";
 import { createLandlordStore } from "../../src/landlord/store.js";
 import { createFakeBerlinWfs } from "../helpers/fake-berlin-wfs.js";
-import { fetchApplicantProfile, fetchDashboard, removeShortlistEntry, saveCriteria, saveListing, saveShortlistEntry, signIn } from "../../public/landlord/api.js";
+import { deleteNote, requestClarification, fetchApplicantProfile, fetchDashboard, removeShortlistEntry, saveCriteria, saveListing, saveShortlistEntry, signIn } from "../../public/landlord/api.js";
 import { criteriaFormValues, criteriaRequest } from "../../public/landlord/criteria.js";
 import { listingRequest } from "../../public/landlord/listing.js";
 import { rankingRows } from "../../public/landlord/ranking.js";
@@ -82,12 +82,12 @@ test("after saving the Listing the dashboard ranks the pool, and the table can f
   assert.deepEqual(before.ranked, []);
   assert.equal(after.hint, null);
   assert.ok(after.ranked.length > 0);
-  assert.ok(after.ranked.every(({ name }) => typeof name === "string" && name));
+  assert.ok(after.ranked.every(({ applicantId, name }) => /^A-\d+$/.test(applicantId) && name === undefined));
   const complete = rankingRows(after.ranked, { completeOnly: true });
   assert.ok(complete.length > 0 && complete.length < after.ranked.length);
 });
 
-test("a ranked row can request its applicant detail with contact and the same score", async (t) => {
+test("a ranked row can request its anonymised applicant detail and the same score", async (t) => {
   const { fetchImpl, close } = await start();
   t.after(close);
   const { landlordId } = await signIn({ fetchImpl, name: "Erika" });
@@ -101,7 +101,7 @@ test("a ranked row can request its applicant detail with contact and the same sc
   assert.equal(detail.score.matchScore, row.matchScore);
   assert.equal(detail.score.rentToIncome, row.rentToIncome);
   assert.deepEqual(detail.score.breakdown, row.breakdown);
-  assert.ok(detail.contact.name && detail.contact.email && detail.contact.phone);
+  assert.equal(detail.contact, undefined);
   assert.equal((await fetchApplicantProfile({ fetchImpl, landlordId, applicantId: "absent" })).notFound, true);
 });
 
@@ -128,13 +128,13 @@ test("with a Listing saved, the page opens with the pool summary, the stat tiles
 
   const dashboard = await fetchDashboard({ fetchImpl, landlordId });
 
-  assert.match(poolSummary(dashboard.stats), /^Sie haben 40 Bewerber, \d+ können sich diese Miete leisten\.$/);
+  assert.match(poolSummary(dashboard.stats), /^Sie haben 95 Bewerber, \d+ können sich diese Miete leisten\.$/);
   const tiles = statTiles(dashboard.stats);
   assert.equal(tiles.length, 6);
   assert.ok(tiles.every(({ available }) => available));
   const cards = recommendationCards(dashboard.recommendations);
   assert.deepEqual(cards.map(({ applicantId }) => applicantId), dashboard.ranked.slice(0, 2).map(({ applicantId }) => applicantId));
-  assert.ok(cards.every(({ name, reason }) => name && reason.startsWith("Dieser Bewerber könnte Ihnen gefallen: ")));
+  assert.ok(cards.every(({ applicantId, name, reason }) => /^A-\d+$/.test(applicantId) && name === undefined && reason.startsWith("Dieser Bewerber könnte Ihnen gefallen: ")));
 });
 
 test("adding an applicant from the ranking puts them on the Shortlist; its status and note can change and it can be removed", async (t) => {
@@ -153,8 +153,8 @@ test("adding an applicant from the ranking puts them on the Shortlist; its statu
   assert.deepEqual(added.entry, { applicantId: top.applicantId, status: "to_invite", note: null });
   assert.deepEqual(noted.entry, { applicantId: top.applicantId, status: "invited", note: "Viewing Tuesday" });
   assert.deepEqual(
-    listed.map(({ applicantId, name, status, note, matchScore }) => ({ applicantId, name, status, note, matchScore })),
-    [{ applicantId: top.applicantId, name: top.name, status: "invited", note: "Viewing Tuesday", matchScore: top.matchScore }],
+    listed.map(({ applicantId, status, note, matchScore }) => ({ applicantId, status, note, matchScore })),
+    [{ applicantId: top.applicantId, status: "invited", note: "Viewing Tuesday", matchScore: top.matchScore }],
   );
   assert.deepEqual(removed, { entry: { applicantId: top.applicantId, status: "removed", note: null } });
   assert.deepEqual(after, []);
@@ -214,4 +214,72 @@ test("a server that cannot be reached is an error with a readable reason", async
   await assert.rejects(signIn({ fetchImpl: down, name: "Erika" }), /./);
   await assert.rejects(fetchDashboard({ fetchImpl: down, landlordId: "l-1" }), /./);
   await assert.rejects(saveListing({ fetchImpl: down, landlordId: "l-1", request: {} }), /./);
+});
+
+
+test("the page can simulate a clarification and display copyable drafts in either language", async (t) => {
+  const { fetchImpl, close } = await start();
+  t.after(close);
+  const { applicantDetailView } = await import("../../public/landlord/applicant-detail.js");
+  const { setLanguage } = await import("../../public/i18n.js");
+  t.after(() => setLanguage("de"));
+  const { landlordId } = await signIn({ fetchImpl, name: "Erika" });
+  const detail = await requestClarification({ fetchImpl, landlordId, applicantId: "A-002" });
+  for (const lang of ["de", "en"]) {
+    setLanguage(lang);
+    const view = applicantDetailView(detail).clarification;
+    assert.equal(view.canRequest, false);
+    assert.ok(view.status && view.deadline);
+    assert.equal(view.drafts.length, 2);
+    for (const draft of view.drafts) {
+      assert.doesNotMatch(draft.text, /Olga Rossi|Diego Rossi|olga\.rossi2@example\.org|\+49 159 5216381/);
+      assert.equal(draft.recipient, lang === "en" ? "Applicant" : "Bewerbende Person");
+      assert.doesNotMatch(draft.recipient, /Olga Rossi|olga\.rossi2@example\.org|\+49 159 5216381/);
+      assert.ok(draft.text.includes(view.deadline));
+      assert.match(draft.text, lang === "en" ? /within 24 hours/ : /innerhalb von 24 Stunden/);
+      assert.match(draft.text, lang === "en" ? /what action you will take/ : /welche Schritte Sie unternehmen/);
+      assert.match(draft.text, lang === "en" ? /application can be considered/ : /Bewerbung berücksichtigt werden kann/);
+      assert.doesNotMatch(draft.text, /landlord\.|mailto:|wa.me/);
+    }
+  }
+  assert.deepEqual((await fetchApplicantProfile({ fetchImpl, landlordId, applicantId: "A-002" })).clarification, detail.clarification);
+});
+
+test("clarification drafts explain the discrepancy without showing personal data", async (t) => {
+  const { fetchImpl, close } = await start();
+  t.after(close);
+  const { applicantDetailView } = await import("../../public/landlord/applicant-detail.js");
+  const { setLanguage } = await import("../../public/i18n.js");
+  t.after(() => setLanguage("de"));
+  const { landlordId } = await signIn({ fetchImpl, name: "Erika" });
+
+  const beforeRequest = await fetchApplicantProfile({ fetchImpl, landlordId, applicantId: "A-002" });
+  assert.deepEqual(beforeRequest.clarification.documents, ["incomeProof"]);
+  assert.doesNotMatch(JSON.stringify(beforeRequest), /Diego Rossi/);
+
+  const singleName = await requestClarification({ fetchImpl, landlordId, applicantId: "A-002" });
+  setLanguage("en");
+  const singleView = applicantDetailView(singleName);
+  assert.deepEqual(Object.keys(singleName.clarification).sort(), ["documents", "request"]);
+  assert.doesNotMatch(JSON.stringify(singleName.profile), /Olga Rossi|Diego Rossi/);
+  for (const draft of singleView.clarification.drafts) {
+    assert.match(draft.text, /Income proof/i);
+    assert.match(draft.text, /one or more names/i);
+    assert.doesNotMatch(draft.text, /Olga Rossi|Diego Rossi|olga\.rossi2@example\.org|\+49 159 5216381/);
+    assert.equal(draft.recipient, "Applicant");
+    assert.doesNotMatch(draft.recipient, /Olga Rossi|Diego Rossi|olga\.rossi2@example\.org|\+49 159 5216381/);
+  }
+  assert.match(singleView.clarification.landlordMessage, /name.*differ|name.*clarif/i);
+  assert.doesNotMatch(singleView.clarification.landlordMessage, /Olga Rossi|Diego Rossi/);
+
+  const multipleNames = await requestClarification({ fetchImpl, landlordId, applicantId: "A-011" });
+  const multipleView = applicantDetailView(multipleNames).clarification;
+  assert.deepEqual(multipleNames.clarification.documents, ["incomeProof", "previousLandlord"]);
+  for (const draft of multipleView.drafts) {
+    assert.match(draft.text, /Income proof.*Previous-landlord confirmation/s);
+    assert.match(draft.text, /one or more names/i);
+    assert.doesNotMatch(draft.text, /Aylin Rossi|Wei Rossi|Lina Rossi|Paul Rossi|aylin\.rossi11@example\.org|\+49 169 6583173/);
+    assert.equal(draft.recipient, "Applicant");
+    assert.doesNotMatch(draft.recipient, /Aylin Rossi|Wei Rossi|Lina Rossi|Paul Rossi|aylin\.rossi11@example\.org|\+49 169 6583173/);
+  }
 });

@@ -1,8 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 
 import { readApplicantPool, summarizeApplicantPool } from "../../src/landlord/applicant-pool.js";
+import { rankApplicants } from "../../src/landlord/scorer.js";
 
 const FIXTURES = fileURLToPath(new URL("../fixtures/applicants/", import.meta.url));
 const TODAY = "2026-09-29";
@@ -177,21 +181,19 @@ test("a previous-landlord confirmation stating rent arrears is flagged", async (
   assert.equal(profile.credibilityScore, 85);
 });
 
-test("a payslip in another person's name makes the income proof inconsistent", async () => {
+test("a payslip name discrepancy requests clarification without a score penalty or exposed names", async () => {
   const { profile } = (await readFixtures()).byId("A-other-name");
-
-  assert.equal(profile.documentCheck.incomeProof.status, "inconsistent");
-  assert.match(profile.documentCheck.incomeProof.reason, /Jonas Schmidt/);
-  assert.equal(profile.documentCheck.complete, false);
+  assert.equal(profile.documentCheck.incomeProof.status, "present");
+  assert.equal(profile.documentCheck.complete, true);
   assert.deepEqual(issueCodes({ profile }), ["name_mismatch"]);
-  assert.equal(profile.credibilityScore, 70);
+  assert.equal(profile.credibilityScore, 100);
+  assert.doesNotMatch(JSON.stringify(profile), /Jonas Schmidt|Lena Schmidt/);
 });
 
-test("a SCHUFA-Auskunft in another person's name does not count as the applicant's", async () => {
+test("a SCHUFA name discrepancy preserves the report's readable findings", async () => {
   const { profile } = (await readFixtures()).byId("A-other-name-schufa");
-
-  assert.equal(profile.documentCheck.schufa.status, "inconsistent");
-  assert.equal(profile.schufaStatus, "missing");
+  assert.equal(profile.documentCheck.schufa.status, "present");
+  assert.equal(profile.schufaStatus, "clean");
   assert.deepEqual(issueCodes({ profile }), ["name_mismatch"]);
 });
 
@@ -259,4 +261,54 @@ test("the pool summary counts the applicants per defect type and lists the unrea
     },
     errors: ["duplicate-id.md", "impossible-date.md", "malformed.md", "no-front-matter.md", "no-household.md", "two-schufas.md"],
   });
+});
+
+
+test("the 50-name corpus accepts its German-alphabet variants and flags destructive deletions", async (t) => {
+  const csv = await readFile(new URL("../../data/name_matching_50.csv", import.meta.url), "utf8");
+  const fixtureNotes = await readFile(new URL("../../data/README_NAME_MATCHING.md", import.meta.url), "utf8");
+  assert.match(fixtureNotes, /does not assert that heavily truncated names must be accepted as matches/);
+  const [header, ...lines] = csv.trimEnd().split("\n");
+  assert.deepEqual(header.match(/"(?:[^"]|"")*"/g).map((value) => value.slice(1, -1)), [
+    "name", "german_alphabet_variant", "special_characters_removed", "gender",
+  ]);
+  assert.equal(lines.length, 50);
+  const rows = lines.map((line) => {
+    const fields = line.match(/"(?:[^"]|"")*"/g).map((value) => value.slice(1, -1).replaceAll('""', '"'));
+    assert.equal(fields.length, 4);
+    assert.equal(fields[0].normalize("NFC"), fields[0]);
+    return fields;
+  });
+  const directory = await mkdtemp(join(tmpdir(), "amt-name-matching-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const complete = await readFile(new URL("../fixtures/applicants/complete.md", import.meta.url), "utf8");
+  for (const [index, [name, germanVariant, deletionVariant]] of rows.entries()) {
+    for (const [prefix, documentName] of [["safe", germanVariant], ["deleted", deletionVariant]]) {
+      const applicant = complete.replace("A-complete", `${prefix}-${index}`)
+        .replace("name: Lena Schmidt", `name: "${name}"`)
+        .replaceAll("Name: Lena Schmidt", `Name: ${documentName}`);
+      await writeFile(join(directory, `${prefix}-${index}.md`), applicant);
+    }
+  }
+  const { applicants, errors } = await readApplicantPool(directory, { today: TODAY });
+  assert.deepEqual(errors, []);
+  assert.equal(applicants.length, 100);
+  const byId = new Map(applicants.map((applicant) => [applicant.id, applicant]));
+  for (const [index, [name]] of rows.entries()) {
+    const accepted = byId.get(`safe-${index}`).profile;
+    assert.equal(accepted.credibilityScore, 100, name);
+    assert.equal(accepted.documentCheck.complete, true, name);
+    assert.deepEqual(accepted.documentCheck.issues, [], name);
+
+    const needsClarification = byId.get(`deleted-${index}`).profile;
+    assert.equal(needsClarification.credibilityScore, 100, name);
+    assert.equal(needsClarification.documentCheck.complete, true, name);
+    assert.equal(needsClarification.documentCheck.issues.filter(({ code }) => code === "name_mismatch").length, 3, name);
+    assert.doesNotMatch(JSON.stringify(needsClarification), new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    const { ranked } = rankApplicants({
+      profiles: [accepted, needsClarification],
+      listing: { livingAreaSqm: 50, rooms: 2, askingRent: 700 },
+    });
+    assert.equal(ranked[0].matchScore, ranked[1].matchScore, name);
+  }
 });

@@ -24,4 +24,5 @@ test("the reusable lookup returns a scored profile without contact, using the ex
   const mismatch = getApplicantProfile({ applicants, listing, applicantId: "A-other-name" });
   assert.ok(!JSON.stringify(mismatch).includes("Jonas Schmidt"));
   assert.ok(!JSON.stringify(mismatch).includes("Lena Schmidt"));
+  assert.ok(!mismatch.profile.documentCheck.issues.some(({ code }) => code === "name_mismatch"), "name clarification stays outside model-facing data");
 });

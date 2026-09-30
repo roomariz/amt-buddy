@@ -102,3 +102,12 @@ export async function fetchApplicantProfile({ fetchImpl, landlordId, applicantId
   if (status === 404 && body?.error?.code === "landlord_not_found") return { signedOut: true };
   throw new Error(t("landlord.errors.failed"));
 }
+
+// Records a simulation only. The server never sends an applicant message.
+export async function requestClarification({ fetchImpl, landlordId, applicantId }) {
+  const { status, body } = await call(fetchImpl, landlordPath(landlordId, `applicants/${encodeURIComponent(applicantId)}/clarification`), { method: "POST", body: {} });
+  if (status === 200 && body?.data) return body.data;
+  if (status === 404 && body?.error?.code === "applicant_not_found") return { notFound: true };
+  if (status === 404 && body?.error?.code === "landlord_not_found") return { signedOut: true };
+  throw new Error(t("landlord.errors.failed"));
+}

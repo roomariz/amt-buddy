@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -409,22 +409,22 @@ test("with a Listing the dashboard ranks the committed pool, households too larg
   // 50 m²: the pool's households of six and seven need 51–63 m² under § 7 WoAufG Bln.
   assert.deepEqual(excluded.map(({ applicantId }) => applicantId), ["A-017", "A-020", "A-021", "A-035"]);
   assert.ok(excluded.every(({ excludedBy }) => excludedBy === "occupancyCompliant"));
-  assert.equal(ranked.length, 36);
-  assert.deepEqual(ranked.map(({ rank }) => rank), Array.from({ length: 36 }, (_, index) => index + 1));
+  assert.equal(ranked.length, 91);
+  assert.deepEqual(ranked.map(({ rank }) => rank), Array.from({ length: 91 }, (_, index) => index + 1));
   for (let index = 1; index < ranked.length; index += 1) assert.ok(ranked[index - 1].matchScore >= ranked[index].matchScore);
 });
 
-test("the dashboard joins in the applicant's name for display, with the document flags and no contact details", async (t) => {
+test("the dashboard identifies applicants by id and omits personal identity data", async (t) => {
   const server = await start();
   t.after(server.close);
   const landlordId = await signIn(server);
   await server.put(`/api/v1/landlord/${landlordId}/listing`, WUEHLISCH_LISTING);
 
-  const { ranked, excluded } = (await server.get(`/api/v1/landlord/${landlordId}/dashboard`)).body.data;
+  const dashboard = (await server.get(`/api/v1/landlord/${landlordId}/dashboard`)).body.data;
+  const { ranked, excluded } = dashboard;
 
   for (const entry of [...ranked, ...excluded]) {
-    assert.equal(typeof entry.name, "string", entry.applicantId);
-    assert.ok(entry.name.trim());
+    assert.equal(entry.name, undefined);
     assert.equal(entry.email, undefined);
     assert.equal(entry.phone, undefined);
     assert.deepEqual(Object.keys(entry.documents), ["schufa", "incomeProof", "previousLandlord", "arrears", "complete"]);
@@ -436,7 +436,7 @@ test("the dashboard joins in the applicant's name for display, with the document
   assert.equal(typeof entry.rentToIncome, "number");
 });
 
-test("applicant detail returns the anonymised profile, document issues, the same score as the dashboard, and contact", async (t) => {
+test("applicant detail returns the anonymised profile and score without personal identity data", async (t) => {
   const server = await start();
   t.after(server.close);
   const landlordId = await signIn(server);
@@ -447,7 +447,7 @@ test("applicant detail returns the anonymised profile, document issues, the same
   const { status, body } = await server.get(`/api/v1/landlord/${landlordId}/applicants/A-001`);
 
   assert.equal(status, 200);
-  assert.deepEqual(Object.keys(body.data), ["profile", "score", "rentToIncome", "contact"]);
+  assert.deepEqual(Object.keys(body.data), ["profile", "score", "rentToIncome", "clarification"]);
   assert.equal(body.data.profile.id, "A-001");
   assert.equal(body.data.profile.householdSize, 2);
   assert.equal(body.data.profile.netHouseholdIncome, 6070);
@@ -463,10 +463,10 @@ test("applicant detail returns the anonymised profile, document issues, the same
     breakdown: ranked.breakdown, rentToIncome: ranked.rentToIncome,
   });
   assert.equal(body.data.rentToIncome, ranked.rentToIncome);
-  assert.deepEqual(body.data.contact, { name: "Julien Neumann", email: "julien.neumann1@example.org", phone: "+49 178 4053388" });
+  assert.doesNotMatch(JSON.stringify(body.data), /Julien Neumann|julien\.neumann1@example\.org|\+49 178 4053388/);
 });
 
-test("applicant detail reports document inconsistency and a requirement exclusion", async (t) => {
+test("applicant detail reports a name clarification separately from a requirement exclusion", async (t) => {
   const server = await start();
   t.after(server.close);
   const landlordId = await signIn(server);
@@ -482,15 +482,16 @@ test("applicant detail reports document inconsistency and a requirement exclusio
   t.after(fixtures.close);
   const fixtureLandlordId = await signIn(fixtures);
   const inconsistent = (await fixtures.get(`/api/v1/landlord/${fixtureLandlordId}/applicants/A-other-name`)).body.data;
-  assert.equal(inconsistent.profile.documentCheck.incomeProof.status, "inconsistent");
-  assert.ok(inconsistent.profile.documentCheck.issues.some(({ code }) => code === "name_mismatch"));
+  assert.equal(inconsistent.profile.documentCheck.incomeProof.status, "present");
+  assert.deepEqual(inconsistent.clarification.documents, ["incomeProof"]);
+  assert.ok(!inconsistent.profile.documentCheck.issues.some(({ code }) => code === "name_mismatch"));
   assert.ok(!JSON.stringify(inconsistent).includes("Jonas Schmidt"));
-  assert.ok(inconsistent.profile.credibilityScore < 100);
+  assert.equal(inconsistent.profile.credibilityScore, 100);
   assert.equal(inconsistent.score, null); // no Listing yet
   assert.equal(inconsistent.rentToIncome, null);
 });
 
-test("applicant detail never exposes protected source fields or extra contact fields", async (t) => {
+test("applicant detail never exposes protected fields or personal identity data", async (t) => {
   const directory = fileURLToPath(new URL("../fixtures/applicants/", import.meta.url));
   const server = await start({ env: { APPLICANT_POOL_DIR: directory, APPLICANT_POOL_TODAY: "2026-09-29" } });
   t.after(server.close);
@@ -498,13 +499,14 @@ test("applicant detail never exposes protected source fields or extra contact fi
   const { status, body } = await server.get(`/api/v1/landlord/${landlordId}/applicants/A-protected`);
 
   assert.equal(status, 200);
-  assert.deepEqual(Object.keys(body.data.contact), ["name", "email", "phone"]);
+  assert.equal(body.data.contact, undefined);
   assert.deepEqual(Object.keys(body.data.profile), [
     "id", "householdSize", "household", "netHouseholdIncome", "employmentType", "schufaStatus", "moveInDate", "pets", "smoking", "documentCheck", "credibilityScore",
   ]);
   for (const value of ["Italian", "Catholic", "1988-04-12", "female", "a-protected.jpg", "expecting a second child", "Siemens AG", "Kastanienallee", "@lena.berlin"]) {
     assert.ok(!JSON.stringify(body).includes(value), value);
   }
+  assert.doesNotMatch(JSON.stringify(body), /Lena Schmidt|lena\.berlin|\+49/);
 });
 
 test("applicant detail returns 404 for an unknown applicant or landlord", async (t) => {
@@ -530,7 +532,7 @@ test("applicant detail responses cannot be cached", async (t) => {
   assert.equal(response.headers.get("cache-control"), "no-store");
 });
 
-test("the dashboard has the pool stats and the Recommendations, with names joined in", async (t) => {
+test("the dashboard has pool stats and anonymised Recommendations", async (t) => {
   const server = await start();
   t.after(server.close);
   const landlordId = await signIn(server);
@@ -538,8 +540,8 @@ test("the dashboard has the pool stats and the Recommendations, with names joine
 
   const { stats, recommendations, ranked } = (await server.get(`/api/v1/landlord/${landlordId}/dashboard`)).body.data;
 
-  // The committed pool: 40 applicants, 4 households too large for 50 m².
-  assert.equal(stats.total, 40);
+  // The committed pool: 95 applicants, 4 households too large for 50 m².
+  assert.equal(stats.total, 95);
   assert.equal(stats.excluded, 4);
   assert.equal(stats.maxRentToIncome, 1 / 3);
   // The Rent check's median for this flat is 490 €, below the asking 700 €: more can afford it.
@@ -551,7 +553,7 @@ test("the dashboard has the pool stats and the Recommendations, with names joine
 
   assert.deepEqual(recommendations.map(({ applicantId }) => applicantId), ranked.slice(0, 2).map(({ applicantId }) => applicantId));
   for (const recommendation of recommendations) {
-    assert.equal(recommendation.name, ranked.find(({ applicantId }) => applicantId === recommendation.applicantId).name);
+    assert.equal(recommendation.name, undefined);
     assert.equal(recommendation.email, undefined);
     assert.match(recommendation.reason.en, /^You may like this applicant for their /);
     assert.match(recommendation.reason.de, /^Dieser Bewerber könnte Ihnen gefallen: /);
@@ -570,7 +572,7 @@ test("without a Listing there are no stats and no Recommendations; without a Ren
   assert.equal(before.stats, null);
   assert.deepEqual(before.recommendations, []);
   assert.equal(after.rentCheck, null);
-  assert.equal(after.stats.total, 40);
+  assert.equal(after.stats.total, 95);
   assert.equal(after.stats.canAffordAtMedian, null);
   assert.equal(after.stats.medianRent, null);
   assert.equal(after.recommendations.length, 2);
@@ -586,16 +588,196 @@ test("the Applicant pool directory and its day are configurable", async (t) => {
   const { ranked, excluded, poolErrors } = (await server.get(`/api/v1/landlord/${landlordId}/dashboard`)).body.data;
   const all = [...ranked, ...excluded];
 
-  assert.ok(all.some(({ applicantId, name }) => applicantId === "A-complete" && name === "Lena Schmidt"));
+  assert.ok(all.some(({ applicantId, name }) => applicantId === "A-complete" && name === undefined));
   assert.ok(!all.some(({ applicantId }) => applicantId.startsWith("A-0")), "not the committed pool");
-  assert.ok(poolErrors.some(({ file }) => file === "malformed.md"));
+  assert.ok(poolErrors.length > 0);
+  assert.ok(poolErrors.every(({ file, reason }) => /^applicant-\d+$/.test(file) && reason === "Applicant file could not be read."));
 });
 
+test("dashboard parser errors redact personal data from raw lines and source filenames", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "amt-buddy-private-applicant-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await writeFile(join(directory, "Rebekah-OConnor-private.md"), "---\nRebekah O'Connor <rebekah.oconnor@example.org> +49 151 12345678\n---\n");
+  const server = await start({ env: { APPLICANT_POOL_DIR: directory } });
+  t.after(server.close);
+  const landlordId = await signIn(server);
+
+  const { status, body } = await server.get(`/api/v1/landlord/${landlordId}/dashboard`);
+
+  assert.equal(status, 200);
+  assert.deepEqual(body.data.poolErrors, [{ file: "applicant-1", reason: "Applicant file could not be read." }]);
+  assert.doesNotMatch(JSON.stringify(body), /Rebekah|OConnor|oconnor@example|\+49 151/);
+});
+
+test("a simulated name clarification persists with a 24-hour deadline and does not change the ranking", async (t) => {
+  const server = await start({ env: { APPLICANT_POOL_DIR: fileURLToPath(new URL("../fixtures/applicants/", import.meta.url)) } });
+  t.after(server.close);
+  const id = await signIn(server);
+  const base = `/api/v1/landlord/${id}`;
+  await server.put(`${base}/listing`, WUEHLISCH_LISTING);
+  const before = (await server.get(`${base}/dashboard`)).body.data;
+  const path = `${base}/applicants/A-other-name`;
+  const result = await server.post(`${path}/clarification`, {});
+  assert.equal(result.status, 200);
+  const { clarification } = result.body.data;
+  assert.deepEqual(clarification.documents, ["incomeProof"]);
+  assert.equal(clarification.request.status, "pending");
+  assert.equal(clarification.request.simulated, true);
+  assert.equal(Date.parse(clarification.request.deadline) - Date.parse(clarification.request.requestedAt), 24 * 60 * 60 * 1000);
+  assert.deepEqual((await server.get(path)).body.data.clarification, clarification);
+  assert.deepEqual((await server.post(`${path}/clarification`, {})).body.data.clarification, clarification, "retrying must not extend the deadline");
+  assert.deepEqual((await server.get(`${base}/dashboard`)).body.data, before);
+});
+
+test("a name discrepancy alone cannot fail complete-document or clean-SCHUFA requirements", async (t) => {
+  const server = await start({ env: { APPLICANT_POOL_DIR: fileURLToPath(new URL("../fixtures/applicants/", import.meta.url)) } });
+  t.after(server.close);
+  const id = await signIn(server);
+  const base = `/api/v1/landlord/${id}`;
+  await server.put(`${base}/listing`, WUEHLISCH_LISTING);
+  await server.put(`${base}/criteria`, { requirements: { completeDocumentsOnly: true, schufaCleanOnly: true } });
+  const complete = (await server.get(`${base}/applicants/A-complete`)).body.data;
+  for (const applicantId of ["A-other-name", "A-other-name-schufa"]) {
+    const detail = (await server.get(`${base}/applicants/${applicantId}`)).body.data;
+    assert.equal(detail.profile.credibilityScore, 100);
+    assert.equal(detail.score.matchScore, complete.score.matchScore);
+    assert.equal(detail.profile.schufaStatus, "clean");
+    assert.equal(detail.profile.documentCheck.complete, true);
+    assert.equal(detail.clarification.request, null);
+    assert.doesNotMatch(JSON.stringify(detail.profile), /Jonas Schmidt|Lena Schmidt|another person's/);
+  }
+});
+
+
+test("presentation variants avoid clarification, but different or missing name parts still need it", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "amt-buddy-names-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const fixture = await readFile(new URL("../fixtures/applicants/complete.md", import.meta.url), "utf8");
+  const cases = [
+    ["Dr. Juan Orozco", "Juan Orozco", false],
+    ["Ana-María de la Cruz", "Ana Maria de la Cruz", false],
+    ["José O’Neill", "Jose\u0301 O'Neill", false],
+    ["Prof. Dr. Zoë Müller", "  zoe   muller  ", false],
+    ["Maria Ana Cruz", "Mariana Cruz", true],
+    ["Juan Carlos Orozco", "Juan Orozco", true],
+    ["Juan Orozco", "Diego Orozco", true],
+    ["कीरण", "किरण", true],
+  ];
+  for (const [index, [declared, document]] of cases.entries()) {
+    await writeFile(join(directory, `${index}.md`), fixture.replace("A-complete", `A-${index}`)
+      .replace("name: Lena Schmidt", `name: ${declared}`).replaceAll("Name: Lena Schmidt", `Name: ${document}`));
+  }
+  const server = await start({ env: { APPLICANT_POOL_DIR: directory } });
+  t.after(server.close);
+  const id = await signIn(server);
+  for (const [index, [, , needsClarification]] of cases.entries()) {
+    const detail = (await server.get(`/api/v1/landlord/${id}/applicants/A-${index}`)).body.data;
+    assert.equal(Boolean(detail.clarification), needsClarification, cases[index].join(" / "));
+    assert.equal(detail.profile.credibilityScore, 100);
+  }
+});
+
+
+test("clarifications survive a restart, are landlord-specific, and becoming overdue never changes selection", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "amt-buddy-clarification-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const path = join(directory, "landlord.sqlite");
+  let today = "2026-09-29T12:00:00.000Z";
+  const now = () => new Date(today);
+  const firstStore = createLandlordStore({ path, now });
+  const first = await start({ store: firstStore });
+  let id, saved, ranking;
+  try {
+    id = await signIn(first);
+    await first.put(`/api/v1/landlord/${id}/listing`, WUEHLISCH_LISTING);
+    saved = (await first.post(`/api/v1/landlord/${id}/applicants/A-002/clarification`, {})).body.data.clarification;
+    assert.equal(saved.request.deadline, "2026-09-30T12:00:00.000Z");
+    ranking = (await first.get(`/api/v1/landlord/${id}/dashboard`)).body.data;
+  } finally {
+    await first.close();
+    firstStore.close();
+  }
+  const secondStore = createLandlordStore({ path, now });
+  const second = await start({ store: secondStore });
+  t.after(async () => { await second.close(); secondStore.close(); });
+  const applicantPath = `/api/v1/landlord/${id}/applicants/A-002`;
+  assert.deepEqual((await second.get(applicantPath)).body.data.clarification, saved);
+  const otherId = await signIn(second, "Another landlord");
+  assert.equal((await second.get(`/api/v1/landlord/${otherId}/applicants/A-002`)).body.data.clarification.request, null);
+  today = "2026-09-30T12:00:00.000Z";
+  const overdue = (await second.get(applicantPath)).body.data.clarification;
+  assert.equal(overdue.request.status, "overdue");
+  assert.equal(overdue.request.deadline, saved.request.deadline);
+  assert.deepEqual((await second.post(`${applicantPath}/clarification`, {})).body.data.clarification, overdue);
+  assert.deepEqual((await second.get(`/api/v1/landlord/${id}/dashboard`)).body.data, ranking);
+});
+
+test("clarification refuses unknown applicants, missing sign-in, ineligible applicants, and custom payloads", async (t) => {
+  const server = await start();
+  t.after(server.close);
+  const id = await signIn(server);
+  const base = `/api/v1/landlord/${id}/applicants`;
+  assert.equal((await server.post(`${base}/absent/clarification`, {})).body.error.code, "applicant_not_found");
+  assert.equal((await server.post("/api/v1/landlord/absent/applicants/A-002/clarification", {})).body.error.code, "landlord_not_found");
+  assert.equal((await server.post(`${base}/A-001/clarification`, {})).status, 409);
+  for (const body of [null, [], { deadline: "2027-01-01" }, { send: true }]) {
+    assert.equal((await server.post(`${base}/A-002/clarification`, body)).status, 422);
+  }
+  assert.equal((await server.get(`${base}/A-002`)).body.data.clarification.request, null);
+});
+
+test("name clarification does not hide expired reports, income discrepancies, or rent arrears", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "amt-buddy-evidence-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const fixture = await readFile(new URL("../fixtures/applicants/complete.md", import.meta.url), "utf8");
+  await writeFile(join(directory, "application.md"), fixture
+    .replaceAll("Name: Lena Schmidt", "Name: Another Applicant")
+    .replace("2026-08-15", "2026-01-01")
+    .replaceAll("3.790,00", "1.000,00").replaceAll("3.810,00", "1.000,00")
+    .replace("Mietrückstände: nein", "Mietrückstände: ja"));
+  const server = await start({ env: { APPLICANT_POOL_DIR: directory, APPLICANT_POOL_TODAY: "2026-09-29" } });
+  t.after(server.close);
+  const id = await signIn(server);
+  const detail = (await server.get(`/api/v1/landlord/${id}/applicants/A-complete`)).body.data;
+  assert.deepEqual(detail.clarification.documents, ["schufa", "incomeProof", "previousLandlord"]);
+  assert.deepEqual(detail.profile.documentCheck.issues.map(({ code }) => code), ["schufa_expired", "income_mismatch", "rent_arrears"]);
+  assert.equal(detail.profile.credibilityScore, 40);
+  assert.equal(detail.profile.documentCheck.complete, false);
+  assert.equal(detail.profile.documentCheck.previousLandlord.arrears, true);
+});
+
+test("saved seven-day demo requests adopt the 24-hour deadline from their original creation time", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "amt-buddy-legacy-clarification-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const path = join(directory, "landlord.sqlite");
+  // Fixture representing the previous version's database. All assertions use the HTTP API.
+  const { DatabaseSync } = await import("node:sqlite");
+  const legacy = new DatabaseSync(path);
+  legacy.exec(`
+    CREATE TABLE landlords (id TEXT PRIMARY KEY, name TEXT NOT NULL, name_key TEXT NOT NULL UNIQUE, created TEXT NOT NULL);
+    INSERT INTO landlords VALUES ('legacy', 'Legacy', 'legacy', '2026-09-29T12:00:00.000Z');
+    CREATE TABLE clarification_requests (
+      landlord_id TEXT NOT NULL REFERENCES landlords(id), applicant_id TEXT NOT NULL,
+      requested_at TEXT NOT NULL, deadline TEXT NOT NULL, PRIMARY KEY (landlord_id, applicant_id)
+    );
+    INSERT INTO clarification_requests VALUES ('legacy', 'A-002', '2026-09-29T12:00:00.123Z', '2026-10-06T12:00:00.123Z');
+  `);
+  legacy.close();
+  const store = createLandlordStore({ path, now: () => new Date("2026-10-01T12:00:00Z") });
+  const server = await start({ store });
+  t.after(async () => { await server.close(); store.close(); });
+  const applicantPath = "/api/v1/landlord/legacy/applicants/A-002";
+  const detail = (await server.get(applicantPath)).body.data;
+  assert.equal(detail.clarification.request.requestedAt, "2026-09-29T12:00:00.123Z");
+  assert.equal(detail.clarification.request.deadline, "2026-09-30T12:00:00.123Z");
+  assert.equal(detail.clarification.request.status, "overdue");
+  assert.deepEqual((await server.post(`${applicantPath}/clarification`, {})).body.data.clarification, detail.clarification);
+});
 // --- The Shortlist ------------------------------------------------------------------------------
 
 const shortlistPath = (landlordId, applicantId) => `/api/v1/landlord/${landlordId}/shortlist/${applicantId}`;
 
-test("putting an applicant on the Shortlist returns the entry; the dashboard lists it with name, score and status", async (t) => {
+test("putting an applicant on the Shortlist returns the entry; the dashboard lists its id, score and status", async (t) => {
   const server = await start();
   t.after(server.close);
   const landlordId = await signIn(server);
@@ -610,10 +792,10 @@ test("putting an applicant on the Shortlist returns the entry; the dashboard lis
   assert.equal(added.status, 200);
   assert.deepEqual(added.body.data, { applicantId: second.applicantId, status: "to_invite", note: "Stable income" });
   assert.deepEqual(
-    shortlist.map(({ applicantId, name, status, note, rank, matchScore, excluded }) => ({ applicantId, name, status, note, rank, matchScore, excluded })),
+    shortlist.map(({ applicantId, status, note, rank, matchScore, excluded }) => ({ applicantId, status, note, rank, matchScore, excluded })),
     [
-      { applicantId: second.applicantId, name: second.name, status: "to_invite", note: "Stable income", rank: 2, matchScore: second.matchScore, excluded: false },
-      { applicantId: first.applicantId, name: first.name, status: "invited", note: null, rank: 1, matchScore: first.matchScore, excluded: false },
+      { applicantId: second.applicantId, status: "to_invite", note: "Stable income", rank: 2, matchScore: second.matchScore, excluded: false },
+      { applicantId: first.applicantId, status: "invited", note: null, rank: 1, matchScore: first.matchScore, excluded: false },
     ],
   );
   for (const entry of shortlist) assert.equal(entry.email, undefined);
@@ -646,7 +828,7 @@ test("without a Listing, Shortlist entries have no rank or score; an excluded ap
   await server.put(`/api/v1/landlord/${landlordId}/listing`, WUEHLISCH_LISTING);
   const after = (await server.get(`/api/v1/landlord/${landlordId}/dashboard`)).body.data.shortlist;
 
-  assert.equal(typeof before[0].name, "string");
+  assert.equal(before[0].name, undefined);
   assert.deepEqual([before[0].rank, before[0].matchScore, before[0].excluded], [null, null, false]);
   assert.deepEqual([after[0].rank, after[0].matchScore, after[0].excluded], [null, null, true]);
 });

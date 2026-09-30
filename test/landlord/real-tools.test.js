@@ -67,8 +67,8 @@ test("get_ranking: the top applicants with breakdowns, the stats, exclusions by 
 
   assert.equal(ranking.ranked.length, 10);
   assert.deepEqual(ranking.ranked.map(({ rank }) => rank), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
-  assert.equal(ranking.stats.total, 40);
-  assert.equal(ranking.rankedCount + ranking.stats.excluded, 40);
+  assert.equal(ranking.stats.total, 95);
+  assert.equal(ranking.rankedCount + ranking.stats.excluded, 95);
   assert.ok(ranking.excludedByReason.schufaCleanOnly > 0);
   assert.deepEqual(ranking.shortlist, [{ applicantId, status: "invited" }]);
   assert.doesNotMatch(JSON.stringify(ranking), /Mrs\. X/);

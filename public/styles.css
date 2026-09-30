@@ -1468,6 +1468,12 @@ footer a { color: inherit; }
 .recommendation-rank { font-size: 0.75rem; color: #5d5d5d; }
 .recommendation-reason { margin: 6px 0 0; font-size: 0.9rem; line-height: 1.45; }
 
+.applicant-clarification { margin-top: 22px; padding: 18px; border: 1px solid #b7c8ba; border-radius: 10px; background: #f4f8f4; }
+.applicant-clarification h3 { margin-top: 0; }
+.clarification-draft { margin-top: 14px; }
+.clarification-draft summary { cursor: pointer; font-weight: 600; }
+.clarification-draft textarea { display: block; box-sizing: border-box; width: 100%; margin: 10px 0; padding: 12px; border: 1px solid #89988b; border-radius: 8px; font: inherit; line-height: 1.5; resize: vertical; color: #171714; background: white; }
+
 /* The Shortlist */
 .shortlist-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
 .shortlist-entry { padding: 10px 12px; border: 1px solid #e5e5e5; border-radius: 12px; background: #fafafa; }
