@@ -579,7 +579,9 @@ test("the system prompt explains the pool stats fields and when a share may be c
   assert.match(system, /canAffordAtMedian = how many could afford the Mietspiegel median rent "medianRent"/);
   assert.match(system, /canAfford = how many can afford the asking rent/);
   assert.match(system, /capped only for a change whose "capped" is true/);
-  assert.match(system, /page shows all the weights as a chart.*report only the "applied" entries.*"SCHUFA 20 → 26 %".*other criteria were scaled proportionally \("othersScaled"\) and that the chart on the page shows all the weights\. Do not list the other criteria's shares unless the landlord asks for them; then call get_ranking/);
+  assert.match(system, /After a weight change report the "applied" entries of the result.*"SCHUFA 20 → 26 %".*other criteria were scaled proportionally \("othersScaled"\)/);
+  // One rule for every turn, not only weight changes: the page's chart shows all the weights.
+  assert.match(system, /The landlord's page always shows all Selection-criteria weights in a chart\. Never list the weights\. Mention a weight only when a tool call of this turn changed it \(old → new, from the result; never repeat a change from an earlier turn\) or when the landlord asks about that criterion \(then its share only, without the others' for comparison\)\. Only adjust_selection_criteria changes weights: saving flat details, Requirements or bonus points, or a criterion becoming active, changes none, so do not mention weights then\. If the landlord asks for all weights, point to the chart and give them only if they insist \(then call get_ranking/);
   assert.match(system, /call compare_applicants and go through its "differences" in order: say which criteria favour which applicant and by how many points, including those that favour the lower-ranked one; call criteria equal only if they are in "equal"/);
 });
 
