@@ -68,3 +68,19 @@ export function sidebarRows(shortlist) {
     };
   });
 }
+
+// The order of the Requirements (the Scorer's DEFAULT_CRITERIA.requirements), for ties below.
+const REQUIREMENTS = ["schufaCleanOnly", "completeDocumentsOnly", "maxRentToIncome", "noPets", "noSmoking", "latestMoveIn", "occupancyCompliant"];
+
+// The overview's excludedByReason ({ <requirement>: count }) → the Excluded tile's hover tip: the
+// groups with their counts, largest first, ties in the order of the Requirements.
+export function excludedTip(excludedByReason = {}) {
+  const groups = Object.entries(excludedByReason)
+    .filter(([, count]) => count > 0)
+    .sort(([a, countA], [b, countB]) => countB - countA || REQUIREMENTS.indexOf(a) - REQUIREMENTS.indexOf(b));
+  if (groups.length === 0) return t("landlordChat.excludedTipNone");
+  const reasons = groups
+    .map(([requirement, count]) => t("landlordChat.excludedTipReason", { reason: t(`landlordChat.excludedBy.${requirement}`), count }))
+    .join(", ");
+  return t("landlordChat.excludedTip", { reasons });
+}

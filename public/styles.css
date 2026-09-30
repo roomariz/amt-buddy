@@ -1717,7 +1717,7 @@ footer a { color: inherit; }
 .lc-tile { display: flex; flex-direction: column; gap: 1px; padding: 5px 6px; border: 1px solid var(--lc-border); border-radius: 8px; background: var(--lc-surface-2); min-width: 0; }
 .lc-tile-value { font-size: 1rem; font-weight: 700; line-height: 1.15; }
 .lc-tile-label { font-size: 0.68rem; color: var(--lc-muted); line-height: 1.25; overflow-wrap: normal; hyphens: auto; }
-.lc-tile.is-unavailable { cursor: help; }
+.lc-tile.is-unavailable, .lc-tile[title] { cursor: help; }
 .lc-tile.is-unavailable .lc-tile-value { color: var(--lc-muted); }
 
 /* The weights pie beside its legend; the legend drops below the pie when the column is too narrow.

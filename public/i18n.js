@@ -363,6 +363,9 @@ const de = {
     shortlistEmpty: "Noch niemand auf der Shortlist. Wählen Sie aus den Empfehlungen.",
     shortlistRank: "Platz {rank}",
     shortlistExcluded: "ausgeschlossen: {reason}",
+    excludedTip: "Ausgeschlossen, weil: {reasons}",
+    excludedTipNone: "Niemand ist ausgeschlossen.",
+    excludedTipReason: "{reason} ({count})",
     excludedBy: {
       schufaCleanOnly: "SCHUFA nicht sauber",
       completeDocumentsOnly: "Unterlagen unvollständig",
@@ -778,6 +781,9 @@ const en = {
     shortlistEmpty: "Nobody on the Shortlist yet. Pick from the recommendations.",
     shortlistRank: "#{rank}",
     shortlistExcluded: "excluded: {reason}",
+    excludedTip: "Excluded because: {reasons}",
+    excludedTipNone: "Nobody is excluded.",
+    excludedTipReason: "{reason} ({count})",
     excludedBy: {
       schufaCleanOnly: "SCHUFA not clean",
       completeDocumentsOnly: "documents incomplete",

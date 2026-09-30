@@ -15,7 +15,7 @@
 
 import { fetchOverview, removeRating, removeShortlistEntry, saveRating, saveShortlistEntry, signIn } from "./landlord/api.js";
 import { avatarSvg } from "./landlord/avatar.js";
-import { fillSlots, sidebarRows, slotCard } from "./landlord/board.js";
+import { excludedTip, fillSlots, sidebarRows, slotCard } from "./landlord/board.js";
 import { applicantNames, changedDashboard, renderAnswerWithNames, runLandlordTurn } from "./landlord/chat.js";
 import { statTiles } from "./landlord/pool-overview.js";
 import { rankMoves } from "./landlord/rank-moves.js";
@@ -259,10 +259,12 @@ function renderTiles() {
     ...tiles.map((tile) => {
       const item = el("li", `lc-tile${tile.available ? "" : " is-unavailable"}`);
       item.append(el("span", "lc-tile-value", tile.value), el("span", "lc-tile-label", tile.label));
-      // Compact: the detail is a tooltip, and read out for screen readers.
-      if (tile.detail) {
-        item.title = tile.detail;
-        item.append(el("span", "visually-hidden", tile.detail));
+      // Compact: the detail is a tooltip, and read out for screen readers. The Excluded tile's says
+      // which Requirements exclude how many.
+      const detail = tile.stat === "excluded" ? excludedTip(overview.excludedByReason) : tile.detail;
+      if (detail) {
+        item.title = detail;
+        item.append(el("span", "visually-hidden", detail));
       }
       return item;
     }),

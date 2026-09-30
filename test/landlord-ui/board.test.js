@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { fillSlots, sidebarRows, slotCard } from "../../public/landlord/board.js";
+import { excludedTip, fillSlots, sidebarRows, slotCard } from "../../public/landlord/board.js";
 import { setLanguage } from "../../public/i18n.js";
 
 // The chat-first page's board (docs/plan/2026-09-30-landlord-chat-first.md, "Round 2"): two
@@ -152,4 +152,24 @@ test("a sidebar row without a name shows the applicant id; a missing rating is n
   );
   assert.equal(row.name, "A-099");
   assert.equal(row.rating, null);
+});
+
+// The "Excluded" tile's hover tip: why applicants are excluded, grouped by Requirement (each applicant
+// counted once, under the first Requirement they fail — the overview's excludedByReason), largest
+// group first, ties in the order of the Requirements.
+test("the Excluded tip groups the reasons with their counts, largest first (EN and DE)", () => {
+  const byReason = { noPets: 2, noSmoking: 5, completeDocumentsOnly: 2 };
+  assert.equal(
+    inLanguage("en", () => excludedTip(byReason)),
+    "Excluded because: smokes (5), documents incomplete (2), has pets (2)",
+  );
+  assert.equal(
+    inLanguage("de", () => excludedTip(byReason)),
+    "Ausgeschlossen, weil: raucht (5), Unterlagen unvollständig (2), hat Haustiere (2)",
+  );
+});
+
+test("the Excluded tip when nobody is excluded", () => {
+  assert.equal(inLanguage("en", () => excludedTip({})), "Nobody is excluded.");
+  assert.equal(inLanguage("en", () => excludedTip(undefined)), "Nobody is excluded.");
 });

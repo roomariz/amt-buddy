@@ -102,3 +102,22 @@ test("a thumbs down: rating down and a negative bonus; unknown applicant and unk
   assert.deepEqual(await saveRating({ fetchImpl, landlordId: "gone", applicantId: first.applicantId, rating: "up" }), { signedOut: true });
   assert.deepEqual(await removeRating({ fetchImpl, landlordId: "gone", applicantId: first.applicantId }), { signedOut: true });
 });
+
+test("the overview says how many applicants each Requirement excludes (excludedByReason)", async (t) => {
+  const { fetchImpl, close } = await start();
+  t.after(close);
+  const { landlordId } = await signIn({ fetchImpl, name: "Erika" });
+  const before = await fetchOverview({ fetchImpl, landlordId });
+  assert.deepEqual(before.excludedByReason, {}, "nobody excluded at first");
+
+  const response = await fetchImpl(`/api/v1/landlord/${landlordId}/criteria`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ requirements: { noSmoking: true } }),
+  });
+  assert.equal(response.status, 200);
+  const after = await fetchOverview({ fetchImpl, landlordId });
+  // Every excluded applicant is counted once, so the groups add up to the Excluded tile.
+  assert.ok(after.excludedByReason.noSmoking > 0);
+  assert.equal(Object.values(after.excludedByReason).reduce((sum, count) => sum + count, 0), after.stats.excluded);
+});
