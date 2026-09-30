@@ -135,6 +135,45 @@ test("some existing accented-name documents use the same letters without accent 
   assert.ok(changed.length >= 3, `expected several accent-simplified existing profiles, got ${changed.length}`);
 });
 
+test("accent-only name variants appear in at least 25 profiles without creating a mismatch", async (t) => {
+  const rows = await readMatchingNames();
+  const files = generateApplicantPool({ seed: DEFAULT_POOL_SEED });
+  const byId = fieldsById(files);
+  const variedProfiles = rows.filter(([, variant], index) => {
+    const content = byId.get(`A-${String(index + 41).padStart(3, "0")}`).content;
+    return [...content.matchAll(/^Name: (.+)$/gm)].some((match) => match[1] === variant);
+  });
+  assert.ok(variedProfiles.length >= 25, `expected at least 25 profiles with basic-letter document spelling, got ${variedProfiles.length}`);
+
+  const elodie = byId.get("A-077").content;
+  assert.match(elodie, /^name: Élodie Lefèvre$/m);
+  const elodieIncomeProof = elodie.match(/## Income proof\n([\s\S]*?)(?=\n## |$)/)?.[1] ?? "";
+  assert.deepEqual([...elodieIncomeProof.matchAll(/^Name: (.+)$/gm)].map((match) => match[1]), Array(3).fill("Elodie Lefevre"));
+
+  const jose = byId.get("A-066").content;
+  assert.match(jose, /^name: José Cruz Mendoza$/m);
+  assert.match(jose, /Mietschuldenfreiheitsbescheinigung\nName: Jose Cruz Mendoza/);
+
+  for (const { file, content } of files) {
+    const incomeProof = content.match(/## Income proof\n([\s\S]*?)(?=\n## |$)/)?.[1] ?? "";
+    const incomeNames = [...incomeProof.matchAll(/^Name: (.+)$/gm)].map((match) => match[1]);
+    assert.ok(incomeNames.every((name) => name === incomeNames[0]), `${file} has inconsistent names across its income proofs`);
+  }
+
+  const directory = await mkdtemp(join(tmpdir(), "accepted-accent-variants-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  for (const { file, content } of files) await writeFile(join(directory, file), content);
+  const pool = await readApplicantPool(directory, { today: POOL_DATE });
+  const profiles = new Map(pool.applicants.map((applicant) => [applicant.id, applicant.profile]));
+  for (let index = 0; index < rows.length; index += 1) {
+    const id = `A-${String(index + 41).padStart(3, "0")}`;
+    const content = byId.get(id).content;
+    if (![...content.matchAll(/^Name: (.+)$/gm)].some((match) => match[1] === rows[index][1])) continue;
+    assert.equal(profiles.get(id).documentCheck.issues.some(({ code }) => code === "name_mismatch"), false, `${id} should accept accent-only name variation`);
+    assert.equal(profiles.get(id).credibilityScore, 100, `${id} should keep a full Credibility score`);
+  }
+});
+
 test("the pool summary command prints the applicants, the defect counts and the unreadable files", () => {
   const output = execFileSync(process.execPath, [fileURLToPath(new URL("../../scripts/applicant-pool-summary.js", import.meta.url))], {
     encoding: "utf8",

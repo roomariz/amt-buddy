@@ -106,6 +106,11 @@ function readNameMatchingRows() {
 const NAME_MATCHING_ROWS = readNameMatchingRows();
 const NAME_DUPLICATE_ROWS = [0, 20, 30, 40, 49];
 const NAME_MISMATCH_ROWS = Array.from({ length: 15 }, (_, index) => index + 5);
+const NAME_VARIANT_ROWS = [0, 1, 2, 3, 4, ...Array.from({ length: 26 }, (_, index) => index + 20)];
+const NAME_VARIANT_DOCUMENT_BY_APPLICANT_ID = new Map([
+  ["A-066", "previousLandlord"],
+  ["A-077", "incomeProof"],
+]);
 
 // --- Dates and amounts, formatted without locale data so the output never varies ---------------
 
@@ -312,10 +317,15 @@ export function generateApplicantPool({ seed = DEFAULT_POOL_SEED } = {}) {
     Object.entries(SCENARIO_COUNTS).flatMap(([scenario, count]) => Array(count).fill(scenario)),
   );
   const applicants = scenarios.map((scenario, index) => applicantData(index, scenario, random, undefined, true, variationRandom));
-  const additions = NAME_MATCHING_ROWS.map(({ name, specialCharactersRemoved }, row) => {
+  const additions = NAME_MATCHING_ROWS.map(({ name, germanAlphabetVariant, specialCharactersRemoved }, row) => {
     const applicant = applicantData(applicants.length + row, "clean", random, name);
+    if (NAME_VARIANT_ROWS.includes(row)) {
+      const document = NAME_VARIANT_DOCUMENT_BY_APPLICANT_ID.get(applicant.id) ?? DOCUMENT_NAMES[row % DOCUMENT_NAMES.length];
+      applicant.documentNameOverrides = { [document]: germanAlphabetVariant };
+    }
     if (NAME_MISMATCH_ROWS.includes(row)) {
       applicant.documentNameOverrides = {
+        ...applicant.documentNameOverrides,
         [DOCUMENT_NAMES[(row - NAME_MISMATCH_ROWS[0]) % DOCUMENT_NAMES.length]]: specialCharactersRemoved,
       };
     }
