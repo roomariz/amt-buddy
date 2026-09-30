@@ -11,8 +11,10 @@ test("a rentToIncome ratio from this turn's Tool results grounds its percentage,
   }
 });
 
-test("a ratio's three-decimal form is not grounded: the shared parser reads '0.193' as 193", () => {
-  assert.deepEqual(checkLandlordAnswer("A-003 pays 0.193 of income.", { evidence: [ranking] }), { grounded: false, ungrounded: ["0.193"] });
+test("a ratio written with three decimals is its true value (0.193 for 0.1933), and no stray 333 is grounded", () => {
+  // The shared parser reads "0.193" as 0.19 (a leading 0 is never a thousands group); the ratio
+  // 0.1933 is known as 0.19 too, so the figure grounds. Nothing reads as 333 any more.
+  assert.deepEqual(checkLandlordAnswer("A-003 pays 0.193 of income.", { evidence: [ranking] }), { grounded: true, ungrounded: [] });
   const context = { stats: { total: 40, maxRentToIncome: 1 / 3 } };
   assert.deepEqual(checkLandlordAnswer("333 applicants applied.", { context }), { grounded: false, ungrounded: ["333"] });
 });
@@ -37,8 +39,17 @@ test("a rentToIncome in the context grounds its one-decimal percentage, not the 
 });
 
 test("a ratio grounds only its own written forms, not a neighbouring figure", () => {
-  const { ungrounded } = checkLandlordAnswer("A-003 pays 19.4 % of income, or 0.194.", { evidence: [ranking] });
-  assert.deepEqual(ungrounded, ["19.4", "0.194"]);
+  const { ungrounded } = checkLandlordAnswer("A-003 pays 19.4 % of income.", { evidence: [ranking] });
+  assert.deepEqual(ungrounded, ["19.4"]);
+});
+
+// Known limit, accepted: the shared parser rounds to cents, so a ratio written as a decimal is
+// checked to two places only — 0.194 and 0.1933 are both 0.19. The prompt has the chat write
+// ratios as percentages (checked to one decimal, above); a finer check would need the parser to
+// stop rounding, in code the tenant chat shares.
+test("a ratio written as a decimal is checked to cents only (known limit)", () => {
+  assert.deepEqual(checkLandlordAnswer("A-003 pays 0.194 of income.", { evidence: [ranking] }), { grounded: true, ungrounded: [] });
+  assert.deepEqual(checkLandlordAnswer("A-003 pays 0.21 of income.", { evidence: [ranking] }), { grounded: false, ungrounded: ["0.21"] });
 });
 
 test("a subscore of 0.5 without a ratio key does not ground 50 %", () => {
