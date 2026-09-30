@@ -212,7 +212,7 @@ export const LANDLORD_TOOL_CONTRACTS = {
   adjust_selection_criteria: {
     name: "adjust_selection_criteria",
     description:
-      "Change how much criteria count, relative to their saved shares: per criterion by a factor (1.3 = 30 % more, 1.5 = much more, 0.7 = less, 2 = double, 0.5 = halve, 0 = ignore) or to a target share in %. The criteria not named keep their proportions and fill the rest to 100 %. No share can exceed 50 % (a request above is capped). Saves them and returns the old and new criteria (shares in %), what was applied (from, requested, to, capped) and the new top 3.",
+      "Change how much criteria count, relative to their saved shares: per criterion by a factor (1.3 = 30 % more, 1.5 = much more, 0.7 = less, 2 = double, 0.5 = halve, 0 = ignore) or to a target share in %. The criteria not named keep their proportions and fill the rest to 100 %. No share can exceed 50 % (a request above is capped). Saves them and returns what was applied per named criterion (from, requested, to in %, capped), the criteria not named with the factor their shares were all scaled by ('othersScaled') and the new top 3. It does not list the other criteria's new shares: get_ranking has all of them.",
     schema: z.object({
       changes: z
         .array(
@@ -225,11 +225,13 @@ export const LANDLORD_TOOL_CONTRACTS = {
         .min(1),
     }),
     output: z.looseObject({
-      previous: selectionCriteria,
-      criteria: selectionCriteria,
       applied: z.array(
         z.looseObject({ criterion: z.enum(SELECTION_CRITERIA), from: z.number(), requested: z.number(), to: z.number().min(0).max(50), capped: z.boolean() }),
       ),
+      // factor: new share / saved share of every criterion not named (0.925 = scaled to 92.5 %);
+      // null when there was none to scale.
+      othersScaled: z.object({ factor: z.number().min(0).nullable(), criteria: z.array(z.enum(SELECTION_CRITERIA)) }),
+      maxShare: z.number(),
       top: z.array(rankedApplicant).max(3),
       inactive,
     }),

@@ -100,7 +100,7 @@ test("a vague request ('SCHUFA matters more') becomes adjust_selection_criteria 
   t.after(server.close);
   server.setScript([
     { toolCalls: [{ name: "adjust_selection_criteria", args: { changes: [{ criterion: "schufa", by: "factor", value: 1.3 }] } }] },
-    "I read that as SCHUFA: it now counts 26 % instead of 20 %; affordability 27.8 %.",
+    "I read that as SCHUFA: 20 → 26 %; the other criteria were scaled down proportionally, and the chart on your page shows all the weights.",
   ]);
 
   const events = await server.chat("A clean credit history matters more to me.");
@@ -109,6 +109,10 @@ test("a vague request ('SCHUFA matters more') becomes adjust_selection_criteria 
   assert.equal(server.model.calls.length, 2, "grounded: no rewrite");
   const result = JSON.parse(server.model.calls[1].at(-1).content);
   assert.deepEqual(result.applied, [{ criterion: "schufa", from: 20, requested: 26, to: 26, capped: false }]);
+  assert.deepEqual(result.othersScaled, { factor: 0.925, criteria: ["affordability", "documents", "credibility", "employment", "previousLandlord"] });
+  // What the model sees has no list of all six shares for it to recite.
+  assert.equal(result.criteria, undefined);
+  assert.equal(result.previous, undefined);
   assert.equal(server.store.getCriteria(server.landlordId).weights.affordability, 27.75);
   assert.match(server.model.calls[0][0].content, /adjust_selection_criteria/);
 });

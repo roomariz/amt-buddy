@@ -107,31 +107,55 @@ test("get_ranking: the top applicants with breakdowns, the stats, exclusions by 
   assert.doesNotMatch(JSON.stringify(ranking), /Mrs\. X/);
 });
 
-test("adjust_selection_criteria: saves, and returns the old and new shares to one decimal, what was applied and the new top 3", async () => {
+test("adjust_selection_criteria: saves, and returns what was applied, the factor the others were scaled by and the new top 3", async () => {
   const { store, landlordId, call } = setup();
 
   const result = await call("adjust_selection_criteria", { changes: [{ criterion: "schufa", by: "factor", value: 1.3 }] });
 
-  // The plan's example: SCHUFA 20 → 26, the other five (80) scaled to 74.
-  assert.deepEqual(result.previous.weights, DEFAULT_CRITERIA.weights);
-  assert.deepEqual(result.criteria.weights, { affordability: 27.8, schufa: 26, documents: 13.9, credibility: 13.9, employment: 13.9, previousLandlord: 4.6 });
+  // The plan's example: SCHUFA 20 → 26, the other five (80) scaled to 74 (74 / 80 = 0.925).
   assert.deepEqual(result.applied, [{ criterion: "schufa", from: 20, requested: 26, to: 26, capped: false }]);
+  assert.deepEqual(result.othersScaled, { factor: 0.925, criteria: ["affordability", "documents", "credibility", "employment", "previousLandlord"] });
   assert.deepEqual(result.top.map(({ rank }) => rank), [1, 2, 3]);
   assert.deepEqual(result.inactive, []);
-  assert.equal(store.getCriteria(landlordId).weights.affordability, 27.75, "saved unrounded");
+  // The model is not handed the other criteria's shares to recite: the page's chart shows them.
+  assert.deepEqual(Object.keys(result).sort(), ["applied", "inactive", "maxShare", "othersScaled", "top"]);
+  assert.doesNotMatch(JSON.stringify(result), /"weights"|"requirements"/);
+  // Saved unrounded: 30 × 0.925, 15 × 0.925, 5 × 0.925.
+  assert.deepEqual(store.getCriteria(landlordId).weights, { affordability: 27.75, schufa: 26, documents: 13.875, credibility: 13.875, employment: 13.875, previousLandlord: 4.625 });
+  assert.deepEqual(store.getCriteria(landlordId).requirements, DEFAULT_CRITERIA.requirements);
+  // All the new shares, to one decimal, are what get_ranking gives when the landlord asks.
+  assert.deepEqual((await call("get_ranking")).criteria.weights, { affordability: 27.8, schufa: 26, documents: 13.9, credibility: 13.9, employment: 13.9, previousLandlord: 4.6 });
   // The limit the chat may mention ("no criterion above 50 %") comes with the result, so it is grounded.
   assert.equal(result.maxShare, 50);
 });
 
 test("adjust_selection_criteria reports a capped share, rounded", async () => {
-  const { call } = setup();
+  const { store, landlordId, call } = setup();
 
   const result = await call("adjust_selection_criteria", { changes: [{ criterion: "affordability", by: "factor", value: 2 }] });
 
-  // 30 × 2 = 60, capped at 50; the other five (70) scaled to 50: SCHUFA 14.29, documents 10.71,
-  // previous landlord 3.57.
+  // 30 × 2 = 60, capped at 50; the other five (70) scaled to 50 (50 / 70 = 0.714…): SCHUFA 14.29,
+  // documents 10.71, previous landlord 3.57.
   assert.deepEqual(result.applied, [{ criterion: "affordability", from: 30, requested: 60, to: 50, capped: true }]);
-  assert.deepEqual(result.criteria.weights, { affordability: 50, schufa: 14.3, documents: 10.7, credibility: 10.7, employment: 10.7, previousLandlord: 3.6 });
+  assert.deepEqual(result.othersScaled, { factor: 0.714, criteria: ["schufa", "documents", "credibility", "employment", "previousLandlord"] });
+  assert.deepEqual((await call("get_ranking")).criteria.weights, { affordability: 50, schufa: 14.3, documents: 10.7, credibility: 10.7, employment: 10.7, previousLandlord: 3.6 });
+  const saved = store.getCriteria(landlordId).weights;
+  assert.equal(saved.affordability, 50);
+  assert.ok(Math.abs(saved.schufa - 100 / 7) < 1e-6, `SCHUFA 20 × 5/7, saved ${saved.schufa}`);
+});
+
+test("adjust_selection_criteria: others scaled up (factor above 1), and none left to scale (factor null)", async () => {
+  const { call } = setup();
+
+  // Affordability 30 → 15; the other five (70) fill 85: 85 / 70 = 1.214….
+  const halved = await call("adjust_selection_criteria", { changes: [{ criterion: "affordability", by: "factor", value: 0.5 }] });
+  assert.deepEqual(halved.othersScaled, { factor: 1.214, criteria: ["schufa", "documents", "credibility", "employment", "previousLandlord"] });
+
+  // All six named by share: nothing is scaled.
+  const shares = { affordability: 30, schufa: 20, documents: 15, credibility: 15, employment: 15, previousLandlord: 5 };
+  const all = await call("adjust_selection_criteria", { changes: Object.entries(shares).map(([criterion, value]) => ({ criterion, by: "share", value })) });
+  assert.deepEqual(all.othersScaled, { factor: null, criteria: [] });
+  assert.doesNotThrow(() => LANDLORD_TOOL_CONTRACTS.adjust_selection_criteria.output.parse(all));
 });
 
 test("changing an inactive criterion's weight still saves it, and the result says it is inactive", async () => {
@@ -140,7 +164,7 @@ test("changing an inactive criterion's weight still saves it, and the result say
   const result = await call("adjust_selection_criteria", { changes: [{ criterion: "affordability", by: "factor", value: 1.3 }] });
 
   // 30 → 39; the other five (70) scaled to 61.
-  assert.equal(result.criteria.weights.affordability, 39);
+  assert.deepEqual(result.applied, [{ criterion: "affordability", from: 30, requested: 39, to: 39, capped: false }]);
   assert.equal(store.getCriteria(landlordId).weights.affordability, 39);
   assert.deepEqual(result.inactive[0], { criterion: "affordability", missing: ["askingRent"] });
   assert.equal(result.top.length, 3);
@@ -553,7 +577,7 @@ test("the system prompt explains the pool stats fields and when a share may be c
   assert.match(system, /canAffordAtMedian = how many could afford the Mietspiegel median rent "medianRent"/);
   assert.match(system, /canAfford = how many can afford the asking rent/);
   assert.match(system, /capped only for a change whose "capped" is true/);
-  assert.match(system, /page shows all the weights as a chart.*name only what changed.*"SCHUFA 20 → 26 %".*do not list all six weights unless the landlord asks/);
+  assert.match(system, /page shows all the weights as a chart.*report only the "applied" entries.*"SCHUFA 20 → 26 %".*other criteria were scaled proportionally \("othersScaled"\) and that the chart on the page shows all the weights\. Do not list the other criteria's shares unless the landlord asks for them; then call get_ranking/);
   assert.match(system, /call compare_applicants and go through its "differences" in order: say which criteria favour which applicant and by how many points, including those that favour the lower-ranked one; call criteria equal only if they are in "equal"/);
 });
 

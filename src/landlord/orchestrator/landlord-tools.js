@@ -43,6 +43,19 @@ const roundedCriteria = ({ weights, requirements }) => ({
   requirements,
 });
 
+// The criteria adjust_selection_criteria did not name, and the factor their saved shares were all
+// scaled by to fill the rest to 100 % (new share / saved share, to three decimals: 74 / 80 → 0.925;
+// above 1 when they grew). null when there is nothing to scale: every criterion named, or the
+// others all at 0 %.
+function othersScaled({ previous, applied }) {
+  const named = new Set(applied.map(({ criterion }) => criterion));
+  const criteria = Object.keys(previous.weights).filter((criterion) => !named.has(criterion));
+  const savedTotal = Object.values(previous.weights).reduce((total, weight) => total + weight, 0);
+  const rest = criteria.reduce((total, criterion) => total + (previous.weights[criterion] / savedTotal) * 100, 0);
+  const left = 100 - applied.reduce((total, { to }) => total + to, 0);
+  return { factor: rest > 0 ? Math.round((left / rest) * 1000) / 1000 : null, criteria };
+}
+
 // The points each criterion adds to the Match score: subscore × weight (% of the Match score), to
 // one decimal; null for an inactive criterion. Computed here from the scorer's breakdown (ADR 0004),
 // so the chat compares applicants by points rather than by subscores whose weights differ. They sum
@@ -269,9 +282,11 @@ export function createLandlordTools({ getStore, getApplicantPool, fetchImpl }) {
         to: oneDecimal(to),
         capped,
       }));
-      const { previous, criteria, top, inactive } = criteriaResult(adjusted, await landlordState(landlordId));
-      // maxShare: the limit, so that the chat can quote it and stay grounded.
-      return { previous, criteria, applied, maxShare: MAX_SHARE, top, inactive };
+      const { top, inactive } = criteriaResult(adjusted, await landlordState(landlordId));
+      // No full weight lists: given them, a live model recited all six shares after every change,
+      // while the page's chart already shows them (get_ranking still has them). maxShare: the
+      // limit, so that the chat can quote it and stay grounded.
+      return { applied, othersScaled: othersScaled(adjusted), maxShare: MAX_SHARE, top, inactive };
     },
 
     // What a thumbs up / down is worth; the model never rates applicants itself.
