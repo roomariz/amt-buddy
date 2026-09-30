@@ -66,7 +66,8 @@ let slots = [null, null]; // applicant ids in the two Recommendation slots
 // Skipped applicants, page state only (forgotten on reload). Cleared when the ranking changes,
 // since a skipped applicant may deserve another look under new criteria or flat details.
 let skipped = new Set();
-// Rank moves from the last ranking change (criteria or flat details); shown until the next one.
+// Rank moves from the last chat turn that changed the ranking (criteria or flat details); shown
+// until the next one, or until a rating moves ranks, since they no longer describe the latest change.
 let moves = new Map();
 // Applicants with a Shortlist or rating request running: their buttons stay disabled across
 // redraws, so a double click cannot send the change twice.
@@ -454,6 +455,9 @@ function fly(flight, applicantId) {
   animation.addEventListener("cancel", land);
 }
 
+// The server's validation messages are English: only a too-long note can come from this page.
+const problemText = (problems) => (problems.note ? t("landlord.shortlist.noteTooLong") : t("landlord.errors.failed"));
+
 // Runs one Shortlist change for `applicantId` and refetches the overview. The applicant stays
 // pending (buttons disabled) until the board is redrawn from the refetch, so no redraw in between
 // can re-enable a button for a change already sent. → true when saved; false when it failed (the
@@ -480,10 +484,10 @@ async function changeShortlist(applicantId, errorNode, request, onProblems) {
     }
     if (!result.entry) {
       if (result.problems && onProblems) {
-        onProblems(Object.values(result.problems).join(" "));
+        onProblems(problemText(result.problems));
         return false;
       }
-      const message = result.error ?? (result.notFound ? t("landlord.shortlist.notFound") : Object.values(result.problems ?? {}).join(" "));
+      const message = result.error ?? (result.notFound ? t("landlord.shortlist.notFound") : result.problems && problemText(result.problems));
       showError(errorNode, message || t("landlord.errors.failed"));
       return false;
     }
@@ -576,6 +580,7 @@ async function rate(applicantId, value, pressed, slotIndex = null) {
       showError(errorNode, result.error ?? t(result.notFound ? "landlord.shortlist.notFound" : "landlord.errors.failed"));
       return;
     }
+    moves = new Map();
     await loadOverview();
   } finally {
     pending.delete(applicantId);

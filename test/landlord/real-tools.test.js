@@ -734,4 +734,17 @@ test("the system prompt explains the bonus, set_bonus_points for 'more weight to
   assert.match(system, /× 1\.3/);
   assert.match(system, /cannot rate applicants/);
   assert.match(system, /never suggest a thumbs up or down on protected grounds/i);
+  assert.match(system, /look at who is rated now .*never assume nobody is rated/);
+});
+
+test("the system prompt keeps the Mietspiegel range apart from the allowed rent, and the block's age apart from the flat's", async () => {
+  const { store, landlordId } = setup();
+  const context = await createLandlordContext({ getStore: () => store, getApplicantPool: async () => pool })(landlordId);
+
+  const system = landlordSystemMessage({ context, language: "en" }).content;
+
+  assert.match(system, /"range" is the Mietspiegel spread for comparable flats, not a legal limit: never call its upper bound "allowed"/);
+  assert.match(system, /legally allowed maximum on a re-let is the Mietpreisbremse cap \("allowedRent"/);
+  assert.match(system, /"buildingAgePeriod"\) is when the flat's block was predominantly built .*not the flat's own construction year/);
+  assert.match(system, /unless the landlord stated the building year/);
 });

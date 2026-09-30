@@ -241,6 +241,7 @@ const de = {
       noScore: "Noch kein Score",
       excluded: "Ausgeschlossen",
       notFound: "Diesen Bewerber gibt es nicht mehr. Laden Sie die Seite neu.",
+      noteTooLong: "Die Notiz darf höchstens 500 Zeichen lang sein.",
       status: { to_invite: "Einladen", invited: "Eingeladen", declined: "Abgelehnt" },
     },
     preferences: {
@@ -648,6 +649,7 @@ const en = {
       noScore: "No score yet",
       excluded: "Excluded",
       notFound: "This applicant no longer exists. Reload the page.",
+      noteTooLong: "The note can be at most 500 characters long.",
       status: { to_invite: "To invite", invited: "Invited", declined: "Declined" },
     },
     preferences: {
