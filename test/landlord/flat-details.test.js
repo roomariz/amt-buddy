@@ -134,13 +134,15 @@ test("a Listing saved before the flat details existed seeds them", async (t) => 
   db.close();
 
   const store = createLandlordStore({ path });
-  t.after(() => store.close());
-
-  assert.deepEqual(store.getFlatDetails(landlordId), {
-    address: "Wühlischstraße 30, 10245 Berlin",
-    livingAreaSqm: 50,
-    rooms: 2,
-    askingRent: 700,
-    buildingYear: 1905,
-  });
+  try {
+    assert.deepEqual(store.getFlatDetails(landlordId), {
+      address: "Wühlischstraße 30, 10245 Berlin",
+      livingAreaSqm: 50,
+      rooms: 2,
+      askingRent: 700,
+      buildingYear: 1905,
+    });
+  } finally {
+    store.close();
+  }
 });

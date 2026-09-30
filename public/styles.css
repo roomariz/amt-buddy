@@ -1663,6 +1663,13 @@ footer a { color: inherit; }
   transform: scale(0.98);
 }
 
+/* No yellow focus box around the sliders and checkboxes; keyboard focus keeps a quiet outline. */
+.criteria-controls input[type="range"]:focus,
+.criteria-controls input[type="checkbox"]:focus { outline: none; }
+.criteria-controls input[type="range"]:focus-visible,
+.criteria-controls input[type="checkbox"]:focus-visible { outline: 2px solid #5d5d5d; outline-offset: 3px; }
+.criteria-controls input[aria-invalid="true"] { outline: 2px solid #b3261e; }
+
 .landlord-btn:disabled {
   opacity: 0.5;
   cursor: default;
@@ -2081,6 +2088,10 @@ footer a { color: inherit; }
   color: #475569;
 }
 
+.landlord-fact-detail { margin: 4px 0 0; font-size: 0.75rem; color: #5d5d5d; }
+
+.landlord-note { margin: 0 0 12px; padding: 12px; border-radius: 10px; background: #fff4d6; color: #5c4400; }
+
 .rent-bar {
   position: relative;
   height: 14px;
@@ -2273,6 +2284,13 @@ footer a { color: inherit; }
   flex-shrink: 0;
   border-radius: 12px;
 }
+
+/* The box sits right before its text, not stretched across the cell by the global input rule. */
+.ranking-check input[type="checkbox"] { flex: none; width: auto; margin: 0; padding: 0; }
+/* In the table a long chip wraps and the Shortlist button keeps its own small size, so the row fits the card. */
+.ranking-table .ranking-flag { white-space: normal; }
+.ranking-table .applicant-open { white-space: nowrap; }
+.ranking-table .shortlist-add { padding: 4px 0; font: 600 0.8rem/1.2 Arial, sans-serif; text-align: left; }
 
 .btn-chat-send::before {
   content: "";
@@ -2742,6 +2760,11 @@ footer a { color: inherit; }
   margin-top: 10px;
 }
 
+.applicant-clarification { margin-top: 22px; padding: 18px; border: 1px solid #b7c8ba; border-radius: 10px; background: #f4f8f4; }
+.applicant-clarification h3 { margin-top: 0; }
+.clarification-draft { margin-top: 14px; }
+.clarification-draft summary { cursor: pointer; font-weight: 600; }
+.clarification-draft textarea { display: block; box-sizing: border-box; width: 100%; margin: 10px 0; padding: 12px; border: 1px solid #89988b; border-radius: 8px; font: inherit; line-height: 1.5; resize: vertical; color: #171714; background: white; }
 .shortlist-status,
 .shortlist-note {
   padding: 7px 12px;

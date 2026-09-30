@@ -61,7 +61,7 @@ test("without a Listing get_ranking still ranks, saying what is inactive; get_re
   const ranking = await call("get_ranking");
 
   // Occupancy is not evaluated without the size and rooms: nobody is excluded.
-  assert.equal(ranking.rankedCount, 40);
+  assert.equal(ranking.rankedCount, 95);
   assert.deepEqual(ranking.excludedByReason, {});
   assert.equal(ranking.stats.canAfford, null);
   assert.deepEqual(ranking.inactive, [
@@ -100,8 +100,8 @@ test("get_ranking: the top applicants with breakdowns, the stats, exclusions by 
 
   assert.equal(ranking.ranked.length, 10);
   assert.deepEqual(ranking.ranked.map(({ rank }) => rank), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
-  assert.equal(ranking.stats.total, 40);
-  assert.equal(ranking.rankedCount + ranking.stats.excluded, 40);
+  assert.equal(ranking.stats.total, 95);
+  assert.equal(ranking.rankedCount + ranking.stats.excluded, 95);
   assert.ok(ranking.excludedByReason.schufaCleanOnly > 0);
   assert.deepEqual(ranking.shortlist, [{ applicantId, status: "invited" }]);
   assert.doesNotMatch(JSON.stringify(ranking), /Mrs\. X/);
@@ -672,9 +672,9 @@ test("get_ranking and get_applicant_profile carry the bonus: points and ranking 
   const ranking = await call("get_ranking");
 
   assert.equal(ranking.bonusPoints, 4);
-  const down = ranking.ranked.find(({ applicantId }) => applicantId === first.applicantId);
   const up = ranking.ranked.find(({ applicantId }) => applicantId === second.applicantId);
-  assert.deepEqual({ bonus: down.bonus, rankingScore: down.rankingScore }, { bonus: -4, rankingScore: Math.round((first.matchScore - 4) * 10) / 10 });
+  const downProfile = await call("get_applicant_profile", { applicantId: first.applicantId });
+  assert.deepEqual({ bonus: downProfile.bonus, rankingScore: downProfile.rankingScore }, { bonus: -4, rankingScore: Math.round((first.matchScore - 4) * 10) / 10 });
   assert.deepEqual({ bonus: up.bonus, rankingScore: up.rankingScore }, { bonus: 4, rankingScore: Math.round((second.matchScore + 4) * 10) / 10 });
   const unrated = ranking.ranked.find(({ applicantId }) => ![first.applicantId, second.applicantId].includes(applicantId));
   assert.ok(!("bonus" in unrated) && !("rankingScore" in unrated), "an unrated entry keeps its shape");

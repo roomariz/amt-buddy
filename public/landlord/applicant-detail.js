@@ -1,18 +1,16 @@
 // The Applicant detail panel's translated view data. All score values come from the server's
 // deterministic scorer; this module only formats and labels them.
-import { t } from "../i18n.js";
+import { getLanguage, t } from "../i18n.js";
 import { breakdownBars, exclusionText, formatMoney, formatNumber, formatPercent } from "./ranking.js";
 
 const DOCUMENTS = ["schufa", "incomeProof", "previousLandlord"];
 
-export function applicantDetailView({ profile, score, rentToIncome, contact }) {
+export function applicantDetailView({ profile, score, rentToIncome, clarification }) {
   const { documentCheck } = profile;
   const fact = (key, value) => ({ label: t(`landlord.detail.${key}`), value });
   const yesNo = (value) => t(`landlord.detail.${value ? "yes" : "no"}`);
   return {
-    name: contact.name,
-    email: contact.email,
-    phone: contact.phone,
+    clarification: clarificationView(clarification),
     facts: [
       fact("household", t("landlord.detail.householdValue", profile.household)),
       fact("income", formatMoney(profile.netHouseholdIncome)),
@@ -37,5 +35,27 @@ export function applicantDetailView({ profile, score, rentToIncome, contact }) {
       label: t(`landlord.ranking.criteria.${criterion}`), percent, weight,
     })) : [],
     exclusion: score?.reasons ? score.reasons.map(exclusionText).join(" ") : null,
+  };
+}
+
+
+function clarificationView(clarification) {
+  if (!clarification) return null;
+  const { request, documents } = clarification;
+  const deadline = request ? new Intl.DateTimeFormat(getLanguage() === "en" ? "en-GB" : "de-DE", {
+    dateStyle: "medium", timeStyle: "short", timeZone: "UTC",
+  }).format(new Date(request.deadline)) + " UTC" : null;
+  const documentNames = documents.map((document) => t(`landlord.ranking.document.${document}`)).join(", ");
+  const values = { documents: documentNames, deadline };
+  return {
+    canRequest: !request,
+    status: t(`landlord.clarification.status.${request?.status ?? "needed"}`),
+    landlordMessage: t("landlord.clarification.landlordMessage"),
+    documents: documentNames,
+    deadline,
+    drafts: request ? [
+      { channel: "email", recipient: t("landlord.clarification.applicant"), text: t("landlord.clarification.emailDraft", values) },
+      { channel: "whatsapp", recipient: t("landlord.clarification.applicant"), text: t("landlord.clarification.whatsappDraft", values) },
+    ] : [],
   };
 }

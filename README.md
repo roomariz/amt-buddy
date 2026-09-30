@@ -202,3 +202,10 @@ More documentation:
 - [docs/api.md](docs/api.md): the plain JSON endpoints (address check, lease
   reading, rule-based chat, the landlord side), with request and response examples.
 - [CONTEXT.md](CONTEXT.md): the project's vocabulary.
+
+
+### Demo: name clarification (#61)
+
+On `/landlord`, save a Listing and open an applicant with a name discrepancy. The landlord interface identifies applicants only by ID and omits names and contact details throughout. In **Name clarification · Demo**, choose **Prepare 24-hour request**. The landlord sees a generic explanation; the copyable email and WhatsApp drafts identify the affected document types without including names or contact details. **A-002** has one differing income-proof name and **A-011** has several. No message is sent. The request survives reloads and server restarts when using the normal SQLite database; after the deadline it becomes overdue without a score penalty or automatic exclusion. The drafts ask the applicant to confirm whether the documents are theirs, explain the discrepancy, and describe the action they will take to resolve it and by when. There is no applicant reply or upload flow in this demo. Existing seven-day demo requests adopt the 24-hour deadline from their original creation time on server startup.
+
+Names with common presentation differences are compared conservatively. Remaining name discrepancies are clarification issues, not scoring penalties; other document findings still apply. See [the API contract](docs/api.md) for persistence, status and error behavior.

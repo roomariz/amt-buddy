@@ -115,7 +115,7 @@ _Avoid_: Verification, KYC
 _Avoid_: Trust score, rating
 
 **Applicant profile**:
-The anonymised, structured view of an Applicant that everything downstream uses: id, household size (with adults, children and children up to six, as § 7 WoAufG Bln needs them), net household income, employment type, SCHUFA status, move-in date, pets/smoking, Document check, Credibility score. It never contains protected characteristics. Name and contact details are kept beside it for display only and never reach the scorer or the model.
+The anonymised, structured view of an Applicant that everything downstream uses: id, household size (with adults, children and children up to six, as § 7 WoAufG Bln needs them), net household income, employment type, SCHUFA status, move-in date, pets/smoking, Document check, Credibility score. It never contains protected characteristics. Names and contact details stay in the source data and never reach the landlord interface, scorer, or model; the interface identifies applications by id.
 _Avoid_: Applicant record, dossier
 
 **Selection criteria**:

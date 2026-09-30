@@ -64,9 +64,12 @@ test("store: ratings and bonus points survive re-opening the database file", asy
   first.close();
 
   const second = createLandlordStore({ path });
-  t.after(() => second.close());
-  assert.deepEqual(second.getRatings(landlordId), new Map([["A-003", 1]]));
-  assert.equal(second.getBonusPoints(landlordId), 7);
+  try {
+    assert.deepEqual(second.getRatings(landlordId), new Map([["A-003", 1]]));
+    assert.equal(second.getBonusPoints(landlordId), 7);
+  } finally {
+    second.close();
+  }
 });
 
 const POOL = new Set(["A-001", "A-002"]);

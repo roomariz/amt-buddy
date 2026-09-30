@@ -16,21 +16,20 @@ const RANKED = [
 
 const ids = (rows) => rows.map(({ applicantId }) => applicantId);
 
-test("the table is sorted by Match score by default and can be sorted by name or rent-to-income", () => {
+test("the table is sorted by Match score by default or rent-to-income", () => {
   assert.deepEqual(ids(rankingRows(RANKED)), ["A-003", "A-001", "A-002"]);
-  assert.deepEqual(ids(rankingRows(RANKED, { sort: "name" })), ["A-001", "A-002", "A-003"]);
   assert.deepEqual(ids(rankingRows(RANKED, { sort: "rentToIncome" })), ["A-001", "A-003", "A-002"]);
   assert.deepEqual(ids(rankingRows(RANKED, { sort: "unknown" })), ["A-003", "A-001", "A-002"]);
 });
 
 test("the table can be filtered to complete documents only", () => {
   assert.deepEqual(ids(rankingRows(RANKED, { completeOnly: true })), ["A-003", "A-002"]);
-  assert.deepEqual(ids(rankingRows(RANKED, { completeOnly: true, sort: "name" })), ["A-002", "A-003"]);
+  assert.deepEqual(ids(rankingRows(RANKED, { completeOnly: true, sort: "rentToIncome" })), ["A-003", "A-002"]);
 });
 
 test("sorting and filtering leave the dashboard's list as it was", () => {
   const copy = structuredClone(RANKED);
-  rankingRows(RANKED, { sort: "name", completeOnly: true });
+  rankingRows(RANKED, { sort: "rentToIncome", completeOnly: true });
   assert.deepEqual(RANKED, copy);
 });
 

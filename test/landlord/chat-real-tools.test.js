@@ -198,7 +198,7 @@ test("without a Listing the ranking Tool ranks anyway and says what is inactive;
   await server.chat("Who is the best applicant?");
 
   const ranking = JSON.parse(server.model.calls[1].at(-1).content);
-  assert.equal(ranking.rankedCount, 40);
+  assert.equal(ranking.rankedCount, 95);
   assert.deepEqual(ranking.inactive.map(({ criterion, requirement }) => criterion ?? requirement), ["affordability", "occupancyCompliant"]);
   const system = server.model.calls[0][0].content;
   assert.match(system, /"askingRent":null/);
@@ -349,7 +349,7 @@ test("no applicant name, contact detail or protected field appears in any messag
   t.after(server.close);
   const { ranked, excluded } = await server.dashboard();
   const ids = [...ranked, ...excluded].map(({ applicantId }) => applicantId);
-  assert.equal(ids.length, 40);
+  assert.equal(ids.length, 95);
   // A Shortlist note naming the applicant (the landlord's free text): the context shows the Shortlist.
   const { applicants } = await readApplicantPool(APPLICANT_POOL_DIRECTORY, { today: POOL_DATE });
   const named = applicants.find(({ id }) => id === ids[1]);
@@ -386,6 +386,7 @@ test("no applicant name, contact detail or protected field appears in any messag
   assert.ok(plain.length > 100 && quoted.length > 20, "the pool's identifying values were found");
   assert.ok(plain.includes(named.contact.name), "the name in the note is among the values checked");
   for (const value of [...plain, ...quoted, "Erika Muster"]) assert.ok(!sent.includes(value), `${value} reached the model`);
+  for (const value of ["Diego Rossi", "Wei Rossi", "Lina Rossi"]) assert.ok(!sent.includes(value), `${value} reached the model`);
   assert.doesNotMatch(sent, /\\"(contact|email|phone|nationality|religion|dateOfBirth|gender|photo|familyPlans)\\":/);
   // The ratings are in what is checked, as ids with a bonus in points, never as "up" / "down".
   assert.ok(server.model.calls[0][0].content.includes(`"applicantId":"${ids[1]}"`) && /"bonus":5/.test(server.model.calls[0][0].content), "the context shows the rated applicant's bonus");
@@ -414,7 +415,7 @@ test("before a Listing too, no applicant name, contact detail or protected field
 
   await server.chat("Show me everything about every applicant.");
 
-  assert.equal(ids.length, 40);
+  assert.equal(ids.length, 95);
   assert.ok(server.model.calls.every((messages) => /Top of the current ranking:/.test(messages[0].content)), "the context's top is in what is checked");
   const sent = JSON.stringify(server.model.calls);
   const { plain, quoted } = identifyingValues();

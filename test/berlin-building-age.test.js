@@ -43,6 +43,36 @@ test("returns the official predominant block-level construction period", async (
       granularity: "block_or_partial_block",
       referenceYear: 2015,
       buildingSpecific: false,
+      mostCommonDecade: null,
     },
   );
+});
+
+function blockResponse(properties) {
+  return async () =>
+    new Response(JSON.stringify({ features: [{ properties }] }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+}
+
+test("a block of mixed construction periods names the decade with the most buildings; a tie goes to the older one", async () => {
+  const coordinates = { longitude: 13.3321, latitude: 52.4868 };
+  const mixed = {
+    ueberw_dekade_woh_neu: "gemischte Baualtersklasse",
+    x_bis_1900: 1,
+    x1951_1960: 4,
+    x1961_1970: 4,
+    x1971_1980: 1,
+    x2011_2015: null,
+  };
+
+  const area = await getBerlinBuildingAgeArea(coordinates, { fetchImpl: blockResponse(mixed) });
+  assert.equal(area.predominantConstructionPeriod, "gemischte Baualtersklasse");
+  assert.equal(area.mostCommonDecade, "1951-1960");
+
+  const older = await getBerlinBuildingAgeArea(coordinates, {
+    fetchImpl: blockResponse({ ...mixed, x_bis_1900: 7 }),
+  });
+  assert.equal(older.mostCommonDecade, "bis 1900");
 });

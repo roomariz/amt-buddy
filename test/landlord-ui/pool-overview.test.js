@@ -76,11 +76,11 @@ test("without a Rent check the median tile is shown as unavailable, not as zero"
   assert.equal(statTiles(null).length, 0);
 });
 
-test("the Recommendation cards carry the name, the Match score and the reason in the page language", () => {
+test("the Recommendation cards carry an anonymous id, the Match score and the reason in the page language", () => {
   const en = inLanguage("en", () => recommendationCards(RECOMMENDATIONS));
   const de = inLanguage("de", () => recommendationCards(RECOMMENDATIONS));
 
-  assert.deepEqual(en[0], { applicantId: "A-007", rank: 1, name: "Lena Schmidt", matchScore: "94.2", reason: "You may like this applicant for their clean SCHUFA." });
+  assert.deepEqual(en[0], { applicantId: "A-007", rank: 1, matchScore: "94.2", reason: "You may like this applicant for their clean SCHUFA." });
   assert.equal(de[0].matchScore, "94,2");
   assert.equal(de[1].reason, "Dieser Bewerber könnte Ihnen gefallen: vollständige Unterlagen.");
   assert.deepEqual(recommendationCards([]), []);

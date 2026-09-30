@@ -172,7 +172,7 @@
                   <span class="landlord-field-error" data-error-for="askingRent" hidden></span>
                 </label>
               </div>
-              <p class="landlord-hint" data-i18n="landlord.buildingYearHint">Ohne Baujahr nimmt Amt-Buddy das überwiegende Baualter des Blocks.</p>
+              <p class="landlord-hint" data-i18n="landlord.buildingYearHint">Ohne Baujahr nimmt Amt-Buddy das überwiegende Baualter des Blocks, bei gemischtem Baualter das häufigste Jahrzehnt.</p>
               <p id="listing-error" class="landlord-error" role="alert" hidden></p>
               <button type="submit" id="btn-save-listing" class="landlord-btn" data-i18n="landlord.save">Wohnung speichern und prüfen</button>
             </form>
@@ -422,7 +422,6 @@
                   <span data-i18n="landlord.ranking.sort">Sortieren nach</span>
                   <select id="ranking-sort">
                     <option value="score" data-i18n="landlord.ranking.sortBy.score">Match-Score</option>
-                    <option value="name" data-i18n="landlord.ranking.sortBy.name">Name</option>
                     <option value="rentToIncome" data-i18n="landlord.ranking.sortBy.rentToIncome">Miete / Einkommen</option>
                   </select>
                 </label>

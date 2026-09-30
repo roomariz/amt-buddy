@@ -218,6 +218,7 @@ test("the system prompt carries the Listing, the AGG refusal rule and the landlo
   assert.match(german, /"askingRent":700/);
   assert.match(german, /Never rank, select, exclude or comment on applicants by protected characteristics under the AGG/);
   assert.match(german, /refuse politely/);
+  assert.match(german, /the landlord's page also identifies them by id only/);
   assert.match(german, /equal Match scores are ordered by applicant id: say so; never invent a reason for their order/);
   assert.match(german, /Reply in German/);
   assert.match(english, /Reply in English/);

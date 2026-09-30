@@ -108,7 +108,6 @@ async function drain(reader) {
 export function changedDashboard(state) {
   return Object.values(state?.changed ?? {}).some(Boolean);
 }
-
 // The applicants' names by id, from the dashboard (ranked, excluded and the Shortlist).
 export function applicantNames(dashboard) {
   const names = new Map();
@@ -166,3 +165,4 @@ export function renderAnswerWithNames(answer, names) {
     )
     .join("");
 }
+

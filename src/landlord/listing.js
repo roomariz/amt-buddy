@@ -1,6 +1,6 @@
 import { AddressInputError, lookupBerlinAddress, parseAddressInput } from "../berlin-address.js";
 import { getBerlinBuildingAgeArea } from "../berlin-building-age.js";
-import { evaluateMietspiegel, MIETSPIEGEL_SOURCE } from "../berlin-mietspiegel.js";
+import { evaluateMietspiegel, MIETSPIEGEL_SOURCE, normalizeBuildingAgeCategory } from "../berlin-mietspiegel.js";
 import { getBerlinResidentialLocation } from "../berlin-residential-location.js";
 import { tidyChatAddress } from "../orchestrator/berlin-tools.js";
 
@@ -107,6 +107,22 @@ function rentCheckOf(mietspiegel) {
   };
 }
 
+// The Mietspiegel building-age class the Rent check uses, and where it comes from: the landlord's
+// building year, else the block's predominant period, else (a block of mixed periods) the decade
+// with the most buildings in the block. Null when none maps to a class.
+function buildingAgeOf(buildingYear, area) {
+  const candidates = [
+    { value: buildingYear, source: "building_year", decade: null },
+    { value: area?.predominantConstructionPeriod, source: "block_period", decade: null },
+    { value: area?.mostCommonDecade, source: "block_most_common_decade", decade: area?.mostCommonDecade },
+  ];
+  for (const { value, source, decade } of candidates) {
+    const ageClass = value ? normalizeBuildingAgeCategory(value) : null;
+    if (ageClass) return { class: ageClass, source, decade: decade ?? null };
+  }
+  return null;
+}
+
 // Builds a Listing from the landlord's form: verifies the address in the official Berlin
 // register, looks up its Wohnlage and building-age period, and runs the Mietspiegel / Rent cap
 // calculation with the asking rent as contract rent on a flat rented before (a re-let).
@@ -128,6 +144,7 @@ export async function buildListing(input, { fetchImpl } = {}) {
     buildingYear: input.buildingYear ?? null,
     residentialLocation: null,
     buildingAgePeriod: null,
+    buildingAge: null,
     rentCheck: null,
     note: null,
     updatedAt: new Date().toISOString(),
@@ -151,6 +168,7 @@ export async function buildListing(input, { fetchImpl } = {}) {
   ]);
   listing.residentialLocation = location.value?.classification ?? null;
   listing.buildingAgePeriod = buildingAge.value?.predominantConstructionPeriod ?? null;
+  listing.buildingAge = buildingAgeOf(listing.buildingYear, buildingAge.value);
   // A stated building year replaces the block's period, so only then can its lookup fail unharmed.
   if (location.status === "rejected" || (buildingAge.status === "rejected" && listing.buildingYear === null)) {
     return { ...listing, note: NOTES.serviceUnavailable };
@@ -158,7 +176,7 @@ export async function buildListing(input, { fetchImpl } = {}) {
 
   const mietspiegel = evaluateMietspiegel({
     residentialLocation: listing.residentialLocation,
-    buildingAgeOrYear: listing.buildingYear ?? listing.buildingAgePeriod,
+    buildingAgeOrYear: listing.buildingAge?.class,
     livingAreaSqm: listing.livingAreaSqm,
     contractRent: listing.askingRent,
     rentedBefore: true,
