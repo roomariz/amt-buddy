@@ -1649,10 +1649,8 @@ footer a { color: inherit; }
 .lc-slot.is-empty { color: var(--lc-muted); font-size: 0.9rem; line-height: 1.45; background: var(--lc-surface-2); }
 
 .lc-slot-head { display: flex; align-items: center; gap: 10px; }
-/* The score and the rank share a line where they fit; name and bonus take a line each. */
-.lc-slot-who { min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 8px; }
-.lc-slot-name,
-.lc-slot-bonus { flex-basis: 100%; }
+/* Name, score, rank and bonus take a line each. */
+.lc-slot-who { min-width: 0; }
 .lc-slot-name { margin: 0; font-size: 1rem; }
 .lc-slot-meta { margin: 2px 0 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; color: var(--lc-muted); font-size: 0.8rem; }
 .lc-slot-score { margin: 2px 0 0; font-size: 0.85rem; font-weight: 600; color: var(--lc-good); }
@@ -1803,14 +1801,20 @@ footer a { color: inherit; }
 .lc-entry.is-excluded { background: var(--lc-surface-2); }
 .lc-entry-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; overflow-wrap: anywhere; }
 .lc-entry-name { font-weight: 700; font-size: 0.92rem; }
-.lc-entry-place { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: baseline; font-size: 0.8rem; color: var(--lc-muted); }
+.lc-entry-place { flex: none; display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: baseline; font-size: 0.76rem; color: var(--lc-muted); }
 .lc-entry.is-excluded .lc-entry-place { color: var(--lc-error); }
-.lc-entry-status { font-size: 0.78rem; color: var(--lc-muted); }
-/* Compact thumbs left of "#6 · To invite", on one line. */
-.lc-entry-line { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
-.lc-entry-facts { min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 5px; }
+.lc-entry-status { font-size: 0.76rem; color: var(--lc-muted); }
+/* Compact thumbs left of "#6 · To invite" / "Platz 6 · Eingeladen", on one line; should a wider
+   font not fit, the status ends in an ellipsis rather than wrapping. An exclusion reason is longer
+   and wraps, so it stays readable in full. */
+.lc-entry-line { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+.lc-entry-line .lc-thumbs { flex: none; gap: 2px; }
+.lc-entry-facts { min-width: 0; display: flex; align-items: baseline; gap: 0 4px; white-space: nowrap; }
+.lc-entry-facts .lc-entry-status { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.lc-entry.is-excluded .lc-entry-facts { flex-wrap: wrap; white-space: normal; }
+.lc-entry.is-excluded .lc-entry-place { flex: 0 1 auto; }
 .lc-entry-facts .lc-entry-status::before { content: "· " / ""; }
-.lc-body .lc-entry .lc-thumb { min-width: 28px; min-height: 26px; padding: 1px 4px; border-radius: 7px; font-size: 0.85rem; }
+.lc-body .lc-entry .lc-thumb { min-width: 26px; min-height: 26px; padding: 1px 4px; border-radius: 7px; font-size: 0.85rem; }
 .lc-body .lc-entry-remove { flex: none; min-width: 32px; min-height: 32px; padding: 2px 8px; font-size: 1.1rem; line-height: 1; }
 
 /* The status expander under each Shortlist entry */
