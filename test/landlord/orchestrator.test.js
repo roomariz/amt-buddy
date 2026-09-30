@@ -246,3 +246,58 @@ test("a model failure ends the turn with an error event", async () => {
   const events = await collect(orchestrator.send({ landlordId: "l-1", message: "Hi" }));
   assert.deepEqual(typesOf(events), ["error"]);
 });
+
+test("the system prompt instructs the agent to act as an intelligent intermediary", async () => {
+  const { orchestrator, model } = setup({ script: ["Gern."] });
+  await collect(orchestrator.send({ landlordId: "l-1", message: "Hallo" }));
+  const prompt = model.calls[0][0].content;
+
+  assert.match(
+    prompt,
+    /The Amt-Buddy agent acts as an intelligent intermediary between the landlord's natural-language intent and the application's deterministic screening and ranking tools\./,
+  );
+  assert.match(
+    prompt,
+    /It clarifies ambiguous instructions, builds a structured understanding of the landlord's preferences, confirms that understanding, and only then invokes the appropriate tools to update criteria, filter or re-rank applicants and explain the resulting changes\./,
+  );
+  assert.match(prompt, /Clarify ambiguous instructions/);
+  assert.match(prompt, /Build a structured understanding/);
+  assert.match(prompt, /Confirm that understanding/);
+  assert.match(prompt, /Invoke appropriate tools/);
+  assert.match(prompt, /Explain resulting changes/);
+});
+
+test("an ambiguous preference leads to clarification and confirmation before tools are invoked", async () => {
+  const { orchestrator, calls } = setup({
+    script: [
+      // Turn 1: Ambiguous natural-language intent -> agent clarifies and seeks confirmation without invoking tools
+      "Möchten Sie, dass ich die Beschäftigung stärker gewichte und nur Bewerber mit sauberer SCHUFA zulasse?",
+      // Turn 2: Landlord confirms -> agent invokes tools, updates criteria, and explains the changes
+      {
+        toolCalls: [
+          { name: "adjust_selection_criteria", args: { changes: [{ criterion: "employment", by: "factor", value: 2 }] } },
+          { name: "update_selection_criteria", args: { changes: [{ requirement: "schufaCleanOnly", value: true }] } },
+        ],
+      },
+      "Ich habe die Beschäftigung von 15 auf 30 % erhöht und nur Bewerber mit sauberer SCHUFA zugelassen.\n---\nDas sind Ihre aktuell besten Bewerber:\n1. A-001 – Match-Score 94\n2. A-004 – Match-Score 81\n3. A-002 – Match-Score 67\n\nMöchten Sie A-001 auf die Shortlist setzen?",
+    ],
+  });
+
+  // Turn 1
+  const turn1Events = await collect(
+    orchestrator.send({ landlordId: "l-1", message: "Ich möchte möglichst sichere und zuverlässige Mieter." }),
+  );
+  assert.deepEqual(typesOf(turn1Events), ["token", "done"]);
+  assert.equal(calls.length, 0, "no tools invoked on ambiguous instruction");
+  assert.match(answerOf(turn1Events), /Beschäftigung/);
+
+  // Turn 2
+  const turn2Events = await collect(
+    orchestrator.send({ landlordId: "l-1", message: "Ja, genau so machen wir das bitte." }),
+  );
+  assert.deepEqual(typesOf(turn2Events), ["criteria", "criteria", "token", "done"]);
+  assert.deepEqual(calls.map((c) => c.name), ["adjust_selection_criteria", "update_selection_criteria"]);
+  assert.match(answerOf(turn2Events), /30 %/);
+  assert.match(answerOf(turn2Events), /Das sind Ihre aktuell besten Bewerber/);
+});
+

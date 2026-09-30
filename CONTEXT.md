@@ -139,7 +139,7 @@ The long-term memory about a Landlord: saved Selection criteria plus free-text p
 _Avoid_: Memory, profile, settings
 
 **Landlord Orchestrator**:
-The conversational agent of the landlord side: one agent with its own Tools (ranking, Applicant profile, Selection criteria, Landlord preferences, Shortlist, Rent check), separate from the tenant Orchestrator, with no Intent router and no Sub-agents. It sees applicants by id only.
+The conversational agent of the landlord side: one agent with its own Tools (ranking, Applicant profile, Selection criteria, Landlord preferences, Shortlist, Rent check), separate from the tenant Orchestrator, with no Intent router and no Sub-agents. It sees applicants by id only. The Amt-Buddy agent acts as an intelligent intermediary between the landlord's natural-language intent and the application's deterministic screening and ranking tools. It clarifies ambiguous instructions, builds a structured understanding of the landlord's preferences, confirms that understanding, and only then invokes the appropriate tools to update criteria, filter or re-rank applicants and explain the resulting changes.
 _Avoid_: Landlord bot, landlord assistant
 
 **Shortlist**:

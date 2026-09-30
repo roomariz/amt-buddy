@@ -14,6 +14,11 @@ export { LANDLORD_TOOL_TIMEOUTS_MS } from "./graph.js";
 const RECURSION_LIMIT = 25;
 
 // The Landlord Orchestrator: a LangGraph graph of its own, separate from the tenant Orchestrator.
+// The Amt-Buddy agent acts as an intelligent intermediary between the landlord's natural-language
+// intent and the application's deterministic screening and ranking tools. It clarifies ambiguous
+// instructions, builds a structured understanding of the landlord's preferences, confirms that
+// understanding, and only then invokes the appropriate tools to update criteria, filter or re-rank
+// applicants and explain the resulting changes.
 // - model: a chat model supporting bindTools.
 // - tools: LangChain tools implementing every contract in LANDLORD_TOOL_CONTRACTS; each call gets
 //   the landlord as config.configurable.landlordId.
