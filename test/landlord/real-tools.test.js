@@ -809,16 +809,17 @@ test("the system prompt sets a short, plain voice without internal terms, and as
   const system = landlordSystemMessage({ context, language: "en" }).content;
 
   assert.match(system, /changed the priorities \(weights\), the must-haves \(Requirements\), the flat details or the bonus points, write two parts separated by a line containing only ---/);
-  assert.match(system, /second, the current top three applicants from this turn's tool result \("top"\)/);
+  assert.match(system, /second, the line "Here are your current top applicants:" \(in German "Das sind Ihre aktuell besten Bewerber:"\), then the current top three applicants from this turn's tool result \("top"\)/);
+  assert.match(system, /then a blank line and one short sentence with one concrete next step/);
   assert.match(system, /In every other turn, write one part with no --- line/);
   assert.match(system, /first, the change in one to three sentences, with everything about it \(after a weight change also that the other priorities were scaled down to match/);
   assert.match(system, /as a numbered list of the id and the Match score only, with the bonus for a rated one \("2\. A-031 – Match score 100 \(\+5 your bonus\)"\).*No comments on the applicants in the second part/);
-  assert.match(system, /---\n1\. A-… – Match score …\n2\. A-… – Match score …\n3\. A-… – Match score …\n<the next step>\n/);
+  assert.match(system, /---\nHere are your current top applicants:\n1\. A-… – Match score …\n2\. A-… – Match score …\n3\. A-… – Match score …\n\n<the next step>\n/);
   // Raw ratios the model copied ("0.249", a factor "0.839") can never be grounded: they cost the list lines.
   assert.match(system, /Write a rent-to-income ratio as a percentage \(0\.2493 → 24\.9 % or 25 %\), never as a decimal/);
   assert.match(system, /^You are Amt-Buddy, a friendly letting assistant for private landlords in Berlin/);
   assert.match(system, /Short: two or three sentences per part; a one-part answer under 60 words, a two-part answer under 45 \+ 70/);
-  assert.match(system, /Always write both parts and the --- line after such a change, even when the top three did not move or you ask for a missing fact\. Shape:\n<the change>\n---\n/);
+  assert.match(system, /Always write both parts and the --- line after such a change, even when the top three did not move or you ask for a missing fact\. Write all of it in the reply language: in German the intro line is "Das sind Ihre aktuell besten Bewerber:" and the items read "1\. A-003 – Match-Score 100"\. Shape:\n<the change>\n---\n/);
   assert.match(system, /no tool names, field names, criterion ids, "inactive" or "Requirement"\. Say priorities \(not weights or criteria\), must-haves \(not Requirements or requirements\)/);
   assert.match(system, /SCHUFA stays SCHUFA\. In German use Sie, Prioritäten, Muss-Kriterien/);
   assert.match(system, /End with one concrete offer/);

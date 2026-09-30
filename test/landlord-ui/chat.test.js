@@ -270,3 +270,24 @@ test("splitAnswer while streaming: a separator still being typed does not show",
   assert.deepEqual(splitAnswer("One.\n-"), ["One.", null]);
   assert.deepEqual(splitAnswer("One.\n---"), ["One.", null]);
 });
+
+// The model often writes the next-step sentence straight after a numbered list, without a blank
+// line; Markdown would fold it into the last item ("… Match score 94.7 Would you like …", seen
+// live). A plain line right after a list item starts a new paragraph in landlord answers.
+test("a plain line right after a list is its own paragraph, not part of the last item", () => {
+  const names = applicantNames(null);
+  const html = renderAnswerWithNames("Here are your current top applicants:\n1. A-003 – Match score 100\n2. A-008 – Match score 96.2\n3. A-007 – Match score 94.7\nWould you like to put A-008 on your shortlist?", names);
+  const list = html.slice(html.indexOf("<ol"), html.indexOf("</ol>") + 5);
+  assert.ok(list.includes("A-007 – Match score 94.7"), html);
+  assert.ok(!list.includes("Would you like"), `the question is outside the list: ${html}`);
+  assert.ok(html.indexOf("Would you like") > html.indexOf("</ol>"), html);
+  assert.equal((html.match(/<li>/g) ?? []).length, 3);
+});
+
+test("the same for a bullet list; lines without a list stay one plain paragraph", () => {
+  const names = applicantNames(null);
+  const bullets = renderAnswerWithNames("- one\n- two\nAfter.", names);
+  assert.ok(bullets.indexOf("After.") > bullets.indexOf("</ul>"), bullets);
+  const plain = renderAnswerWithNames("First line.\nSecond line.", names);
+  assert.ok(!plain.includes("<ol") && !plain.includes("<ul"), plain);
+});

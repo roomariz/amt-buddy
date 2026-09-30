@@ -139,11 +139,27 @@ export function withApplicantNames(answer, names) {
   return String(answer ?? "").replace(APPLICANT_ID, (id) => (names.has(id) ? `${id} (${names.get(id)})` : id));
 }
 
+const LIST_ITEM = /^\s*(?:\d+[.)]|[-*+])\s/;
+
+// The model often writes its next-step sentence right below a list, without a blank line, and
+// Markdown would fold it into the last item: a blank line goes between a list item and a plain,
+// unindented line directly after it. Landlord answers only; the shared renderMarkdown is unchanged.
+function withParagraphAfterLists(answer) {
+  const lines = answer.split("\n");
+  return lines
+    .map((line, index) => {
+      const previous = lines[index - 1];
+      const plain = line.trim() !== "" && !LIST_ITEM.test(line) && !/^\s/.test(line);
+      return index > 0 && plain && LIST_ITEM.test(previous) ? `\n${line}` : line;
+    })
+    .join("\n");
+}
+
 // The answer's HTML for the page, with the names after the ids. Names are untrusted (a landlord
 // can type anything, also "[x](https://…)" or "<img …>"), so they join after renderMarkdown, escaped,
 // and only in the text between tags, never inside a tag or an attribute.
 export function renderAnswerWithNames(answer, names) {
-  return renderMarkdown(String(answer ?? ""))
+  return renderMarkdown(withParagraphAfterLists(String(answer ?? "")))
     .split(/(<[^>]*>)/)
     .map((part) =>
       part.startsWith("<") ? part : part.replace(APPLICANT_ID, (id) => (names.has(id) ? `${id} (${escapeHtml(names.get(id))})` : id)),
