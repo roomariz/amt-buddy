@@ -1523,12 +1523,14 @@ footer a { color: inherit; }
   --avatar-bg: #e8eef7;
   --avatar-fg: #4a5b78;
   /* The weights pie: six categorical colours, validated (dataviz palette check) for colour-blind
-     separation between neighbours in criteria order; the dark set is stepped for the dark surface. */
+     separation between neighbours in criteria order; the dark set is stepped for the dark surface.
+     Documents, credibility and employment take the palette's darker steps in light mode too, so
+     every slice reaches 3:1 against the white card (the lighter ones measured 2.2–2.8). */
   --pie-affordability: #2a78d6;
   --pie-schufa: #eb6834;
-  --pie-documents: #1baf7a;
-  --pie-credibility: #eda100;
-  --pie-employment: #e87ba4;
+  --pie-documents: #199e70;
+  --pie-credibility: #c98500;
+  --pie-employment: #d55181;
   --pie-previousLandlord: #008300;
   color-scheme: light;
   background: var(--lc-bg);
@@ -1622,20 +1624,20 @@ footer a { color: inherit; }
 .lc-left,
 .lc-side { min-width: 0; min-height: 0; overflow-y: auto; }
 
-.lc-heading { margin: 0 0 10px; font-size: 1rem; font-weight: 700; }
+.lc-heading { margin: 0 0 6px; font-size: 1rem; font-weight: 700; }
 .lc-heading:focus { outline: none; }
 .lc-heading:focus-visible { outline: 3px solid var(--lc-focus); outline-offset: 2px; }
 .lc-left .lc-heading + .lc-error,
 .lc-side .lc-heading + .lc-error { margin-bottom: 10px; }
 .lc-tiles + .lc-pool-errors { margin-top: 10px; font-size: 0.8rem; }
-.lc-rating-hint { margin: -4px 0 10px; font-size: 0.75rem; line-height: 1.4; color: var(--lc-muted); }
 
-/* The Recommendation slots */
-.lc-slots { margin: 0 0 20px; padding: 0; list-style: none; display: grid; gap: 12px; }
+/* The Recommendation slots; the left column is kept compact, so slots, tiles and the weights pie
+   fit a 1280 × 800 window without scrolling. */
+.lc-slots { margin: 0 0 12px; padding: 0; list-style: none; display: grid; gap: 8px; }
 
 .lc-slot {
   min-width: 0;
-  padding: 14px;
+  padding: 10px 12px;
   border: 1px solid var(--lc-border);
   border-radius: 14px;
   background: var(--lc-surface);
@@ -1646,23 +1648,29 @@ footer a { color: inherit; }
 
 .lc-slot.is-empty { color: var(--lc-muted); font-size: 0.9rem; line-height: 1.45; background: var(--lc-surface-2); }
 
-.lc-slot-head { display: flex; align-items: center; gap: 12px; }
-.lc-slot-who { min-width: 0; }
-.lc-slot-name { margin: 0; font-size: 1.05rem; }
-.lc-slot-meta { margin: 2px 0 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; color: var(--lc-muted); font-size: 0.82rem; }
-.lc-slot-score { margin: 2px 0 0; font-size: 0.88rem; font-weight: 600; color: var(--lc-good); }
+.lc-slot-head { display: flex; align-items: center; gap: 10px; }
+/* The score and the rank share a line where they fit; name and bonus take a line each. */
+.lc-slot-who { min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 8px; }
+.lc-slot-name,
+.lc-slot-bonus { flex-basis: 100%; }
+.lc-slot-name { margin: 0; font-size: 1rem; }
+.lc-slot-meta { margin: 2px 0 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; color: var(--lc-muted); font-size: 0.8rem; }
+.lc-slot-score { margin: 2px 0 0; font-size: 0.85rem; font-weight: 600; color: var(--lc-good); }
 .lc-slot-bonus { margin: 2px 0 0; font-size: 0.75rem; color: var(--lc-muted); }
-.lc-slot-reason { margin: 10px 0 0; font-size: 0.88rem; line-height: 1.45; }
-.lc-slot-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 12px; }
-.lc-slot-actions .landlord-btn { margin: 0; padding: 8px 14px; font-size: 0.85rem; }
+.lc-slot-reason { margin: 6px 0 0; font-size: 0.82rem; line-height: 1.35; }
+/* One line at 1280 px: Add to Shortlist, the Skip and Ask icons, the thumbs. */
+.lc-slot-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 8px; }
+.lc-slot-actions .landlord-btn { margin: 0; padding: 7px 12px; font-size: 0.85rem; }
 .lc-slot-actions .lc-thumbs { margin-left: auto; }
 
 /* Thumbs up/down: the landlord's bonus. Pressed up is green, pressed down red; a pressed thumb keeps
-   its colour while its request runs (it is disabled then), so the click shows at once. */
+   its colour while its request runs (it is disabled then), so the click shows at once. The slot's
+   Skip and Ask icon buttons share the thumbs' look. */
 .lc-thumbs { display: inline-flex; gap: 4px; }
-.lc-body .lc-thumb {
+.lc-body .lc-thumb,
+.lc-body .lc-icon-btn {
   width: auto;
-  min-width: 34px;
+  min-width: 32px;
   min-height: 32px;
   margin: 0;
   padding: 2px 6px;
@@ -1675,8 +1683,12 @@ footer a { color: inherit; }
   line-height: 1;
 }
 .lc-body .lc-thumb span { float: none; }
+.lc-body .lc-icon-btn { display: inline-flex; align-items: center; justify-content: center; font-weight: 700; }
+.lc-body .lc-icon-btn svg { display: block; }
 /* Before the pressed colours: the global `button:hover` is red. */
-.lc-body .lc-thumb:hover { background: var(--lc-surface-3); }
+.lc-body .lc-thumb:hover,
+.lc-body .lc-icon-btn:hover { background: var(--lc-surface-3); color: var(--lc-text); }
+.lc-body .lc-icon-btn:disabled { background: var(--lc-surface); opacity: 0.5; cursor: default; }
 .lc-body .lc-thumb.is-up[aria-pressed="true"] { background: var(--lc-good-bg); border-color: var(--lc-good); box-shadow: inset 0 0 0 1px var(--lc-good); }
 .lc-body .lc-thumb.is-down[aria-pressed="true"] { background: var(--lc-error-bg); border-color: var(--lc-error); box-shadow: inset 0 0 0 1px var(--lc-error); }
 .lc-body .lc-thumb:disabled { cursor: default; }
@@ -1700,30 +1712,31 @@ footer a { color: inherit; }
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
 }
 
-/* At a glance: compact stat tiles, wide enough for the longest label word ("Ausgeschlossen")
-   so labels wrap between words; hyphens: auto splits longer ones where the browser can. */
-.lc-tiles { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 6px; }
-.lc-tile { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border: 1px solid var(--lc-border); border-radius: 10px; background: var(--lc-surface-2); min-width: 0; }
-.lc-tile-value { font-size: 1.2rem; font-weight: 700; line-height: 1.1; }
-.lc-tile-label { font-size: 0.72rem; color: var(--lc-muted); line-height: 1.3; overflow-wrap: normal; hyphens: auto; }
+/* At a glance: four compact stat tiles, two to a row in the left column, wide enough for the
+   longest label word ("Ausgeschlossen") so labels wrap between words; hyphens: auto splits longer
+   ones where the browser can. */
+.lc-tiles { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 4px; }
+.lc-tile { display: flex; flex-direction: column; gap: 1px; padding: 5px 6px; border: 1px solid var(--lc-border); border-radius: 8px; background: var(--lc-surface-2); min-width: 0; }
+.lc-tile-value { font-size: 1rem; font-weight: 700; line-height: 1.15; }
+.lc-tile-label { font-size: 0.68rem; color: var(--lc-muted); line-height: 1.25; overflow-wrap: normal; hyphens: auto; }
 .lc-tile.is-unavailable { cursor: help; }
 .lc-tile.is-unavailable .lc-tile-value { color: var(--lc-muted); }
 
 /* The weights pie beside its legend; the legend drops below the pie when the column is too narrow.
    A slice's outline in the surface colour is the gap between neighbours. Muted: not counted yet. */
-.lc-weights-title { margin-top: 20px; }
-.lc-weights { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.lc-weights-title { margin-top: 12px; }
+.lc-weights { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .lc-pie { flex: none; line-height: 0; }
 .lc-pie svg { display: block; }
 .lc-pie-slice { stroke: var(--lc-surface); stroke-width: 2; stroke-linejoin: round; }
 .lc-pie-slice.is-muted,
 .lc-pie-swatch.is-muted { opacity: 0.3; }
 .lc-weights-text { flex: 1 1 150px; min-width: 0; }
-.lc-legend { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
-.lc-legend-row { display: flex; align-items: baseline; gap: 6px; font-size: 0.8rem; line-height: 1.35; overflow-wrap: anywhere; }
+.lc-legend { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 1px; }
+.lc-legend-row { display: flex; align-items: baseline; gap: 6px; font-size: 0.72rem; line-height: 1.25; overflow-wrap: anywhere; }
 .lc-legend-row.is-muted { color: var(--lc-muted); }
 .lc-pie-swatch { flex: none; width: 10px; height: 10px; border-radius: 3px; transform: translateY(1px); }
-.lc-weights-bonus { margin: 8px 0 0; font-size: 0.8rem; line-height: 1.35; color: var(--lc-muted); }
+.lc-weights-bonus { margin: 4px 0 0; font-size: 0.72rem; line-height: 1.25; color: var(--lc-muted); }
 .lc-pie-slice[data-criterion="affordability"], .lc-pie-swatch[data-criterion="affordability"] { fill: var(--pie-affordability); background: var(--pie-affordability); }
 .lc-pie-slice[data-criterion="schufa"], .lc-pie-swatch[data-criterion="schufa"] { fill: var(--pie-schufa); background: var(--pie-schufa); }
 .lc-pie-slice[data-criterion="documents"], .lc-pie-swatch[data-criterion="documents"] { fill: var(--pie-documents); background: var(--pie-documents); }
@@ -1786,7 +1799,6 @@ footer a { color: inherit; }
   border-radius: 12px;
   background: var(--lc-surface);
 }
-.lc-entry > .lc-thumbs,
 .lc-entry > .lc-editor { grid-column: 2 / -1; }
 .lc-entry.is-excluded { background: var(--lc-surface-2); }
 .lc-entry-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; overflow-wrap: anywhere; }
@@ -1794,6 +1806,11 @@ footer a { color: inherit; }
 .lc-entry-place { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: baseline; font-size: 0.8rem; color: var(--lc-muted); }
 .lc-entry.is-excluded .lc-entry-place { color: var(--lc-error); }
 .lc-entry-status { font-size: 0.78rem; color: var(--lc-muted); }
+/* Compact thumbs left of "#6 · To invite", on one line. */
+.lc-entry-line { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
+.lc-entry-facts { min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 5px; }
+.lc-entry-facts .lc-entry-status::before { content: "· " / ""; }
+.lc-body .lc-entry .lc-thumb { min-width: 28px; min-height: 26px; padding: 1px 4px; border-radius: 7px; font-size: 0.85rem; }
 .lc-body .lc-entry-remove { flex: none; min-width: 32px; min-height: 32px; padding: 2px 8px; font-size: 1.1rem; line-height: 1; }
 
 /* The status expander under each Shortlist entry */

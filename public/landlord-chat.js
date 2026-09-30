@@ -81,7 +81,8 @@ const pending = new Set();
 // colours at once. Dropped when the request ends: by then the refetched overview has the saved one.
 const optimisticRatings = new Map();
 // The Shortlist status expanders, kept across the redraws that replace the rows: which are open,
-// the status and note typed but not saved yet, and a validation message per entry.
+// the status and note typed but not saved yet, and the validation problems per entry (translated
+// when drawn, so the message follows the language switch).
 const openEditors = new Set();
 const drafts = new Map();
 const editorErrors = new Map();
@@ -118,7 +119,7 @@ const noteAllowedFor = (status) => status === "to_invite" || status === "invited
 
 // 👍 / 👎 for one applicant. The pressed thumb is the rating (saved, or just clicked); `onRate`
 // gets the thumb and whether it was pressed, since clicking the pressed one takes the rating back.
-// The group's title is the AGG hint.
+// The group's title is the AGG hint, the only place the page shows it.
 function thumbs(rating, focusKey, busy, onRate) {
   const group = el("div", "lc-thumbs");
   group.setAttribute("role", "group");
@@ -173,13 +174,37 @@ function refillSlots() {
   slots = fillSlots({ ranked: overview.ranked, current: slots, hidden });
 }
 
-function slotButton(className, key, label, index, busy, onClick) {
-  const button = el("button", className, t(label));
+function slotButton(className, key, index, busy, onClick) {
+  const button = el("button", className);
   button.type = "button";
   button.dataset.focusKey = `slot:${index}:${key}`;
   button.disabled = busy;
   button.addEventListener("click", onClick);
   return button;
+}
+
+// Skip and Ask are icons, so the slot's actions fit on one line: the hint is the tooltip and the
+// accessible name, the icon is hidden from screen readers.
+function iconButton(button, hint, icon) {
+  button.classList.add("lc-icon-btn");
+  button.title = hint;
+  button.setAttribute("aria-label", hint);
+  icon.setAttribute("aria-hidden", "true");
+  button.append(icon);
+  return button;
+}
+
+// An arrow on to the next applicant, drawn rather than a font glyph, so it looks the same everywhere.
+function arrowIcon() {
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  for (const [name, value] of Object.entries({ width: 16, height: 16, viewBox: "0 0 16 16", fill: "none", stroke: "currentColor", "stroke-width": 2, "stroke-linecap": "round", "stroke-linejoin": "round", focusable: "false" })) {
+    svg.setAttribute(name, value);
+  }
+  const path = document.createElementNS(ns, "path");
+  path.setAttribute("d", "M2.5 8h10M9 4l4 4-4 4");
+  svg.append(path);
+  return svg;
 }
 
 function renderSlots() {
@@ -205,14 +230,18 @@ function renderSlots() {
       }
       who.append(el("h3", "lc-slot-name", card.name), score, el("p", "lc-slot-meta", card.rankText));
       if (card.bonusText) who.append(el("p", "lc-slot-bonus", card.bonusText));
-      head.append(avatar(card.householdShape, 48), who);
+      head.append(avatar(card.householdShape, 40), who);
 
       const busy = pending.has(applicantId);
       const actions = el("div", "lc-slot-actions");
+      const add = slotButton("landlord-btn lc-add", "add", index, busy, () => addToShortlist(applicantId, item));
+      add.textContent = t("landlordChat.addToShortlist");
+      const skipButton = slotButton("landlord-link-btn", "skip", index, busy, () => skip(applicantId));
+      const ask = slotButton("landlord-link-btn", "ask", index, busy, () => toPrompt(t("landlordChat.askPrompt", { id: applicantId })));
       actions.append(
-        slotButton("landlord-btn lc-add", "add", "landlordChat.addToShortlist", index, busy, () => addToShortlist(applicantId, item)),
-        slotButton("landlord-link-btn", "skip", "landlordChat.skip", index, busy, () => skip(applicantId)),
-        slotButton("landlord-link-btn", "ask", "landlordChat.ask", index, busy, () => toPrompt(t("landlordChat.askPrompt", { id: applicantId }))),
+        add,
+        iconButton(skipButton, t("landlordChat.skipHint"), arrowIcon()),
+        iconButton(ask, t("landlordChat.askHint"), el("span", "", "?")),
         thumbs(ratingOf(applicantId, card.rating), `slot:${index}`, busy, (value, pressed) => rate(applicantId, value, pressed, index)),
       );
       item.append(head, el("p", "lc-slot-reason", card.reason), actions);
@@ -221,8 +250,11 @@ function renderSlots() {
   );
 }
 
+// The classic dashboard's tiles without the two affordability counts: four tiles keep the column short.
+const GLANCE_HIDDEN = new Set(["canAfford", "canAffordAtMedian"]);
+
 function renderTiles() {
-  const tiles = overview ? statTiles(overview.stats) : [];
+  const tiles = overview ? statTiles(overview.stats).filter((tile) => !GLANCE_HIDDEN.has(tile.stat)) : [];
   tileList.replaceChildren(
     ...tiles.map((tile) => {
       const item = el("li", `lc-tile${tile.available ? "" : " is-unavailable"}`);
@@ -252,7 +284,7 @@ function renderWeights() {
     return;
   }
   const pie = weightsPie(overview);
-  weightsPieBox.innerHTML = weightsPieSvg(pie);
+  weightsPieBox.innerHTML = weightsPieSvg(pie, { size: 96 });
   weightsLegend.replaceChildren(
     ...pie.legend.map(({ criterion, text, counted }) => {
       const item = el("li", `lc-legend-row${counted ? "" : " is-muted"}`);
@@ -309,7 +341,7 @@ function statusEditor(row, busy) {
 
   const error = el("p", "landlord-error lc-editor-error");
   error.setAttribute("role", "alert");
-  showError(error, editorErrors.get(id));
+  showError(error, editorErrors.has(id) ? problemText(editorErrors.get(id)) : null);
   const save = el("button", "landlord-btn lc-editor-save", t("landlordChat.saveStatus"));
   save.type = "submit";
   save.dataset.focusKey = `save:${id}`;
@@ -335,12 +367,16 @@ function renderSidebar() {
       const item = el("li", `lc-entry${row.excluded ? " is-excluded" : ""}`);
       item.dataset.applicantId = row.applicantId;
       const busy = pending.has(row.applicantId);
-      const text = el("div", "lc-entry-text");
-      text.append(
-        el("span", "lc-entry-name", row.name),
-        el("span", "lc-entry-place", row.placeText),
-        el("span", "lc-entry-status", row.statusText),
+      const rating = thumbs(ratingOf(row.applicantId, row.rating), `rate:${row.applicantId}`, busy, (value, pressed) =>
+        rate(row.applicantId, value, pressed),
       );
+      // The thumbs sit left of the rank and status, on one line, so the card stays short.
+      const line = el("div", "lc-entry-line");
+      const facts = el("span", "lc-entry-facts");
+      facts.append(el("span", "lc-entry-place", row.placeText), el("span", "lc-entry-status", row.statusText));
+      line.append(rating, facts);
+      const text = el("div", "lc-entry-text");
+      text.append(el("span", "lc-entry-name", row.name), line);
 
       const remove = el("button", "landlord-link-btn lc-entry-remove");
       remove.type = "button";
@@ -352,11 +388,7 @@ function renderSidebar() {
       cross.setAttribute("aria-hidden", "true");
       remove.append(cross);
       remove.addEventListener("click", () => removeFromShortlist(row.applicantId, index));
-
-      const rating = thumbs(ratingOf(row.applicantId, row.rating), `rate:${row.applicantId}`, busy, (value, pressed) =>
-        rate(row.applicantId, value, pressed),
-      );
-      item.append(avatar(row.householdShape, 28), text, remove, rating, statusEditor(row, busy));
+      item.append(avatar(row.householdShape, 28), text, remove, statusEditor(row, busy));
       return item;
     }),
   );
@@ -493,7 +525,7 @@ const problemText = (problems) => (problems.note ? t("landlord.shortlist.noteToo
 // Runs one Shortlist change for `applicantId` and refetches the overview. The applicant stays
 // pending (buttons disabled) until the board is redrawn from the refetch, so no redraw in between
 // can re-enable a button for a change already sent. → true when saved; false when it failed (the
-// error is shown in `errorNode`, validation problems through `onProblems` when given) or the
+// error is shown in `errorNode`, validation problems go to `onProblems` when given) or the
 // landlord signed out.
 async function changeShortlist(applicantId, errorNode, request, onProblems) {
   if (!landlord || pending.has(applicantId)) return false;
@@ -516,7 +548,7 @@ async function changeShortlist(applicantId, errorNode, request, onProblems) {
     }
     if (!result.entry) {
       if (result.problems && onProblems) {
-        onProblems(problemText(result.problems));
+        onProblems(result.problems);
         return false;
       }
       const message = result.error ?? (result.notFound ? t("landlord.shortlist.notFound") : result.problems && problemText(result.problems));
@@ -558,7 +590,7 @@ async function saveStatus(applicantId, status, note) {
     applicantId,
     shortlistError,
     (call) => saveShortlistEntry({ ...call, status, note }),
-    (message) => editorErrors.set(applicantId, message),
+    (problems) => editorErrors.set(applicantId, problems),
   );
   if (!saved) return restoreFocus(`save:${applicantId}`);
   drafts.delete(applicantId);

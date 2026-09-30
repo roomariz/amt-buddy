@@ -7,13 +7,14 @@ import { CRITERIA, formatNumber } from "./ranking.js";
 
 // Colours for an SVG drawn outside the page's stylesheet; on the page the --pie-<criterion> tokens
 // in styles.css win (they have a dark variant). The six categorical slots of the dataviz reference
-// palette, in criteria order, which it validates for colour-blind separation between neighbours.
+// palette, in criteria order, which it validates for colour-blind separation between neighbours;
+// documents, credibility and employment in their darker steps, which reach 3:1 against white.
 const FALLBACK_COLOURS = {
   affordability: "#2a78d6",
   schufa: "#eb6834",
-  documents: "#1baf7a",
-  credibility: "#eda100",
-  employment: "#e87ba4",
+  documents: "#199e70",
+  credibility: "#c98500",
+  employment: "#d55181",
   previousLandlord: "#008300",
 };
 
