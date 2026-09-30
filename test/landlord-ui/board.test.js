@@ -169,7 +169,9 @@ test("the Excluded tip groups the reasons with their counts, largest first (EN a
   );
 });
 
-test("the Excluded tip when nobody is excluded", () => {
+test("the Excluded tip when nobody is excluded; no tip at all when the grouping is unknown", () => {
   assert.equal(inLanguage("en", () => excludedTip({})), "Nobody is excluded.");
-  assert.equal(inLanguage("en", () => excludedTip(undefined)), "Nobody is excluded.");
+  // A server older than the page sends no excludedByReason: say nothing rather than "nobody"
+  // beside a tile that counts 4 (seen live after a pull without a restart).
+  assert.equal(excludedTip(undefined), null);
 });

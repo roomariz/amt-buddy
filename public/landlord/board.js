@@ -74,7 +74,9 @@ const REQUIREMENTS = ["schufaCleanOnly", "completeDocumentsOnly", "maxRentToInco
 
 // The overview's excludedByReason ({ <requirement>: count }) → the Excluded tile's hover tip: the
 // groups with their counts, largest first, ties in the order of the Requirements.
-export function excludedTip(excludedByReason = {}) {
+export function excludedTip(excludedByReason) {
+  // Unknown (a server older than the page): no tip, rather than "nobody" beside a non-zero count.
+  if (!excludedByReason) return null;
   const groups = Object.entries(excludedByReason)
     .filter(([, count]) => count > 0)
     .sort(([a, countA], [b, countB]) => countB - countA || REQUIREMENTS.indexOf(a) - REQUIREMENTS.indexOf(b));
