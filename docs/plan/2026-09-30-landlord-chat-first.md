@@ -271,3 +271,56 @@ practices):
   - never commit `.env` or keys.
 - Keep `LANGSMITH_TRACING=false`.
 - The live model runs only with `node --env-file=.env`.
+
+## Round 2 (2026-09-30, the user's feedback on the first build)
+
+The user's decisions:
+1. **Tips change once per chat turn**, not on a timer. After a page load the first tip ("ranked mostly by …") shows; each finished turn advances to the next tip in the list.
+2. **The Shortlist sidebar shows each entry's current rank only**: no ↑/↓.
+3. **The slot's score line** reads "Match score 94.7 (↑1)", with the rank move in parentheses, green up or red down, as before. The rank ("#5 of 35") goes on its own line.
+4. **The slots are not fully deterministic.**
+   - The candidates are the top 6 applicants who are not hidden (shortlisted or skipped).
+   - A freed slot gets a random pick from those 6 that is not already in the other slot.
+   - An applicant keeps their slot while they stay in the top 6.
+5. **Shortlist status again**, via an expander per entry: to invite, invited, declined. There's a note for "to invite" and "invited" only, saved with `PUT shortlist` as on the classic page.
+6. **The landlord's subjective bonus: thumbs up and down** on the slots and on the Shortlist.
+   - **Size:** additive bonus points, where ranking score = Match score + bonus. A thumbs-up adds N points and a thumbs-down subtracts N.
+   - **N** is 5 by default and stays within 0–20 points. The chat changes it ("give my impression more weight") with `set_bonus_points`, computed in code and capped.
+   - **The Match score itself stays objective**, and nobody's score or rank changes until the landlord rates someone.
+   - **Clicking a thumb again reverts it.**
+   - **Thumbs-up** colours green at once.
+   - **Thumbs-down** colours red and replaces the card, like Skip: it stays hidden until the ranking next changes through the chat. The applicant can come back later, still showing the red thumb.
+   - **AGG hint** beside the thumbs: "rate only what you could defend (reliability, communication, the viewing)". The chat refuses rating advice on protected grounds, and it cannot set ratings itself.
+
+### Backend contract (settled before the fan-out)
+- **Store:**
+  - `setRating(landlordId, applicantId, rating)` with rating `1 | -1`;
+  - `removeRating(landlordId, applicantId)`;
+  - `getRatings(landlordId)` → `Map<applicantId, 1 | -1>`;
+  - `getBonusPoints(landlordId)`, 5 by default;
+  - `saveBonusPoints(landlordId, points)`.
+- **Scorer:** `rankApplicants({ profiles, listing, criteria, ratings = new Map(), bonusPoints = 5 })`.
+  - Ranked entries of *rated* applicants gain `rating` (1 | -1) and `bonus` (+N or −N). Unrated entries keep exactly today's shape, so every existing result and test is unchanged without ratings.
+  - Order: matchScore + bonus, descending, ties by applicant id. `rank` follows that order, and so do the Recommendations.
+  - `matchScore` is unchanged; stats are unchanged.
+  - Every caller (dashboard, overview, chat Tools, applicant profile) passes the landlord's ratings and bonus points, so both pages agree.
+- **HTTP:**
+  - `PUT /api/v1/landlord/:id/ratings/:applicantId { rating: "up" | "down" }` → 200 `{ data: { applicantId, rating } }`. It returns 404 `applicant_not_found` or `landlord_not_found`, and 422 `validation_error`.
+  - `DELETE /api/v1/landlord/:id/ratings/:applicantId` → 200 `{ data: { applicantId, rating: null } }`. It is idempotent and gives 404 for an unknown landlord or applicant.
+- **Overview:**
+  - top-level `bonusPoints`;
+  - every ranked entry gains `rating: "up" | "down" | null` and `bonus` (number, 0 when unrated);
+  - every Shortlist entry gains `rating`.
+- **Chat Tool `set_bonus_points { by: "factor" | "points", value }`** (nothing optional):
+  - It returns `{ previous, bonusPoints, requested, capped, maxBonusPoints: 20, top }` and emits `criteria`, since the ranking changes.
+  - `get_ranking`, `get_applicant_profile`, `compare_applicants` and the context's top 5 carry the bonus, so answers about it are grounded. `compare_applicants` names the bonus as its own line and orders by Match score + bonus.
+- **The model never sees names.** Ratings reach it only as ids with +N or −N.
+
+### Frontend contract
+- **`api.js`:**
+  - `saveRating({ fetchImpl, landlordId, applicantId, rating: "up" | "down" })` → `{ rating } | { notFound } | { signedOut }`;
+  - `removeRating({ fetchImpl, landlordId, applicantId })` → `{ rating: null } | { notFound } | { signedOut }`.
+- **`board.js`:**
+  - `fillSlots({ ranked, current, hidden, poolSize = 6, random = Math.random })`;
+  - `slotCard(entry, { total, move })` → `{ applicantId, name, householdShape, scoreText, move: { text, label, direction } | null, rankText, reason, rating, bonusText }`;
+  - `sidebarRows(shortlist)` → `{ applicantId, name, householdShape, placeText, excluded, status, statusText, note, noteAllowed, rating, removeLabel }`.
