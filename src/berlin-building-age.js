@@ -10,6 +10,37 @@ export const BERLIN_BUILDING_AGE_SOURCE = {
   referenceYear: 2015,
 };
 
+// The block's share of residential buildings per decade, oldest first, as the WFS names them.
+const DECADE_COUNTS = [
+  ["x_bis_1900", "bis 1900"],
+  ["x1901_1910", "1901-1910"],
+  ["x1911_1920", "1911-1920"],
+  ["x1921_1930", "1921-1930"],
+  ["x1931_1940", "1931-1940"],
+  ["x1941_1950", "1941-1950"],
+  ["x1951_1960", "1951-1960"],
+  ["x1961_1970", "1961-1970"],
+  ["x1971_1980", "1971-1980"],
+  ["x1981_1990", "1981-1990"],
+  ["x1991_2000", "1991-2000"],
+  ["x2001_2010", "2001-2010"],
+  ["x2011_2015", "2011-2015"],
+];
+
+// The decade with the most buildings in the block; a tie goes to the older decade.
+function mostCommonDecade(properties) {
+  let best = null;
+  let bestCount = 0;
+  for (const [field, decade] of DECADE_COUNTS) {
+    const count = Number(properties[field]);
+    if (Number.isFinite(count) && count > bestCount) {
+      best = decade;
+      bestCount = count;
+    }
+  }
+  return best;
+}
+
 export function buildBuildingAgeWfsUrl(coordinates) {
   const url = new URL(WFS_ENDPOINT);
   const epsilon = 0.00015;
@@ -62,5 +93,6 @@ export async function getBerlinBuildingAgeArea(coordinates, options = {}) {
     granularity: BERLIN_BUILDING_AGE_SOURCE.granularity,
     referenceYear: BERLIN_BUILDING_AGE_SOURCE.referenceYear,
     buildingSpecific: false,
+    mostCommonDecade: mostCommonDecade(properties),
   };
 }

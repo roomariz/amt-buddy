@@ -145,10 +145,22 @@ function showFieldProblems(problems = {}) {
   }
 }
 
-function fact(list, label, value) {
+function fact(list, label, value, detail) {
   const row = el("div", "landlord-fact");
   row.append(el("dt", "", label), el("dd", "", value ?? t("landlord.unknown")));
+  if (detail) row.append(el("p", "landlord-fact-detail", detail));
   list.append(row);
+}
+
+// Where the building age class comes from: the landlord's year, the block's period or its most common decade.
+function buildingAgeDetail(listing) {
+  const age = listing.buildingAge;
+  if (!age) return listing.buildingAgePeriod;
+  return t(`landlord.buildingAgeSource.${age.source}`, {
+    year: listing.buildingYear,
+    period: listing.buildingAgePeriod,
+    decade: age.decade,
+  });
 }
 
 function openButton(applicantId, name) {
@@ -375,8 +387,7 @@ function renderRentCheck() {
   const address = listing.canonicalAddress;
   fact(facts, t("landlord.officialAddress"), address ? `${address.street} ${address.houseNumber}, ${address.postalCode} ${address.city ?? "Berlin"}` : null);
   fact(facts, t("landlord.residentialLocation"), listing.residentialLocation);
-  fact(facts, t("landlord.buildingAgePeriod"), listing.buildingAgePeriod);
-  if (listing.buildingYear) fact(facts, t("landlord.buildingYearUsed"), String(listing.buildingYear));
+  fact(facts, t("landlord.buildingAge"), listing.buildingAge?.class, buildingAgeDetail(listing));
   rentCheckBody.append(facts);
 
   if (listing.note) {
