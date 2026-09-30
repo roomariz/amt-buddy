@@ -16,7 +16,8 @@
       <header class="gpt-topbar landlord-topbar">
         <div class="topbar-left">
           <div class="topbar-brand">
-            <span class="topbar-title" data-i18n="landlord.title">Amt-Buddy Vermieter</span>
+            <span class="brand-title">Amt-Buddy</span>
+            <span class="brand-subtitle" data-i18n="landlord.brandRole">Vermieter</span>
           </div>
         </div>
         <div class="topbar-actions">
@@ -68,6 +69,64 @@
               <button type="submit" class="landlord-btn" data-i18n="landlord.signIn">Anmelden</button>
             </form>
           </section>
+
+          <!-- Navigation tabs: visible when signed in -->
+          <nav id="landlord-tabs" class="landlord-tabs-bar" role="tablist" aria-label="Landlord navigation" hidden>
+            <button type="button" role="tab" class="landlord-tab-btn" data-tab="flat" id="tab-btn-flat" aria-controls="listing" aria-selected="false">
+              <svg class="tab-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                <polyline points="9 22 9 12 15 12 15 22"></polyline>
+              </svg>
+              <span data-i18n="landlord.tabs.flatDetails">Flat details</span>
+            </button>
+            <button type="button" role="tab" class="landlord-tab-btn is-active" data-tab="criteria" id="tab-btn-criteria" aria-controls="selection-criteria" aria-selected="true">
+              <svg class="tab-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="4" y1="21" x2="4" y2="14"></line>
+                <line x1="4" y1="10" x2="4" y2="3"></line>
+                <line x1="12" y1="21" x2="12" y2="12"></line>
+                <line x1="12" y1="8" x2="12" y2="3"></line>
+                <line x1="20" y1="21" x2="20" y2="16"></line>
+                <line x1="20" y1="12" x2="20" y2="3"></line>
+                <line x1="1" y1="14" x2="7" y2="14"></line>
+                <line x1="9" y1="8" x2="15" y2="8"></line>
+                <line x1="17" y1="16" x2="23" y2="16"></line>
+              </svg>
+              <span data-i18n="landlord.tabs.criteria">Selection criteria</span>
+            </button>
+            <button type="button" role="tab" class="landlord-tab-btn" data-tab="shortlist" id="tab-btn-shortlist" aria-controls="shortlist" aria-selected="false">
+              <svg class="tab-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                <circle cx="9" cy="7" r="4"></circle>
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+              </svg>
+              <span data-i18n="landlord.tabs.shortlist">Shortlist</span>
+              <span id="tab-shortlist-count" class="tab-count">(0)</span>
+            </button>
+            <button type="button" role="tab" class="landlord-tab-btn" data-tab="ranking" id="tab-btn-ranking" aria-controls="ranking" aria-selected="false">
+              <svg class="tab-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"></path>
+                <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"></path>
+                <path d="M4 22h16"></path>
+                <path d="M10 14.66V17c0 .55-.45 1-1 1H7c-.55 0-1 .45-1 1v1c0 .55.45 1 1 1h10c.55 0 1-.45 1-1v-1c0-.55-.45-1-1-1h-2c-.55 0-1-.45-1-1v-2.34"></path>
+                <path d="M6 4h12v5a6 6 0 0 1-12 0V4z"></path>
+              </svg>
+              <span data-i18n="landlord.tabs.ranking">Applicant ranking</span>
+            </button>
+            <button type="button" role="tab" class="landlord-tab-btn" data-tab="preferences" id="tab-btn-preferences" aria-controls="preferences" aria-selected="false">
+              <svg class="tab-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+              </svg>
+              <span data-i18n="landlord.tabs.preferences">Recommended preferences</span>
+            </button>
+            <button type="button" role="tab" class="landlord-tab-btn" data-tab="chat" id="tab-btn-chat" aria-controls="landlord-chat" aria-selected="false">
+              <svg class="tab-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+              </svg>
+              <span data-i18n="landlord.tabs.chat">Chat with Amt-Buddy</span>
+            </button>
+          </nav>
 
           <!-- The Listing -->
           <section id="listing" class="landlord-card" aria-labelledby="listing-title" hidden>
@@ -143,96 +202,146 @@
           </section>
 
           <!-- Selection criteria -->
-          <section id="selection-criteria" class="landlord-card" aria-labelledby="criteria-title" hidden>
-            <div class="card-header">
-              <div class="card-icon-badge" aria-hidden="true">
-                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
-                </svg>
+          <section id="selection-criteria" class="landlord-card criteria-card" aria-labelledby="criteria-title" hidden>
+            <div class="criteria-card-header">
+              <div class="criteria-header-main">
+                <div class="criteria-icon-badge" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="4" y1="21" x2="4" y2="14"></line>
+                    <line x1="4" y1="10" x2="4" y2="3"></line>
+                    <line x1="12" y1="21" x2="12" y2="12"></line>
+                    <line x1="12" y1="8" x2="12" y2="3"></line>
+                    <line x1="20" y1="21" x2="20" y2="16"></line>
+                    <line x1="20" y1="12" x2="20" y2="3"></line>
+                    <line x1="1" y1="14" x2="7" y2="14"></line>
+                    <line x1="9" y1="8" x2="15" y2="8"></line>
+                    <line x1="17" y1="16" x2="23" y2="16"></line>
+                  </svg>
+                </div>
+                <div class="criteria-title-group">
+                  <h2 id="criteria-title" data-i18n="landlord.criteria.title">Auswahlkriterien</h2>
+                  <p class="criteria-intro" data-i18n="landlord.criteria.intro">Passen Sie die Gewichtung, Anforderungen und Präferenzen an. Die Werte ergeben zusammen 100 % und passen das Ranking an.</p>
+                </div>
               </div>
-              <div class="card-title-group">
-                <h2 id="criteria-title" data-i18n="landlord.criteria.title">Auswahlkriterien</h2>
-                <p class="landlord-intro" data-i18n="landlord.criteria.intro">Passen Sie die Gewichtung an. Beim Speichern werden die Gewichte auf insgesamt 100 % umgerechnet und das Ranking aktualisiert.</p>
+              <div class="criteria-info-banner">
+                <div class="info-banner-icon-wrap" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/>
+                  </svg>
+                </div>
+                <p class="info-banner-text" data-i18n="landlord.criteria.infoBanner">Diese Kriterien helfen beim Ranking der Bewerber. Sie können die Gewichte anpassen, Anforderungen festlegen und bestimmte Bewerber ausschließen.</p>
               </div>
             </div>
-            <form id="criteria-form" class="landlord-form">
+
+            <form id="criteria-form" class="landlord-form criteria-modern-form">
               <fieldset id="criteria-controls" class="criteria-controls">
-                <legend class="visually-hidden" data-i18n="landlord.criteria.weights">Gewichtung</legend>
-                <div class="criteria-grid">
-                  <label class="criteria-weight" for="criteria-affordability">
-                    <span data-i18n="landlord.ranking.criteria.affordability">Bezahlbarkeit</span>
-                    <input id="criteria-affordability" name="affordability" type="range" min="0" max="100" step="any" />
-                    <output id="criteria-value-affordability" for="criteria-affordability"></output>
-                  </label>
-                  <label class="criteria-weight" for="criteria-schufa">
-                    <span data-i18n="landlord.ranking.criteria.schufa">SCHUFA</span>
-                    <input id="criteria-schufa" name="schufa" type="range" min="0" max="100" step="any" />
-                    <output id="criteria-value-schufa" for="criteria-schufa"></output>
-                  </label>
-                  <label class="criteria-weight" for="criteria-documents">
-                    <span data-i18n="landlord.ranking.criteria.documents">Unterlagen</span>
-                    <input id="criteria-documents" name="documents" type="range" min="0" max="100" step="any" />
-                    <output id="criteria-value-documents" for="criteria-documents"></output>
-                  </label>
-                  <label class="criteria-weight" for="criteria-credibility">
-                    <span data-i18n="landlord.ranking.criteria.credibility">Glaubwürdigkeit</span>
-                    <input id="criteria-credibility" name="credibility" type="range" min="0" max="100" step="any" />
-                    <output id="criteria-value-credibility" for="criteria-credibility"></output>
-                  </label>
-                  <label class="criteria-weight" for="criteria-employment">
-                    <span data-i18n="landlord.ranking.criteria.employment">Beschäftigung</span>
-                    <input id="criteria-employment" name="employment" type="range" min="0" max="100" step="any" />
-                    <output id="criteria-value-employment" for="criteria-employment"></output>
-                  </label>
-                  <label class="criteria-weight" for="criteria-previousLandlord">
-                    <span data-i18n="landlord.ranking.criteria.previousLandlord">Vorvermieter</span>
-                    <input id="criteria-previousLandlord" name="previousLandlord" type="range" min="0" max="100" step="any" />
-                    <output id="criteria-value-previousLandlord" for="criteria-previousLandlord"></output>
-                  </label>
+                <div class="criteria-section-title">
+                  <span data-i18n="landlord.criteria.weightsHeading">Gewichtung (insgesamt 100 %)</span>
+                  <span class="criteria-help-icon" title="Gewichtung" aria-hidden="true">ⓘ</span>
                 </div>
-                <h3 class="ranking-subtitle" data-i18n="landlord.criteria.requirements">Anforderungen</h3>
-                <div class="criteria-requirements-grid">
-                  <label class="ranking-control ranking-check">
-                    <input type="checkbox" name="schufaCleanOnly" />
+
+                <div class="criteria-sliders-grid">
+                  <!-- Col 1: Affordability, Documents, Employment -->
+                  <div class="criteria-slider-col">
+                    <div class="criteria-slider-row">
+                      <label class="criteria-slider-label" for="criteria-affordability" data-i18n="landlord.ranking.criteria.affordability">Bezahlbarkeit</label>
+                      <div class="criteria-slider-track-wrap">
+                        <input id="criteria-affordability" name="affordability" type="range" min="0" max="100" step="any" class="modern-slider" />
+                      </div>
+                      <output id="criteria-value-affordability" for="criteria-affordability" class="criteria-slider-output"></output>
+                    </div>
+                    <div class="criteria-slider-row">
+                      <label class="criteria-slider-label" for="criteria-documents" data-i18n="landlord.ranking.criteria.documents">Unterlagen</label>
+                      <div class="criteria-slider-track-wrap">
+                        <input id="criteria-documents" name="documents" type="range" min="0" max="100" step="any" class="modern-slider" />
+                      </div>
+                      <output id="criteria-value-documents" for="criteria-documents" class="criteria-slider-output"></output>
+                    </div>
+                    <div class="criteria-slider-row">
+                      <label class="criteria-slider-label" for="criteria-employment" data-i18n="landlord.ranking.criteria.employment">Beschäftigung</label>
+                      <div class="criteria-slider-track-wrap">
+                        <input id="criteria-employment" name="employment" type="range" min="0" max="100" step="any" class="modern-slider" />
+                      </div>
+                      <output id="criteria-value-employment" for="criteria-employment" class="criteria-slider-output"></output>
+                    </div>
+                  </div>
+
+                  <!-- Col 2: Schufa, Credibility, Previous Landlord -->
+                  <div class="criteria-slider-col">
+                    <div class="criteria-slider-row">
+                      <label class="criteria-slider-label" for="criteria-schufa" data-i18n="landlord.ranking.criteria.schufa">SCHUFA</label>
+                      <div class="criteria-slider-track-wrap">
+                        <input id="criteria-schufa" name="schufa" type="range" min="0" max="100" step="any" class="modern-slider" />
+                      </div>
+                      <output id="criteria-value-schufa" for="criteria-schufa" class="criteria-slider-output"></output>
+                    </div>
+                    <div class="criteria-slider-row">
+                      <label class="criteria-slider-label" for="criteria-credibility" data-i18n="landlord.ranking.criteria.credibility">Glaubwürdigkeit</label>
+                      <div class="criteria-slider-track-wrap">
+                        <input id="criteria-credibility" name="credibility" type="range" min="0" max="100" step="any" class="modern-slider" />
+                      </div>
+                      <output id="criteria-value-credibility" for="criteria-credibility" class="criteria-slider-output"></output>
+                    </div>
+                    <div class="criteria-slider-row">
+                      <label class="criteria-slider-label" for="criteria-previousLandlord" data-i18n="landlord.ranking.criteria.previousLandlord">Vorvermieter</label>
+                      <div class="criteria-slider-track-wrap">
+                        <input id="criteria-previousLandlord" name="previousLandlord" type="range" min="0" max="100" step="any" class="modern-slider" />
+                      </div>
+                      <output id="criteria-value-previousLandlord" for="criteria-previousLandlord" class="criteria-slider-output"></output>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="criteria-section-title" style="margin-top: 28px;">
+                  <span data-i18n="landlord.criteria.requirementsHeading">Anforderungen</span>
+                  <span class="criteria-help-icon" title="Anforderungen" aria-hidden="true">ⓘ</span>
+                </div>
+
+                <div class="criteria-requirements-3col">
+                  <label class="modern-check-label">
+                    <input type="checkbox" name="schufaCleanOnly" class="modern-checkbox" />
                     <span data-i18n="landlord.criteria.schufaCleanOnly">Nur saubere SCHUFA</span>
                   </label>
-                  <label class="ranking-control ranking-check">
-                    <input type="checkbox" name="completeDocumentsOnly" />
+                  <label class="modern-check-label">
+                    <input type="checkbox" name="completeDocumentsOnly" class="modern-checkbox" />
                     <span data-i18n="landlord.criteria.completeDocumentsOnly">Nur vollständige Unterlagen</span>
                   </label>
-                  <label class="ranking-control ranking-check">
-                    <input type="checkbox" name="noPets" />
+                  <label class="modern-check-label">
+                    <input type="checkbox" name="noPets" class="modern-checkbox" />
                     <span data-i18n="landlord.criteria.noPets">Keine Haustiere</span>
                   </label>
-                  <label class="ranking-control ranking-check">
-                    <input type="checkbox" name="noSmoking" />
+                  <label class="modern-check-label">
+                    <input type="checkbox" name="noSmoking" class="modern-checkbox" />
                     <span data-i18n="landlord.criteria.noSmoking">Nichtraucher</span>
                   </label>
-                  <label class="ranking-control ranking-check">
-                    <input type="checkbox" name="occupancyCompliant" />
+                  <label class="modern-check-label">
+                    <input type="checkbox" name="occupancyCompliant" class="modern-checkbox" />
                     <span data-i18n="landlord.criteria.occupancyCompliant">Haushalt passt zur Wohnfläche</span>
                   </label>
                 </div>
-                <div class="landlord-row criteria-optional-row">
-                  <label class="landlord-field">
+
+                <div class="criteria-optional-grid">
+                  <label class="criteria-field">
                     <span class="field-label-with-info">
                       <span data-i18n="landlord.criteria.maxRentToIncome">Miete höchstens in % des Einkommens (optional)</span>
-                      <span class="info-icon" title="Optional" aria-hidden="true">ⓘ</span>
+                      <span class="criteria-help-icon" title="Optional" aria-hidden="true">ⓘ</span>
                     </span>
-                    <input name="maxRentToIncome" inputmode="decimal" aria-describedby="criteria-optional-hint" />
+                    <input name="maxRentToIncome" inputmode="decimal" placeholder="z. B. 30" class="modern-input" aria-describedby="criteria-optional-hint" />
                   </label>
-                  <label class="landlord-field">
+                  <label class="criteria-field">
                     <span class="field-label-with-info">
                       <span data-i18n="landlord.criteria.latestMoveIn">Einzug spätestens am (optional)</span>
-                      <span class="info-icon" title="Optional" aria-hidden="true">ⓘ</span>
+                      <span class="criteria-help-icon" title="Optional" aria-hidden="true">ⓘ</span>
                     </span>
-                    <input name="latestMoveIn" type="date" aria-describedby="criteria-optional-hint" />
+                    <input name="latestMoveIn" type="date" class="modern-input" aria-describedby="criteria-optional-hint" />
                   </label>
                 </div>
+
                 <p id="criteria-optional-hint" class="landlord-hint" data-i18n="landlord.criteria.optionalHint">Leere Felder setzen keine Grenze.</p>
-                <div class="criteria-actions">
-                  <button type="submit" class="landlord-btn" data-i18n="landlord.criteria.save">Kriterien speichern</button>
-                  <button type="button" id="btn-reset-criteria" class="landlord-link-btn" data-i18n="landlord.criteria.reset">Standardwerte wiederherstellen</button>
+
+                <div class="criteria-actions-row">
+                  <button type="submit" class="landlord-btn btn-save-criteria" data-i18n="landlord.criteria.save">Kriterien speichern</button>
+                  <button type="button" id="btn-reset-criteria" class="btn-reset-criteria" data-i18n="landlord.criteria.reset">Standardwerte wiederherstellen</button>
                 </div>
               </fieldset>
               <p id="criteria-error" class="landlord-error" role="alert" hidden></p>

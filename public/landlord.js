@@ -73,6 +73,55 @@ const applicantDetailTitle = $("#applicant-detail-title");
 const applicantDetailStatus = $("#applicant-detail-status");
 const applicantDetailBody = $("#applicant-detail-body");
 const applicantDetailClose = $("#applicant-detail-close");
+const landlordTabs = $("#landlord-tabs");
+const tabShortlistCount = $("#tab-shortlist-count");
+
+let currentTab = "criteria";
+
+function updateTabVisibility() {
+  const signedIn = Boolean(landlord);
+  if (landlordTabs) landlordTabs.hidden = !signedIn;
+  if (!signedIn) {
+    signInSection.hidden = false;
+    listingSection.hidden = true;
+    rentCheckSection.hidden = true;
+    criteriaSection.hidden = true;
+    shortlistSection.hidden = true;
+    poolOverviewSection.hidden = true;
+    rankingSection.hidden = true;
+    applicantDetailSection.hidden = true;
+    preferencesSection.hidden = true;
+    chatSection.hidden = true;
+    return;
+  }
+  signInSection.hidden = true;
+
+  for (const btn of document.querySelectorAll(".landlord-tab-btn")) {
+    const isActive = btn.dataset.tab === currentTab;
+    btn.classList.toggle("is-active", isActive);
+    btn.setAttribute("aria-selected", String(isActive));
+  }
+
+  listingSection.hidden = currentTab !== "flat";
+  rentCheckSection.hidden = currentTab !== "flat" || !listing;
+
+  criteriaSection.hidden = currentTab !== "criteria";
+
+  shortlistSection.hidden = currentTab !== "shortlist" || !ranking;
+
+  poolOverviewSection.hidden = currentTab !== "ranking" || !poolOverview?.stats;
+  rankingSection.hidden = currentTab !== "ranking" || !ranking;
+  applicantDetailSection.hidden = currentTab !== "ranking" || !selectedApplicantId;
+
+  preferencesSection.hidden = currentTab !== "preferences" || notes === null;
+
+  chatSection.hidden = currentTab !== "chat";
+}
+
+function selectTab(tab) {
+  currentTab = tab;
+  updateTabVisibility();
+}
 
 function localStore() {
   try {
@@ -114,20 +163,10 @@ function showError(node, message) {
 
 function renderSignedIn() {
   const signedIn = Boolean(landlord);
-  signInSection.hidden = signedIn;
-  listingSection.hidden = !signedIn;
-  chatSection.hidden = !signedIn;
   signOutButton.hidden = !signedIn;
   nameLabel.hidden = !signedIn;
   nameLabel.textContent = signedIn ? t("landlord.signedInAs", { name: landlord.name }) : "";
-  if (!signedIn) {
-    rentCheckSection.hidden = true;
-    rankingSection.hidden = true;
-    poolOverviewSection.hidden = true;
-    shortlistSection.hidden = true;
-    criteriaSection.hidden = true;
-    preferencesSection.hidden = true;
-  }
+  updateTabVisibility();
 }
 
 function fillForm(values) {
@@ -233,11 +272,10 @@ function renderApplicantDetail() {
 
 async function openApplicant(applicantId, opener) {
   if (!landlord) return;
+  selectTab("ranking");
   const request = ++detailRequest;
   detailOpener = opener;
   selectedApplicantId = applicantId;
-  applicantDetail = null;
-  applicantDetailError = null;
   renderApplicantDetail();
   applicantDetailSection.scrollIntoView({ block: "start" });
   applicantDetailTitle.focus();
@@ -441,7 +479,10 @@ function shortlistButton(applicantId, place) {
 }
 
 function renderShortlist() {
-  shortlistSection.hidden = !ranking;
+  if (tabShortlistCount) {
+    tabShortlistCount.textContent = `(${shortlist.length})`;
+  }
+  updateTabVisibility();
   if (!ranking) return;
   const rows = shortlistRows(shortlist);
   shortlistEmpty.hidden = rows.length > 0;
@@ -688,11 +729,18 @@ function applyDashboard(dashboard) {
   renderShortlist();
   renderRanking();
   renderPreferences();
+  updateTabVisibility();
 }
 
 function renderCriteriaText() {
   for (const key of WEIGHT_FIELDS) {
-    $(`#criteria-value-${key}`).textContent = formatNumber(Number(criteriaForm.elements[key].value));
+    const input = criteriaForm.elements[key];
+    const val = Number(input?.value || 0);
+    const node = $(`#criteria-value-${key}`);
+    if (node) node.textContent = formatNumber(val);
+    if (input?.style?.setProperty) {
+      input.style.setProperty("--slider-pct", `${Math.min(100, Math.max(0, val))}%`);
+    }
   }
   criteriaStatus.textContent = criteriaStatusKey ? t(criteriaStatusKey) : "";
   showError(criteriaError, criteriaErrorKey ? t(criteriaErrorKey) : null);
@@ -738,9 +786,17 @@ async function submitCriteria(request) {
   }
 }
 
-criteriaForm.addEventListener("input", () => {
+criteriaForm.addEventListener("input", (event) => {
   criteriaStatusKey = null;
   clearCriteriaProblems();
+  if (event.target?.type === "range") {
+    const val = Number(event.target.value);
+    const node = $(`#criteria-value-${event.target.name}`);
+    if (node) node.textContent = formatNumber(val);
+    if (event.target?.style?.setProperty) {
+      event.target.style.setProperty("--slider-pct", `${Math.min(100, Math.max(0, val))}%`);
+    }
+  }
 });
 criteriaForm.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -847,6 +903,12 @@ chatInput.addEventListener("keydown", (event) => {
 });
 
 signOutButton.addEventListener("click", signOut);
+
+document.querySelectorAll(".landlord-tab-btn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    selectTab(btn.dataset.tab);
+  });
+});
 
 onLanguageChange(() => {
   renderCriteriaText();
