@@ -603,7 +603,7 @@ test("the system prompt explains the pool stats fields and when a share may be c
   assert.match(system, /canAffordAtMedian = how many could afford the Mietspiegel median rent "medianRent"/);
   assert.match(system, /canAfford = how many can afford the asking rent/);
   assert.match(system, /capped only for a change whose "capped" is true/);
-  assert.match(system, /After a weight change report the "applied" entries of the result.*"SCHUFA 20 → 26 %".*other criteria were scaled proportionally \("othersScaled"\)/);
+  assert.match(system, /After a weight change report the "applied" entries of the result.*"SCHUFA 20 → 26 %".*other priorities were scaled down to match \("othersScaled"; never quote its factor\)/);
   // One rule for every turn, not only weight changes: the page's chart shows all the weights.
   assert.match(system, /The landlord's page always shows all Selection-criteria weights in a chart\. Never list the weights\. Mention a weight only when a tool call of this turn changed it \(old → new, from the result; never repeat a change from an earlier turn\) or when the landlord asks about that criterion \(then its share only, without the others' for comparison\)\. Only adjust_selection_criteria changes weights: saving flat details, Requirements or bonus points, or a criterion becoming active, changes none, so do not mention weights then\. If the landlord asks for all weights, point to the chart and give them only if they insist \(then call get_ranking/);
   assert.match(system, /call compare_applicants and go through its "differences" in order: say which criteria favour which applicant and by how many points, including those that favour the lower-ranked one; call criteria equal only if they are in "equal"/);
@@ -802,7 +802,7 @@ test("the system prompt keeps the Mietspiegel range apart from the allowed rent,
   assert.match(system, /unless the landlord stated the building year/);
 });
 
-test("the system prompt asks for two parts separated by --- after a turn that changed the ranking, one part otherwise", async () => {
+test("the system prompt sets a short, plain voice without internal terms, and asks for two parts separated by --- after a turn that changed the ranking", async () => {
   const { store, landlordId } = setup();
   const context = await createLandlordContext({ getStore: () => store, getApplicantPool: async () => pool })(landlordId);
 
@@ -811,4 +811,16 @@ test("the system prompt asks for two parts separated by --- after a turn that ch
   assert.match(system, /changed the priorities \(weights\), the must-haves \(Requirements\), the flat details or the bonus points, write two parts separated by a line containing only ---/);
   assert.match(system, /second, the current top three applicants from this turn's tool result \("top"\)/);
   assert.match(system, /In every other turn, write one part with no --- line/);
+  assert.match(system, /first, the change in one to three sentences, with everything about it \(after a weight change also that the other priorities were scaled down to match/);
+  assert.match(system, /as a numbered list of the id and the Match score only, with the bonus for a rated one \("2\. A-031 – Match score 100 \(\+5 your bonus\)"\).*No comments on the applicants in the second part/);
+  assert.match(system, /---\n1\. A-… – Match score …\n2\. A-… – Match score …\n3\. A-… – Match score …\n<the next step>\n/);
+  // Raw ratios the model copied ("0.249", a factor "0.839") can never be grounded: they cost the list lines.
+  assert.match(system, /Write a rent-to-income ratio as a percentage \(0\.2493 → 24\.9 % or 25 %\), never as a decimal/);
+  assert.match(system, /^You are Amt-Buddy, a friendly letting assistant for private landlords in Berlin/);
+  assert.match(system, /Short: two or three sentences per part; a one-part answer under 60 words, a two-part answer under 45 \+ 70/);
+  assert.match(system, /Always write both parts and the --- line after such a change, even when the top three did not move or you ask for a missing fact\. Shape:\n<the change>\n---\n/);
+  assert.match(system, /no tool names, field names, criterion ids, "inactive" or "Requirement"\. Say priorities \(not weights or criteria\), must-haves \(not Requirements or requirements\)/);
+  assert.match(system, /SCHUFA stays SCHUFA\. In German use Sie, Prioritäten, Muss-Kriterien/);
+  assert.match(system, /End with one concrete offer/);
+  assert.doesNotMatch(system, /Orchestrator/);
 });
