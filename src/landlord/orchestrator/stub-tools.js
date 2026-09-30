@@ -162,7 +162,7 @@ export const LANDLORD_STUB_HANDLERS = {
   }),
   // Fixed: employment 15 → 30 %, the other five (85 %) scaled to fill the remaining 70 % (70 / 85).
   adjust_selection_criteria: () => ({
-    applied: [{ criterion: "employment", from: 15, requested: 30, to: 30, capped: false }],
+    applied: [{ criterion: "employment", from: 15, requested: 30, to: 30, capped: false, requestedChange: 100 }],
     othersScaled: { factor: 0.824, criteria: ["affordability", "schufa", "documents", "credibility", "previousLandlord"] },
     maxShare: 50,
     top: RANKED,
