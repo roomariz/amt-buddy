@@ -335,17 +335,19 @@ test("stats of an empty pool are all zero", () => {
 
 const recommendedIds = (result) => result.recommendations.map(({ applicantId }) => applicantId);
 
-test("Recommendations are the top two ranked applicants, never an excluded one", () => {
+test("Recommendations are the top three ranked applicants, never an excluded one", () => {
   const profiles = [
     profile("A-3", { netHouseholdIncome: 3000 }),
     profile("A-1", { pets: true }), // the best score, but excluded
     profile("A-2"),
     profile("A-4", { schufaStatus: "negative" }),
+    profile("A-5", { schufaStatus: "negative", netHouseholdIncome: 3000 }), // ranked fourth
   ];
   const result = rankApplicants({ profiles, listing: LISTING, criteria: { requirements: { noPets: true } } });
 
-  assert.deepEqual(recommendedIds(result), ["A-2", "A-3"]);
-  assert.deepEqual(result.recommendations.map(({ rank, matchScore }) => [rank, matchScore]), [[1, 100], [2, 83.3]]);
+  assert.deepEqual(recommendedIds(result), ["A-2", "A-3", "A-4"]);
+  assert.deepEqual(result.recommendations.map(({ rank }) => rank), [1, 2, 3]);
+  assert.deepEqual(result.recommendations.slice(0, 2).map(({ matchScore }) => matchScore), [100, 83.3]);
 });
 
 test("fewer Recommendations when fewer applicants qualify", () => {

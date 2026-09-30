@@ -133,7 +133,7 @@ test("with a Listing saved, the page opens with the pool summary, the stat tiles
   assert.equal(tiles.length, 6);
   assert.ok(tiles.every(({ available }) => available));
   const cards = recommendationCards(dashboard.recommendations);
-  assert.deepEqual(cards.map(({ applicantId }) => applicantId), dashboard.ranked.slice(0, 2).map(({ applicantId }) => applicantId));
+  assert.deepEqual(cards.map(({ applicantId }) => applicantId), dashboard.ranked.slice(0, 3).map(({ applicantId }) => applicantId));
   assert.ok(cards.every(({ applicantId, name, reason }) => /^A-\d+$/.test(applicantId) && name === undefined && reason.startsWith("Dieser Bewerber könnte Ihnen gefallen: ")));
 });
 

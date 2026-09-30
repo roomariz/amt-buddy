@@ -98,7 +98,7 @@ test("saved requirements merge, refresh stats and recommendations, and can be cl
   assert.ok(changed.stats.canAfford < before.stats.canAfford);
   assert.ok(changed.excluded.length > before.excluded.length);
   assert.ok(changed.ranked.every(({ rentToIncome }) => rentToIncome <= 0.25));
-  assert.deepEqual(changed.recommendations.map(({ applicantId }) => applicantId), changed.ranked.slice(0, 2).map(({ applicantId }) => applicantId));
+  assert.deepEqual(changed.recommendations.map(({ applicantId }) => applicantId), changed.ranked.slice(0, 3).map(({ applicantId }) => applicantId));
   const reset = await server.put(`${base}/criteria`, before.criteria);
   assert.deepEqual(reset.body.data, before);
 });
@@ -575,7 +575,7 @@ test("the dashboard has pool stats and anonymised Recommendations", async (t) =>
     assert.ok(Number.isInteger(stats[count]) && stats[count] >= 0 && stats[count] <= stats.total, count);
   }
 
-  assert.deepEqual(recommendations.map(({ applicantId }) => applicantId), ranked.slice(0, 2).map(({ applicantId }) => applicantId));
+  assert.deepEqual(recommendations.map(({ applicantId }) => applicantId), ranked.slice(0, 3).map(({ applicantId }) => applicantId));
   for (const recommendation of recommendations) {
     assert.equal(recommendation.name, undefined);
     assert.equal(recommendation.email, undefined);
@@ -599,7 +599,7 @@ test("without a Listing there are no stats and no Recommendations; without a Ren
   assert.equal(after.stats.total, 95);
   assert.equal(after.stats.canAffordAtMedian, null);
   assert.equal(after.stats.medianRent, null);
-  assert.equal(after.recommendations.length, 2);
+  assert.equal(after.recommendations.length, 3);
 });
 
 test("the Applicant pool directory and its day are configurable", async (t) => {
