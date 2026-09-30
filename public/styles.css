@@ -1399,6 +1399,8 @@ footer a { color: inherit; }
 .landlord-chat-panel .landlord-intro { margin: 0 0 12px; font-size: 0.8rem; }
 .landlord-chat-panel .landlord-chat-form { margin-top: auto; align-items: center; }
 .landlord-chat-panel .landlord-chat-field textarea { min-height: 0; margin-top: 0; resize: none; }
+/* No yellow focus box on the chat input (the global textarea:focus rule); a darker border shows focus. */
+.landlord-chat-field textarea:focus { outline: none; border-color: #171714; }
 .landlord-chat-panel .landlord-btn { margin: 0; }
 .landlord-chat-panel .landlord-chat-msg.is-answer { background: #ffffff; }
 @media (max-width: 1000px) {
