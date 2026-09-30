@@ -210,6 +210,7 @@ test("saving a Listing verifies the address, looks up the official facts and ret
   assert.equal(listing.buildingYear, null);
   assert.equal(listing.residentialLocation, "gut");
   assert.equal(listing.buildingAgePeriod, "1901-1910");
+  assert.deepEqual(listing.buildingAge, { class: "bis 1918", source: "block_period", decade: null });
   assert.equal(listing.note, null);
   assert.deepEqual(listing.rentCheck.range, { lower: 420, median: 490, upper: 610 });
   assert.equal(listing.rentCheck.askingRent, 700);
@@ -252,6 +253,26 @@ test("an asking rent below the range is low, and a stated building year replaces
   assert.deepEqual(body.data.rentCheck.range, { lower: 375, median: 430, upper: 510 });
   assert.equal(body.data.rentCheck.position, "low");
   assert.equal(body.data.rentCheck.allowedRent, 473);
+});
+
+test("a block of mixed construction periods takes its most common decade; a stated building year replaces it", async (t) => {
+  const server = await start();
+  t.after(server.close);
+  const landlordId = await signIn(server);
+  const listing = { address: "Berliner Str. 155, 10715 Berlin", livingAreaSqm: 60, rooms: 2, askingRent: 600 };
+
+  // Block 0900441821000000: most buildings from 1951–1960 (tied with 1961–1970) → class 1950–1964.
+  const { body } = await server.put(`/api/v1/landlord/${landlordId}/listing`, listing);
+
+  assert.equal(body.data.buildingAgePeriod, "gemischte Baualtersklasse");
+  assert.deepEqual(body.data.buildingAge, { class: "1950–1964", source: "block_most_common_decade", decade: "1951-1960" });
+  assert.equal(body.data.note, null);
+  assert.equal(body.data.rentCheck.buildingAgeClass, "1950–1964");
+
+  const withYear = await server.put(`/api/v1/landlord/${landlordId}/listing`, { ...listing, buildingYear: 1905 });
+
+  assert.deepEqual(withYear.body.data.buildingAge, { class: "bis 1918", source: "building_year", decade: null });
+  assert.equal(withYear.body.data.rentCheck.buildingAgeClass, "bis 1918");
 });
 
 test("editing the Listing replaces it", async (t) => {

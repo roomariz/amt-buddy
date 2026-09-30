@@ -1332,6 +1332,8 @@ footer a { color: inherit; }
 .landlord-fact dd,
 .rent-range-item dd { margin: 4px 0 0; font-weight: 600; }
 
+.landlord-fact-detail { margin: 4px 0 0; font-size: 0.75rem; color: #5d5d5d; }
+
 .landlord-note { margin: 0 0 12px; padding: 12px; border-radius: 10px; background: #fff4d6; color: #5c4400; }
 
 .rent-check-subtitle { margin: 8px 0 44px; font-size: 0.95rem; }
