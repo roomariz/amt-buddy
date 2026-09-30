@@ -630,3 +630,103 @@ test("reasons skip a criterion without a subscore, whatever its weight", () => {
   assert.equal(weakness, "credibility");
   assert.doesNotMatch(reason.en + reason.de, /rent burden|Mietbelastung|null|NaN/);
 });
+
+// The landlord's thumbs up / down (Round 2, decision 6): a rating of 1 or -1 adds or subtracts the
+// bonus points N to the ranking score; the Match score itself stays as it is. Under the default
+// weights: a complete, clean applicant scores 100; credibility 80 costs 0.2 × 15 = 3 points (97);
+// fixed-term employment costs 0.4 × 15 = 6 points (94).
+const rankIds = (result) => result.ranked.map(({ applicantId }) => applicantId);
+
+test("ratings: a rated-up applicant overtakes one at most N points above, not one further above", () => {
+  const profiles = [profile("A-1"), profile("A-2", { credibilityScore: 80 }), profile("A-3", { employmentType: "fixed_term" })];
+
+  // A-2: 97 + 5 = 102 > 100. A-3: 94 + 5 = 99 < 100, and above A-2's unrated 97 when A-2 is unrated.
+  const upA2 = rankApplicants({ profiles, listing: LISTING, ratings: new Map([["A-2", 1]]), bonusPoints: 5 });
+  assert.deepEqual(rankIds(upA2), ["A-2", "A-1", "A-3"]);
+  assert.deepEqual(upA2.ranked.map(({ rank }) => rank), [1, 2, 3]);
+  assert.equal(upA2.ranked[0].matchScore, 97, "the Match score stays objective");
+  assert.equal(upA2.ranked[0].rating, 1);
+  assert.equal(upA2.ranked[0].bonus, 5);
+
+  const upA3 = rankApplicants({ profiles, listing: LISTING, ratings: new Map([["A-3", 1]]), bonusPoints: 5 });
+  assert.deepEqual(rankIds(upA3), ["A-1", "A-3", "A-2"], "6 points above is more than N = 5");
+});
+
+test("ratings: a rated-down applicant drops by N points; the default N is 5", () => {
+  const profiles = [profile("A-1"), profile("A-2", { credibilityScore: 80 })];
+
+  // A-1: 100 − 5 = 95 < 97.
+  const { ranked } = rankApplicants({ profiles, listing: LISTING, ratings: new Map([["A-1", -1]]) });
+
+  assert.deepEqual(ranked.map(({ applicantId, rank, matchScore }) => ({ applicantId, rank, matchScore })), [
+    { applicantId: "A-2", rank: 1, matchScore: 97 },
+    { applicantId: "A-1", rank: 2, matchScore: 100 },
+  ]);
+  assert.equal(ranked[1].rating, -1);
+  assert.equal(ranked[1].bonus, -5);
+});
+
+test("ratings: equal ranking scores are ordered by applicant id", () => {
+  // Two identical profiles: 100 each.
+  const profiles = [profile("A-2"), profile("A-1")];
+  const order = (ratings) => rankIds(rankApplicants({ profiles, listing: LISTING, ratings: new Map(ratings), bonusPoints: 5 }));
+
+  assert.deepEqual(order([["A-2", 1]]), ["A-2", "A-1"]);
+  assert.deepEqual(order([["A-1", 1], ["A-2", 1]]), ["A-1", "A-2"], "105 and 105");
+  assert.deepEqual(order([["A-1", -1], ["A-2", -1]]), ["A-1", "A-2"], "95 and 95");
+  assert.deepEqual(order([["A-1", -1]]), ["A-2", "A-1"]);
+});
+
+test("ratings: unrated entries keep exactly their shape; no ratings give the same result as before", () => {
+  const profiles = [profile("A-1"), profile("A-2", { credibilityScore: 80 })];
+  const plain = rankApplicants({ profiles, listing: LISTING });
+
+  assert.deepEqual(rankApplicants({ profiles, listing: LISTING, ratings: new Map(), bonusPoints: 12 }), plain);
+  const rated = rankApplicants({ profiles, listing: LISTING, ratings: new Map([["A-2", 1]]) });
+  const unrated = rated.ranked.find(({ applicantId }) => applicantId === "A-1");
+  assert.deepEqual(Object.keys(unrated).sort(), ["applicantId", "breakdown", "matchScore", "rank", "rentToIncome"]);
+  assert.deepEqual(rated.stats, plain.stats, "stats are unchanged");
+  assert.deepEqual(rated.activeWeights, plain.activeWeights);
+});
+
+test("ratings: the Recommendations follow the ranking with the bonus", () => {
+  const profiles = [profile("A-1"), profile("A-2", { credibilityScore: 80 }), profile("A-3", { employmentType: "fixed_term" })];
+
+  // A-3: 94 + 5 = 99; A-1: 100 − 5 = 95; A-2: 97.
+  const { recommendations } = rankApplicants({ profiles, listing: LISTING, ratings: new Map([["A-3", 1], ["A-1", -1]]) });
+
+  assert.deepEqual(recommendations.map(({ applicantId, rank, matchScore }) => ({ applicantId, rank, matchScore })), [
+    { applicantId: "A-3", rank: 1, matchScore: 94 },
+    { applicantId: "A-2", rank: 2, matchScore: 97 },
+  ]);
+});
+
+test("ratings: with 0 bonus points a rating changes no order, and says so with a bonus of 0", () => {
+  const profiles = [profile("A-1"), profile("A-2", { credibilityScore: 80 })];
+
+  const { ranked } = rankApplicants({ profiles, listing: LISTING, ratings: new Map([["A-2", 1], ["A-1", -1]]), bonusPoints: 0 });
+
+  assert.deepEqual(rankIds({ ranked }), ["A-1", "A-2"]);
+  assert.deepEqual(ranked.map(({ rating, bonus }) => ({ rating, bonus })), [{ rating: -1, bonus: 0 }, { rating: 1, bonus: 0 }]);
+});
+
+test("ratings: an excluded applicant's rating changes nothing about the exclusion", () => {
+  const profiles = [profile("A-1"), profile("A-2", { pets: true })];
+  const criteria = { requirements: { noPets: true } };
+
+  const plain = rankApplicants({ profiles, listing: LISTING, criteria });
+  const rated = rankApplicants({ profiles, listing: LISTING, criteria, ratings: new Map([["A-2", 1]]) });
+
+  assert.deepEqual(rated.excluded, plain.excluded);
+  assert.deepEqual(rated.ranked, plain.ranked);
+});
+
+test("ratings: a rating other than 1 or -1, or bonus points that are not a non-negative number, are refused", () => {
+  const profiles = [profile("A-1")];
+  for (const rating of [0, 2, "up", null]) {
+    assert.throws(() => rankApplicants({ profiles, listing: LISTING, ratings: new Map([["A-1", rating]]) }), TypeError, String(rating));
+  }
+  for (const bonusPoints of [-1, Number.NaN, Infinity, "5", null]) {
+    assert.throws(() => rankApplicants({ profiles, listing: LISTING, bonusPoints }), TypeError, String(bonusPoints));
+  }
+});

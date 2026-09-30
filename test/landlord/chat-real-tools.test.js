@@ -322,6 +322,9 @@ test("no applicant name, contact detail or protected field appears in any messag
   const { applicants } = await readApplicantPool(APPLICANT_POOL_DIRECTORY, { today: POOL_DATE });
   const named = applicants.find(({ id }) => id === ids[1]);
   server.store.saveShortlistEntry(server.landlordId, { applicantId: ids[1], status: "to_invite", note: `Call ${named.contact.name} on Monday` });
+  // The landlord's thumbs up and down: they reach the model as ids with a bonus in points only.
+  server.store.setRating(server.landlordId, ids[1], 1);
+  server.store.setRating(server.landlordId, ids[2], -1);
   server.setScript([
     {
       toolCalls: [
@@ -331,6 +334,7 @@ test("no applicant name, contact detail or protected field appears in any messag
         { name: "adjust_selection_criteria", args: { changes: [{ criterion: "employment", by: "factor", value: 2 }] } },
         { name: "update_flat_details", args: { facts: [{ fact: "askingRent", value: 950 }] } },
         { name: "update_shortlist", args: { applicantId: ids[0], status: "to_invite", note: null } },
+        { name: "set_bonus_points", args: { by: "factor", value: 1.3 } },
         ...ids.map((applicantId) => ({ name: "get_applicant_profile", args: { applicantId } })),
         // Each applicant against the next, ranked and excluded ones alike.
         ...ids.slice(1).map((applicantId, index) => ({ name: "compare_applicants", args: { applicantIds: [ids[index], applicantId] } })),
@@ -351,6 +355,10 @@ test("no applicant name, contact detail or protected field appears in any messag
   assert.ok(plain.includes(named.contact.name), "the name in the note is among the values checked");
   for (const value of [...plain, ...quoted, "Erika Muster"]) assert.ok(!sent.includes(value), `${value} reached the model`);
   assert.doesNotMatch(sent, /\\"(contact|email|phone|nationality|religion|dateOfBirth|gender|photo|familyPlans)\\":/);
+  // The ratings are in what is checked, as ids with a bonus in points, never as "up" / "down".
+  assert.ok(server.model.calls[0][0].content.includes(`"applicantId":"${ids[1]}"`) && /"bonus":5/.test(server.model.calls[0][0].content), "the context shows the rated applicant's bonus");
+  assert.match(sent, /\\"bonus\\":-/, "a thumbs down reached a Tool result as negative points");
+  assert.doesNotMatch(sent, /\\"rating\\":/);
 });
 
 test("before a Listing too, no applicant name, contact detail or protected field reaches the model", async (t) => {
@@ -439,4 +447,36 @@ test("'Whom should I invite?' is answered from the ranking and the Shortlist", a
   assert.equal(answerOf(events), `Invite ${first.applicantId} (Match score ${first.matchScore}); ${second.applicantId} is already invited.`);
   const ranking = JSON.parse(server.model.calls.at(-1).at(-1).content);
   assert.deepEqual(ranking.shortlist, [{ applicantId: second.applicantId, status: "invited" }]);
+});
+
+test("'give my impression more weight' becomes set_bonus_points × 1.3: saved, criteria event, answer grounded", async (t) => {
+  const server = await start();
+  t.after(server.close);
+  server.setScript([
+    { toolCalls: [{ name: "set_bonus_points", args: { by: "factor", value: 1.3 } }] },
+    // 5 × 1.3 = 6.5, from the result.
+    "Your thumbs up or down now counts 6.5 points instead of 5.",
+  ]);
+
+  const events = await server.chat("Give my own impression more weight.");
+
+  assert.deepEqual(typesOf(events), ["criteria", "token", "done"]);
+  assert.equal(answerOf(events), "Your thumbs up or down now counts 6.5 points instead of 5.");
+  assert.equal(server.model.calls.length, 2, "grounded: no rewrite");
+  assert.equal(server.store.getBonusPoints(server.landlordId), 6.5);
+  assert.equal((await server.overview()).bonusPoints, 6.5);
+});
+
+test("a refused set_bonus_points emits no criteria event and saves nothing", async (t) => {
+  const server = await start();
+  t.after(server.close);
+  server.setScript([
+    { toolCalls: [{ name: "set_bonus_points", args: { by: "points", value: -3 } }] },
+    "That did not work: the bonus points cannot be negative.",
+  ]);
+
+  const events = await server.chat("Make my ratings count minus three points.");
+
+  assert.deepEqual(typesOf(events), ["token", "done"]);
+  assert.equal(server.store.getBonusPoints(server.landlordId), 5);
 });

@@ -41,6 +41,7 @@ const SAMPLE_ARGS = {
   remember_preference: { note: "I'd like someone who stays long-term." },
   update_shortlist: { applicantId: someApplicant, status: "to_invite", note: "Stable income" },
   get_rent_check: {},
+  set_bonus_points: { by: "factor", value: 1.3 },
 };
 
 test("there is a real Tool for every contract, and each result satisfies its output schema", async () => {
@@ -562,4 +563,175 @@ test("a whitespace-only note is an input error and nothing is stored", async () 
   const context = await getContext(landlordId);
   assert.equal(context.listing, null);
   assert.deepEqual(context.preferences.notes, []);
+});
+
+// The landlord's thumbs up / down (Round 2, decision 6), as the model sees them: ids with the bonus
+// in points and the ranking score (Match score + bonus), computed in code; never "up" or "down".
+test("set_bonus_points: by factor or points, saved to one decimal, capped at 20, with the new top 3", async () => {
+  const { store, landlordId, call } = setup();
+
+  // 5 × 1.3 = 6.5.
+  const raised = await call("set_bonus_points", { by: "factor", value: 1.3 });
+  assert.deepEqual(
+    { previous: raised.previous, bonusPoints: raised.bonusPoints, requested: raised.requested, capped: raised.capped, maxBonusPoints: raised.maxBonusPoints },
+    { previous: 5, bonusPoints: 6.5, requested: 6.5, capped: false, maxBonusPoints: 20 },
+  );
+  assert.deepEqual(raised.top.map(({ rank }) => rank), [1, 2, 3]);
+  assert.equal(store.getBonusPoints(landlordId), 6.5);
+  assert.doesNotThrow(() => LANDLORD_TOOL_CONTRACTS.set_bonus_points.output.parse(raised));
+
+  const capped = await call("set_bonus_points", { by: "points", value: 30 });
+  assert.deepEqual({ previous: capped.previous, bonusPoints: capped.bonusPoints, requested: capped.requested, capped: capped.capped }, { previous: 6.5, bonusPoints: 20, requested: 30, capped: true });
+  assert.equal(store.getBonusPoints(landlordId), 20);
+});
+
+test("set_bonus_points refuses negative points, a negative factor or another kind of change as input errors, nothing saved", async () => {
+  const { store, landlordId, call } = setup();
+  for (const args of [{ by: "points", value: -1 }, { by: "factor", value: -0.5 }, { by: "share", value: 2 }, { by: "points" }]) {
+    await assert.rejects(call("set_bonus_points", args), (error) => errorKind(error) === "input", JSON.stringify(args));
+  }
+  assert.equal(store.getBonusPoints(landlordId), 5);
+});
+
+test("set_bonus_points' new top is ranked by Match score + the new bonus", async () => {
+  const { store, landlordId, call } = setup();
+  const { ranked } = await call("get_ranking");
+  // The fourth applicant, rated up: with 20 points they pass everyone less than 20 points above them.
+  const rated = ranked[3];
+  store.setRating(landlordId, rated.applicantId, 1);
+
+  const { top } = await call("set_bonus_points", { by: "points", value: 20 });
+
+  const expectedRank = ranked.filter(({ applicantId, matchScore }) => applicantId !== rated.applicantId && matchScore > rated.matchScore + 20).length + 1;
+  assert.equal(top.findIndex(({ applicantId }) => applicantId === rated.applicantId) + 1, expectedRank);
+  const entry = top.find(({ applicantId }) => applicantId === rated.applicantId);
+  assert.deepEqual({ matchScore: entry.matchScore, bonus: entry.bonus, rankingScore: entry.rankingScore }, { matchScore: rated.matchScore, bonus: 20, rankingScore: Math.round((rated.matchScore + 20) * 10) / 10 });
+});
+
+test("get_ranking and get_applicant_profile carry the bonus: points and ranking score by id, the bonus points in force", async () => {
+  const { store, landlordId, call } = setup();
+  const before = await call("get_ranking");
+  const [first, second] = before.ranked;
+  store.setRating(landlordId, first.applicantId, -1);
+  store.setRating(landlordId, second.applicantId, 1);
+  store.saveBonusPoints(landlordId, 4);
+
+  const ranking = await call("get_ranking");
+
+  assert.equal(ranking.bonusPoints, 4);
+  const down = ranking.ranked.find(({ applicantId }) => applicantId === first.applicantId);
+  const up = ranking.ranked.find(({ applicantId }) => applicantId === second.applicantId);
+  assert.deepEqual({ bonus: down.bonus, rankingScore: down.rankingScore }, { bonus: -4, rankingScore: Math.round((first.matchScore - 4) * 10) / 10 });
+  assert.deepEqual({ bonus: up.bonus, rankingScore: up.rankingScore }, { bonus: 4, rankingScore: Math.round((second.matchScore + 4) * 10) / 10 });
+  const unrated = ranking.ranked.find(({ applicantId }) => ![first.applicantId, second.applicantId].includes(applicantId));
+  assert.ok(!("bonus" in unrated) && !("rankingScore" in unrated), "an unrated entry keeps its shape");
+  assert.doesNotMatch(JSON.stringify(ranking), /"rating"|"up"|"down"/);
+
+  const profile = await call("get_applicant_profile", { applicantId: second.applicantId });
+  assert.deepEqual({ rank: profile.rank, matchScore: profile.matchScore, bonus: profile.bonus, rankingScore: profile.rankingScore }, { rank: up.rank, matchScore: second.matchScore, bonus: 4, rankingScore: up.rankingScore });
+  const plain = await call("get_applicant_profile", { applicantId: unrated.applicantId });
+  assert.deepEqual({ bonus: plain.bonus, rankingScore: plain.rankingScore }, { bonus: 0, rankingScore: unrated.matchScore });
+  assert.doesNotThrow(() => LANDLORD_TOOL_CONTRACTS.get_applicant_profile.output.parse(profile));
+});
+
+test("get_applicant_profile: an excluded applicant has no bonus or ranking score, rated or not", async () => {
+  const { store, landlordId, call } = setup();
+  store.saveCriteria(landlordId, { ...store.getCriteria(landlordId), requirements: { ...store.getCriteria(landlordId).requirements, schufaCleanOnly: true } });
+  const excluded = pool.applicants.find(({ profile }) => profile.schufaStatus !== "clean").id;
+  store.setRating(landlordId, excluded, 1);
+
+  const result = await call("get_applicant_profile", { applicantId: excluded });
+
+  assert.deepEqual({ bonus: result.bonus, rankingScore: result.rankingScore, excludedBy: result.excludedBy }, { bonus: null, rankingScore: null, excludedBy: "schufaCleanOnly" });
+});
+
+test("compare_applicants with a rating: the leader by Match score + bonus, the bonus its own difference, both gaps", async () => {
+  const { store, landlordId, call } = setup({ applicantPool: comparedPair() });
+  // A-100 78.5, A-101 72.5 (see the unrated comparison); A-101 rated up with 10 points: 82.5.
+  store.setRating(landlordId, "A-101", 1);
+  store.saveBonusPoints(landlordId, 10);
+
+  const result = await call("compare_applicants", { applicantIds: ["A-101", "A-100"] });
+
+  assert.deepEqual(result, {
+    applicants: [
+      { applicantId: "A-101", rank: 1, matchScore: 72.5, excludedBy: null, bonus: 10, rankingScore: 82.5 },
+      { applicantId: "A-100", rank: 2, matchScore: 78.5, excludedBy: null, bonus: 0, rankingScore: 78.5 },
+    ],
+    leader: "A-101",
+    scoreGap: -6,
+    rankingGap: 4,
+    differences: [
+      { criterion: "schufa", points: { "A-101": 0, "A-100": 20 }, difference: -20 },
+      { criterion: "affordability", points: { "A-101": 30, "A-100": 20 }, difference: 10 },
+      { criterion: "bonus", points: { "A-101": 10, "A-100": 0 }, difference: 10 },
+      { criterion: "previousLandlord", points: { "A-101": 5, "A-100": 2.5 }, difference: 2.5 },
+      { criterion: "credibility", points: { "A-101": 13.5, "A-100": 12 }, difference: 1.5 },
+    ],
+    equal: ["documents", "employment"],
+    note: null,
+  });
+  assert.doesNotThrow(() => LANDLORD_TOOL_CONTRACTS.compare_applicants.output.parse(result));
+});
+
+test("compare_applicants: equal bonuses are listed as equal; equal ranking scores have no leader and say why", async () => {
+  {
+    const { store, landlordId, call } = setup({ applicantPool: comparedPair() });
+    store.setRating(landlordId, "A-100", -1);
+    store.setRating(landlordId, "A-101", -1);
+
+    const result = await call("compare_applicants", { applicantIds: ["A-100", "A-101"] });
+
+    // 78.5 − 5 = 73.5 against 72.5 − 5 = 67.5.
+    assert.equal(result.leader, "A-100");
+    assert.equal(result.rankingGap, 6);
+    assert.deepEqual(result.equal, ["documents", "employment", "bonus"]);
+    assert.ok(!result.differences.some(({ criterion }) => criterion === "bonus"));
+    assert.doesNotThrow(() => LANDLORD_TOOL_CONTRACTS.compare_applicants.output.parse(result));
+  }
+  {
+    const { store, landlordId, call } = setup({ applicantPool: comparedPair() });
+    // A-101 72.5 + 6 = 78.5, as A-100's unrated 78.5.
+    store.setRating(landlordId, "A-101", 1);
+    store.saveBonusPoints(landlordId, 6);
+
+    const result = await call("compare_applicants", { applicantIds: ["A-100", "A-101"] });
+
+    assert.equal(result.leader, null);
+    assert.equal(result.rankingGap, 0);
+    assert.equal(result.scoreGap, 6);
+    assert.equal(result.note, "equal ranking scores (Match score + bonus); ordered by applicant id");
+  }
+});
+
+test("the context's top 5 carries a rated applicant's bonus and ranking score; the system prompt shows the bonus points", async () => {
+  const { store, landlordId, call } = setup();
+  const { ranked } = await call("get_ranking");
+  store.setRating(landlordId, ranked[1].applicantId, 1);
+  store.saveBonusPoints(landlordId, 7);
+
+  const context = await createLandlordContext({ getStore: () => store, getApplicantPool: async () => pool })(landlordId);
+
+  assert.equal(context.bonusPoints, 7);
+  const rated = context.top.find(({ applicantId }) => applicantId === ranked[1].applicantId);
+  assert.deepEqual(Object.keys(rated).sort(), ["applicantId", "bonus", "matchScore", "rank", "rankingScore", "rentToIncome"]);
+  assert.deepEqual({ bonus: rated.bonus, rankingScore: rated.rankingScore }, { bonus: 7, rankingScore: Math.round((ranked[1].matchScore + 7) * 10) / 10 });
+  const expectedRank = ranked.filter(({ applicantId, matchScore }) => applicantId !== rated.applicantId && matchScore > ranked[1].matchScore + 7).length + 1;
+  assert.equal(rated.rank, expectedRank, "7 points pass everyone less than 7 points above");
+  const system = landlordSystemMessage({ context, language: "en" }).content;
+  assert.match(system, /thumbs up or down is worth 7 bonus points/);
+  assert.doesNotMatch(JSON.stringify(context), /"rating"/);
+});
+
+test("the system prompt explains the bonus, set_bonus_points for 'more weight to my impression', and that the chat cannot rate", async () => {
+  const { store, landlordId } = setup();
+  const context = await createLandlordContext({ getStore: () => store, getApplicantPool: async () => pool })(landlordId);
+
+  const system = landlordSystemMessage({ context, language: "en" }).content;
+
+  assert.match(system, /Match score stays objective/);
+  assert.match(system, /set_bonus_points/);
+  assert.match(system, /× 1\.3/);
+  assert.match(system, /cannot rate applicants/);
+  assert.match(system, /never suggest a thumbs up or down on protected grounds/i);
 });

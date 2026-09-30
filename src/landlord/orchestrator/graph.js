@@ -34,6 +34,8 @@ const MAX_GROUNDING_REWRITES = 1;
 const CHANGE_EVENTS = {
   update_selection_criteria: "criteria",
   adjust_selection_criteria: "criteria",
+  // The bonus points reorder the ranking.
+  set_bonus_points: "criteria",
   update_shortlist: "shortlist",
   remember_preference: "notes",
   update_flat_details: "flat",

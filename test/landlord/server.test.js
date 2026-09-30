@@ -815,7 +815,9 @@ test("before a Listing the overview ranks the whole pool with names, household s
   assert.equal(data.ranked.length, 40);
   assert.deepEqual(data.ranked.map(({ rank }) => rank), Array.from({ length: 40 }, (_, index) => index + 1));
   for (const entry of data.ranked) {
-    assert.deepEqual(Object.keys(entry), ["applicantId", "name", "householdShape", "rank", "matchScore", "reason"]);
+    assert.deepEqual(Object.keys(entry), ["applicantId", "name", "householdShape", "rank", "matchScore", "reason", "rating", "bonus"]);
+    assert.equal(entry.rating, null, "nobody is rated yet");
+    assert.equal(entry.bonus, 0);
     assert.ok(entry.name.trim());
     assert.ok(["single", "couple", "family", "group"].includes(entry.householdShape), entry.applicantId);
     assert.doesNotMatch(entry.reason.en + entry.reason.de, /rent burden|Mietbelastung/);
@@ -914,4 +916,148 @@ test("the overview never carries contact details or protected fields; an unknown
 
   assert.doesNotMatch(text, /"(contact|email|phone|nationality|religion|dateOfBirth|gender|photo|familyPlans)":/);
   assert.equal((await server.get("/api/v1/landlord/nobody/overview")).status, 404);
+});
+
+// The landlord's thumbs up / down (Round 2, decision 6): PUT / DELETE ratings, and the ranking by
+// Match score + bonus on the overview, the dashboard and the applicant detail alike.
+const ratingPath = (landlordId, applicantId) => `/api/v1/landlord/${landlordId}/ratings/${applicantId}`;
+const rankingScore = ({ matchScore, bonus }) => matchScore + bonus;
+
+test("PUT a rating up adds the bonus points to the ranking; the Match score stays; DELETE takes it back", async (t) => {
+  const server = await start();
+  t.after(server.close);
+  const landlordId = await signIn(server);
+  await server.put(`/api/v1/landlord/${landlordId}/listing`, WUEHLISCH_LISTING);
+  const before = await overviewOf(server, landlordId);
+  assert.equal(before.bonusPoints, 5);
+  // The first applicant below the top whose Match score is less than 5 points under the top's.
+  const top = before.ranked[0];
+  const riser = before.ranked.find((entry) => entry.rank > 1 && top.matchScore - entry.matchScore < 5);
+  assert.ok(riser, "the committed pool has one within 5 points of the top");
+
+  const put = await server.put(ratingPath(landlordId, riser.applicantId), { rating: "up" });
+
+  assert.equal(put.status, 200);
+  assert.deepEqual(put.body, { data: { applicantId: riser.applicantId, rating: "up" } });
+  const after = await overviewOf(server, landlordId);
+  assert.equal(after.ranked[0].applicantId, riser.applicantId, "Match score + 5 is above the old top's");
+  assert.deepEqual(
+    { rating: after.ranked[0].rating, bonus: after.ranked[0].bonus, matchScore: after.ranked[0].matchScore },
+    { rating: "up", bonus: 5, matchScore: riser.matchScore },
+  );
+  assert.deepEqual(after.ranked.map(({ rank }) => rank), before.ranked.map(({ rank }) => rank));
+  for (let index = 1; index < after.ranked.length; index += 1) {
+    assert.ok(rankingScore(after.ranked[index - 1]) >= rankingScore(after.ranked[index]), `ordered by Match score + bonus at ${index}`);
+  }
+  assert.ok(after.ranked.filter(({ applicantId }) => applicantId !== riser.applicantId).every(({ rating, bonus }) => rating === null && bonus === 0));
+
+  const removed = await server.del(ratingPath(landlordId, riser.applicantId));
+  assert.equal(removed.status, 200);
+  assert.deepEqual(removed.body, { data: { applicantId: riser.applicantId, rating: null } });
+  assert.deepEqual((await overviewOf(server, landlordId)).ranked, before.ranked);
+  const again = await server.del(ratingPath(landlordId, riser.applicantId));
+  assert.equal(again.status, 200, "DELETE is idempotent");
+  assert.deepEqual(again.body, { data: { applicantId: riser.applicantId, rating: null } });
+});
+
+test("a rating down subtracts the bonus points; up replaces down; the Shortlist shows the rating", async (t) => {
+  const server = await start();
+  t.after(server.close);
+  const landlordId = await signIn(server);
+  await server.put(`/api/v1/landlord/${landlordId}/listing`, WUEHLISCH_LISTING);
+  const before = await overviewOf(server, landlordId);
+  const [first, second] = before.ranked;
+  await server.put(`/api/v1/landlord/${landlordId}/shortlist/${first.applicantId}`, { status: "to_invite" });
+  await server.put(`/api/v1/landlord/${landlordId}/shortlist/${second.applicantId}`, { status: "invited" });
+
+  await server.put(ratingPath(landlordId, first.applicantId), { rating: "down" });
+
+  const after = await overviewOf(server, landlordId);
+  const rated = after.ranked.find(({ applicantId }) => applicantId === first.applicantId);
+  assert.deepEqual({ rating: rated.rating, bonus: rated.bonus, matchScore: rated.matchScore }, { rating: "down", bonus: -5, matchScore: first.matchScore });
+  // Everyone whose Match score is above the old top's minus 5 now ranks above it.
+  const above = before.ranked.filter(({ matchScore }) => matchScore > first.matchScore - 5).length - 1;
+  assert.equal(rated.rank, above + 1);
+  assert.deepEqual(after.shortlist.map(({ applicantId, rating, rank }) => ({ applicantId, rating, rank })), [
+    { applicantId: first.applicantId, rating: "down", rank: rated.rank },
+    { applicantId: second.applicantId, rating: null, rank: after.ranked.find(({ applicantId }) => applicantId === second.applicantId).rank },
+  ]);
+
+  await server.put(ratingPath(landlordId, first.applicantId), { rating: "up" });
+  const up = (await overviewOf(server, landlordId)).ranked[0];
+  assert.deepEqual({ applicantId: up.applicantId, rating: up.rating, bonus: up.bonus }, { applicantId: first.applicantId, rating: "up", bonus: 5 });
+});
+
+test("the dashboard and the applicant detail rank with the ratings too, as the overview does", async (t) => {
+  const server = await start();
+  t.after(server.close);
+  const landlordId = await signIn(server);
+  await server.put(`/api/v1/landlord/${landlordId}/listing`, WUEHLISCH_LISTING);
+  const { ranked } = await overviewOf(server, landlordId);
+  const riser = ranked[2];
+  await server.put(ratingPath(landlordId, riser.applicantId), { rating: "up" });
+  await server.put(ratingPath(landlordId, ranked[0].applicantId), { rating: "down" });
+
+  const overview = await overviewOf(server, landlordId);
+  const dashboard = (await server.get(`/api/v1/landlord/${landlordId}/dashboard`)).body.data;
+  const detail = (await server.get(`/api/v1/landlord/${landlordId}/applicants/${riser.applicantId}`)).body.data;
+
+  assert.deepEqual(
+    dashboard.ranked.map(({ applicantId, rank, matchScore }) => ({ applicantId, rank, matchScore })),
+    overview.ranked.map(({ applicantId, rank, matchScore }) => ({ applicantId, rank, matchScore })),
+  );
+  assert.deepEqual(dashboard.recommendations.map(({ applicantId }) => applicantId), overview.ranked.slice(0, 2).map(({ applicantId }) => applicantId));
+  const onOverview = overview.ranked.find(({ applicantId }) => applicantId === riser.applicantId);
+  assert.deepEqual({ rank: detail.score.rank, rating: detail.score.rating, bonus: detail.score.bonus }, { rank: onOverview.rank, rating: 1, bonus: 5 });
+});
+
+test("a rating is 'up' or 'down' (422 otherwise); an applicant outside the pool or an unknown landlord is a 404; nothing is saved", async (t) => {
+  const server = await start();
+  t.after(server.close);
+  const landlordId = await signIn(server);
+
+  for (const body of [{}, { rating: "sideways" }, { rating: null }, { rating: 1 }, { rating: "remove" }, null, []]) {
+    const { status, body: answer } = await server.put(ratingPath(landlordId, "A-001"), body);
+    assert.equal(status, 422, JSON.stringify(body));
+    assert.equal(answer.error.code, "validation_error");
+    assert.equal(answer.error.details[0].field, "rating");
+  }
+  for (const response of [await server.put(ratingPath(landlordId, "A-999"), { rating: "up" }), await server.del(ratingPath(landlordId, "A-999"))]) {
+    assert.equal(response.status, 404);
+    assert.equal(response.body.error.code, "applicant_not_found");
+  }
+  for (const response of [await server.put(ratingPath("nobody", "A-001"), { rating: "up" }), await server.del(ratingPath("nobody", "A-001"))]) {
+    assert.equal(response.status, 404);
+    assert.equal(response.body.error.code, "landlord_not_found");
+  }
+  assert.equal((await server.put(`/api/v1/landlord/${landlordId}/ratings`, { rating: "up" })).status, 404, "a rating needs an applicant id");
+  const { ranked, bonusPoints } = await overviewOf(server, landlordId);
+  assert.ok(ranked.every(({ rating }) => rating === null));
+  assert.equal(bonusPoints, 5);
+});
+
+test("ratings and bonus points survive re-creating the app on the same database file", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "amt-buddy-landlord-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const path = join(directory, "landlord.sqlite");
+
+  const firstStore = createLandlordStore({ path });
+  const first = await start({ store: firstStore });
+  const landlordId = await signIn(first);
+  await first.put(ratingPath(landlordId, "A-003"), { rating: "down" });
+  firstStore.saveBonusPoints(landlordId, 8);
+  await first.close();
+  firstStore.close();
+
+  const secondStore = createLandlordStore({ path });
+  const second = await start({ store: secondStore });
+  t.after(async () => {
+    await second.close();
+    secondStore.close();
+  });
+  const { ranked, bonusPoints } = await overviewOf(second, landlordId);
+
+  assert.equal(bonusPoints, 8);
+  const rated = ranked.find(({ applicantId }) => applicantId === "A-003");
+  assert.deepEqual({ rating: rated.rating, bonus: rated.bonus }, { rating: "down", bonus: -8 });
 });

@@ -132,6 +132,7 @@ function inputError(message) {
 export const LANDLORD_STUB_HANDLERS = {
   get_ranking: () => ({
     criteria: DEFAULT_CRITERIA,
+    bonusPoints: 5,
     stats: { total: 42, completeDocuments: 19, canAfford: 27, canAffordAtMedian: 33, cleanSchufa: 24, excluded: 5 },
     ranked: RANKED,
     excludedByReason: { occupancyCompliant: 5 },
@@ -145,7 +146,8 @@ export const LANDLORD_STUB_HANDLERS = {
     const contributions = Object.fromEntries(
       Object.entries(ranked.breakdown).map(([criterion, { subscore, weight }]) => [criterion, subscore === null ? null : Math.round(subscore * weight * 10) / 10]),
     );
-    return { profile, matchScore: ranked.matchScore, breakdown: ranked.breakdown, contributions, excludedBy: null, inactive: [] };
+    // Nobody is rated: no bonus, the ranking score is the Match score.
+    return { profile, matchScore: ranked.matchScore, breakdown: ranked.breakdown, contributions, bonus: 0, rankingScore: ranked.matchScore, excludedBy: null, inactive: [] };
   },
   // The real Tool's comparison over the fixed ranking, so the two cannot drift apart.
   compare_applicants: ({ applicantIds }) => compareApplicants({ ranked: RANKED, excluded: [] }, applicantIds),
@@ -185,6 +187,8 @@ export const LANDLORD_STUB_HANDLERS = {
     note: status === "remove" ? null : (note ?? null),
   }),
   get_rent_check: () => ({ rentCheck: RENT_CHECK, note: null }),
+  // Fixed: 5 → 6.5 points (× 1.3); nobody is rated, so the top is unchanged.
+  set_bonus_points: () => ({ previous: 5, bonusPoints: 6.5, requested: 6.5, capped: false, maxBonusPoints: 20, top: RANKED }),
 };
 
 // Contract-conforming fake landlord Tools, for tests and for running the Landlord Orchestrator

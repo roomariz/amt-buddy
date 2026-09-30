@@ -21,9 +21,10 @@ const SAMPLE_ARGS = {
   remember_preference: { note: "I'd like someone who stays long-term." },
   update_shortlist: { applicantId: "A-001", status: "to_invite", note: "Stable income" },
   get_rent_check: {},
+  set_bonus_points: { by: "factor", value: 1.3 },
 };
 
-test("the nine landlord Tools have contracts", () => {
+test("the ten landlord Tools have contracts", () => {
   assert.deepEqual(LANDLORD_TOOL_NAMES.sort(), [
     "adjust_selection_criteria",
     "compare_applicants",
@@ -31,6 +32,7 @@ test("the nine landlord Tools have contracts", () => {
     "get_ranking",
     "get_rent_check",
     "remember_preference",
+    "set_bonus_points",
     "update_flat_details",
     "update_selection_criteria",
     "update_shortlist",

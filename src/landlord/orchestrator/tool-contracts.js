@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { EMPLOYMENT_TYPES } from "../applicant-pool.js";
+import { MAX_BONUS_POINTS } from "../scorer.js";
 
 // The Landlord Orchestrator's Tool contracts (ADR 0001, for the landlord side): each Tool's name,
 // description and input / output zod schema. The real Tools are built against these; the
@@ -13,6 +14,8 @@ export const SHORTLIST_STATUSES = ["to_invite", "invited", "declined"];
 export const SCHUFA_STATUSES = ["clean", "minor_entries", "negative", "missing"];
 // The flat facts a Listing needs; one that is missing switches off what depends on it.
 export const FLAT_FACTS = ["address", "livingAreaSqm", "rooms", "askingRent"];
+// compare_applicants' lines: the criteria, and the bonus of the landlord's ratings.
+const COMPARED = [...SELECTION_CRITERIA, "bonus"];
 
 // The changing Tools' inputs have no optional fields: a live model filled every optional number
 // with 0 (a share next to the factor it meant, building year 0 and then an invented 1800). So each
@@ -59,11 +62,15 @@ const inactive = z.array(
 // the criterion is inactive).
 const contributions = z.object(Object.fromEntries(SELECTION_CRITERIA.map((criterion) => [criterion, z.number().min(0).max(100).nullable()])));
 
+// A rated applicant's entry also has bonus (+N or −N, the landlord's thumbs up or down) and
+// rankingScore (Match score + bonus, what the ranking orders by).
 const rankedApplicant = z.looseObject({
   applicantId,
   rank: z.number().int().min(1),
   matchScore: z.number().min(0).max(100),
   breakdown,
+  bonus: z.number().min(-MAX_BONUS_POINTS).max(MAX_BONUS_POINTS).optional(),
+  rankingScore: z.number().optional(),
 });
 
 const documentResult = z.looseObject({
@@ -114,10 +121,11 @@ export const LANDLORD_TOOL_CONTRACTS = {
   get_ranking: {
     name: "get_ranking",
     description:
-      "Get the current ranking of the applicants under the landlord's Selection criteria: the top applicants with their Match score (0–100) and its breakdown per criterion, the pool statistics, how many applicants each Requirement excluded, and what is not counted yet because a flat fact is missing ('inactive').",
+      "Get the current ranking of the applicants under the landlord's Selection criteria: the top applicants with their Match score (0–100) and its breakdown per criterion (an applicant the landlord rated also has their 'bonus' and 'rankingScore' = Match score + bonus), the bonus points a rating is worth, the pool statistics, how many applicants each Requirement excluded, and what is not counted yet because a flat fact is missing ('inactive').",
     schema: z.object({}),
     output: z.looseObject({
       criteria: selectionCriteria,
+      bonusPoints: z.number().min(0).max(MAX_BONUS_POINTS),
       stats,
       ranked: z.array(rankedApplicant),
       excludedByReason: z.record(z.string(), z.number().int().min(0)),
@@ -127,13 +135,15 @@ export const LANDLORD_TOOL_CONTRACTS = {
   get_applicant_profile: {
     name: "get_applicant_profile",
     description:
-      "Get one applicant's anonymised Applicant profile (household, income, employment type, SCHUFA status, move-in date, pets, smoking), their Document check and Credibility score, their Match score breakdown and the points each criterion adds to it ('contributions'), or the Requirement that excluded them.",
+      "Get one applicant's anonymised Applicant profile (household, income, employment type, SCHUFA status, move-in date, pets, smoking), their Document check and Credibility score, their Match score breakdown and the points each criterion adds to it ('contributions'), the bonus of the landlord's rating and their ranking score (Match score + bonus), or the Requirement that excluded them.",
     schema: z.object({ applicantId }),
     output: z.looseObject({
       profile: applicantProfile,
       matchScore: z.number().min(0).max(100).nullable(),
       breakdown: breakdown.nullable(),
       contributions: contributions.nullable(),
+      bonus: z.number().min(-MAX_BONUS_POINTS).max(MAX_BONUS_POINTS).nullable(),
+      rankingScore: z.number().nullable(),
       excludedBy: z.string().nullable(),
       inactive,
     }),
@@ -141,7 +151,7 @@ export const LANDLORD_TOOL_CONTRACTS = {
   compare_applicants: {
     name: "compare_applicants",
     description:
-      "Compare two applicants under the current Selection criteria: each one's rank and Match score (or the Requirement that excluded them), which one leads, the gap between their Match scores, and per criterion the points each gets and the difference, largest difference first ('differences'); criteria worth the same points to both are listed in 'equal'. Use it to explain why one applicant ranks above another.",
+      "Compare two applicants under the current Selection criteria: each one's rank and Match score (or the Requirement that excluded them), which one leads, the gap between their Match scores, and per criterion the points each gets and the difference, largest difference first ('differences'); criteria worth the same points to both are listed in 'equal'. When the landlord rated either of them, the bonus is its own line ('bonus'), each applicant has a 'rankingScore' (Match score + bonus), the leader is by ranking score and 'rankingGap' is the gap between them. Use it to explain why one applicant ranks above another.",
     schema: z.object({
       applicantIds: z
         .array(applicantId)
@@ -157,19 +167,22 @@ export const LANDLORD_TOOL_CONTRACTS = {
             rank: z.number().int().min(1).nullable(),
             matchScore: z.number().min(0).max(100).nullable(),
             excludedBy: z.string().nullable(),
+            bonus: z.number().optional(),
+            rankingScore: z.number().optional(),
           }),
         )
         .length(2),
       leader: applicantId.nullable(),
       scoreGap: z.number().nullable(),
+      rankingGap: z.number().optional(),
       differences: z.array(
         z.looseObject({
-          criterion: z.enum(SELECTION_CRITERIA),
-          points: z.record(z.string(), z.number().min(0).max(100)),
+          criterion: z.enum(COMPARED),
+          points: z.record(z.string(), z.number().min(-MAX_BONUS_POINTS).max(100)),
           difference: z.number(),
         }),
       ),
-      equal: z.array(z.enum(SELECTION_CRITERIA)),
+      equal: z.array(z.enum(COMPARED)),
       note: z.string().nullable(),
     }),
   },
@@ -276,6 +289,23 @@ export const LANDLORD_TOOL_CONTRACTS = {
       applicantId,
       status: z.enum([...SHORTLIST_STATUSES, "removed"]),
       note: z.string().nullable(),
+    }),
+  },
+  set_bonus_points: {
+    name: "set_bonus_points",
+    description:
+      "Change how much the landlord's own thumbs up / down count: the bonus points a thumbs up adds to an applicant's ranking score and a thumbs down subtracts (the Match score itself stays objective). By a factor of the saved points (1.3 = more weight, 0.7 = less, 0 = ignore my ratings) or to a number of points (0–20; above 20 is capped). Saves them and returns the old and new points, what was requested, whether it was capped, the limit and the new top 3. It cannot rate applicants: only the landlord rates them, on their page.",
+    schema: z.object({
+      by: z.enum(["factor", "points"]).describe("'factor': value multiplies the saved bonus points; 'points': value is the new bonus points"),
+      value: z.number().min(0).describe(`The factor (1.3 = 30 % more), or the bonus points (at most ${MAX_BONUS_POINTS})`),
+    }),
+    output: z.looseObject({
+      previous: z.number().min(0),
+      bonusPoints: z.number().min(0).max(MAX_BONUS_POINTS),
+      requested: z.number().min(0),
+      capped: z.boolean(),
+      maxBonusPoints: z.literal(MAX_BONUS_POINTS),
+      top: z.array(rankedApplicant).max(3),
     }),
   },
   get_rent_check: {

@@ -8,6 +8,7 @@ import { detectLanguage, landlordReply } from "./orchestrator/replies.js";
 import { DEFAULT_CRITERIA, rankApplicants } from "./scorer.js";
 import { CriteriaInputError, updateSelectionCriteria } from "./criteria.js";
 import { ShortlistInputError, UnknownApplicantError, updateShortlist } from "./shortlist.js";
+import { RatingInputError, ratingName, updateRating } from "./ratings.js";
 import { normalizeLandlordName } from "./store.js";
 
 const MAX_NAME_LENGTH = 100;
@@ -72,13 +73,16 @@ const documentFlagsOf = ({ schufa, incomeProof, previousLandlord, complete }) =>
 
 // The ranking of the pool for the Listing, its stats and Recommendations (none without a
 // Listing), with each applicant's name (and, in the ranking, document flags) joined in for
-// display. The scorer sees the anonymised profiles only.
-function rankingFor(listing, { applicants }, criteria) {
+// display. The scorer sees the anonymised profiles only, ranked with the landlord's ratings
+// ({ ratings, bonusPoints }).
+function rankingFor(listing, { applicants }, criteria, { ratings, bonusPoints }) {
   if (!listing) return { ranked: [], excluded: [], stats: null, recommendations: [], hint: LISTING_REQUIRED };
   const { ranked, excluded, stats, recommendations } = rankApplicants({
     profiles: applicants.map(({ profile }) => profile),
     listing,
     criteria,
+    ratings,
+    bonusPoints,
   });
   const applicantsById = new Map(applicants.map((applicant) => [applicant.id, applicant]));
   const nameOf = (applicantId) => applicantsById.get(applicantId).contact.name;
@@ -112,6 +116,9 @@ function shortlistFor(entries, { applicants }, { ranked, excluded }) {
     excluded: excludedIds.has(applicantId),
   }));
 }
+
+// The landlord's ratings and bonus points, as rankApplicants takes them.
+const ratingsOf = (store, landlordId) => ({ ratings: store.getRatings(landlordId), bonusPoints: store.getBonusPoints(landlordId) });
 
 const oneDecimal = (weights) =>
   Object.fromEntries(Object.entries(weights).map(([criterion, weight]) => [criterion, Math.round(weight * 10) / 10]));
@@ -163,7 +170,7 @@ export function createLandlordApi({ getStore, getApplicantPool = () => EMPTY_POO
     const listing = getStore().getListing(landlordId);
     const pool = await getApplicantPool();
     const criteria = getStore().getCriteria(landlordId);
-    const ranking = rankingFor(listing, pool, criteria);
+    const ranking = rankingFor(listing, pool, criteria, ratingsOf(getStore(), landlordId));
     sendJson(response, 200, {
       data: {
         listing,
@@ -181,17 +188,22 @@ export function createLandlordApi({ getStore, getApplicantPool = () => EMPTY_POO
   // GET /api/v1/landlord/:landlordId/overview → the chat-first page's data (docs/api.md): the flat
   // details and what the Listing still needs, the Rent check, the criteria (saved and active
   // shares), what is inactive, the whole ranking with names, household shapes and reasons, the
-  // stats, the Shortlist and the pool errors. Ranked for the flat details, a Listing or not.
+  // stats, the Shortlist and the pool errors. Ranked for the flat details, a Listing or not, by
+  // Match score + the bonus of the landlord's ratings: `bonusPoints`, and per ranked entry its
+  // `rating` ("up" | "down" | null) and `bonus` (0 when unrated); Shortlist entries carry `rating`.
   async function overview(response, landlordId) {
     const store = getStore();
     const pool = await getApplicantPool();
     const criteria = store.getCriteria(landlordId);
     const flat = store.getFlatDetails(landlordId);
     const listing = store.getListing(landlordId);
+    const { ratings, bonusPoints } = ratingsOf(store, landlordId);
     const ranking = rankApplicants({
       profiles: pool.applicants.map(({ profile }) => profile),
       listing: flatToRank(store, landlordId),
       criteria,
+      ratings,
+      bonusPoints,
     });
     const applicantsById = new Map(pool.applicants.map((applicant) => [applicant.id, applicant]));
     const shapeOf = (applicantId) => {
@@ -207,7 +219,8 @@ export function createLandlordApi({ getStore, getApplicantPool = () => EMPTY_POO
         rentCheckNote: listing && !listing.rentCheck ? listing.note : null,
         criteria: { weights: oneDecimal(criteria.weights), activeWeights: oneDecimal(ranking.activeWeights), requirements: criteria.requirements },
         inactive: ranking.inactive,
-        ranked: ranking.ranked.map(({ applicantId, rank, matchScore, breakdown, rentToIncome }) => {
+        bonusPoints,
+        ranked: ranking.ranked.map(({ applicantId, rank, matchScore, breakdown, rentToIncome, rating, bonus = 0 }) => {
           const { contact, profile } = applicantsById.get(applicantId);
           return {
             applicantId,
@@ -216,6 +229,8 @@ export function createLandlordApi({ getStore, getApplicantPool = () => EMPTY_POO
             rank,
             matchScore,
             reason: recommendationReasons({ profile, breakdown, rentToIncome, matchScore }).reason,
+            rating: ratingName(rating),
+            bonus,
           };
         }),
         stats: ranking.stats,
@@ -223,6 +238,7 @@ export function createLandlordApi({ getStore, getApplicantPool = () => EMPTY_POO
           ...entry,
           householdShape: shapeOf(entry.applicantId),
           excludedBy: excludedBy.get(entry.applicantId) ?? null,
+          rating: ratingName(ratings.get(entry.applicantId)),
         })),
         poolErrors: pool.errors,
       },
@@ -257,6 +273,28 @@ export function createLandlordApi({ getStore, getApplicantPool = () => EMPTY_POO
     await changeShortlist(response, landlordId, { applicantId, status: "remove" });
   }
 
+  // Runs updateRating against the pool and answers with { applicantId, rating }, a 422 or a 404.
+  async function changeRating(response, landlordId, applicantId, rating) {
+    const { applicants } = await getApplicantPool();
+    const applicantIds = new Set(applicants.map(({ id }) => id));
+    try {
+      sendJson(response, 200, { data: updateRating({ store: getStore(), landlordId, applicantIds, applicantId, rating }) });
+    } catch (error) {
+      if (error instanceof RatingInputError) sendError(response, 422, "validation_error", error.message, error.details);
+      else if (error instanceof UnknownApplicantError) sendError(response, 404, ...APPLICANT_NOT_FOUND);
+      else throw error;
+    }
+  }
+
+  // PUT /api/v1/landlord/:landlordId/ratings/:applicantId { rating: "up" | "down" } → { applicantId,
+  // rating }. Taking a rating off is DELETE, so 'remove' is not a rating here.
+  async function putRating(request, response, landlordId, applicantId) {
+    const body = await readBody(request, response);
+    if (!body) return;
+    const rating = isPlainObject(body.input) && body.input.rating !== "remove" ? body.input.rating : undefined;
+    await changeRating(response, landlordId, applicantId, rating);
+  }
+
   // GET /api/v1/landlord/:landlordId/applicants/:applicantId → profile and its current score,
   // with contact details joined only for the UI. Unknown applicant → 404.
   async function applicantDetail(response, landlordId, applicantId) {
@@ -267,6 +305,7 @@ export function createLandlordApi({ getStore, getApplicantPool = () => EMPTY_POO
       listing: getStore().getListing(landlordId),
       applicantId,
       criteria: getStore().getCriteria(landlordId),
+      ...ratingsOf(getStore(), landlordId),
     });
     if (!result) {
       sendError(response, 404, "applicant_not_found", "No applicant with this id.");
@@ -350,12 +389,16 @@ export function createLandlordApi({ getStore, getApplicantPool = () => EMPTY_POO
     "GET applicants": (request, response, landlordId, applicantId) => applicantDetail(response, landlordId, applicantId),
     "PUT shortlist": putShortlistEntry,
     "DELETE shortlist": deleteShortlistEntry,
+    "PUT ratings": putRating,
+    // DELETE /api/v1/landlord/:landlordId/ratings/:applicantId → { applicantId, rating: null }; idempotent.
+    "DELETE ratings": (request, response, landlordId, applicantId) => changeRating(response, landlordId, applicantId, "remove"),
     "DELETE notes": deleteNote,
   };
 
   // The paths that carry an id after the resource, and the error for an id that cannot be decoded.
   const ID_RESOURCES = {
     shortlist: APPLICANT_NOT_FOUND,
+    ratings: APPLICANT_NOT_FOUND,
     applicants: APPLICANT_NOT_FOUND,
     notes: NOTE_NOT_FOUND,
   };
@@ -368,8 +411,8 @@ export function createLandlordApi({ getStore, getApplicantPool = () => EMPTY_POO
         await signIn(request, response);
         return true;
       }
-      const match = /^([^/]+)\/(dashboard|overview|listing|chat|criteria|shortlist|applicants|notes)(?:\/([^/]+))?$/.exec(path);
-      // The Shortlist's and the applicants' paths carry an applicant id, the notes' a note id; the others none.
+      const match = /^([^/]+)\/(dashboard|overview|listing|chat|criteria|shortlist|ratings|applicants|notes)(?:\/([^/]+))?$/.exec(path);
+      // The Shortlist's, the ratings' and the applicants' paths carry an applicant id, the notes' a note id; the others none.
       const takesId = match && Object.hasOwn(ID_RESOURCES, match[2]);
       const handler = match && takesId === (match[3] !== undefined) && routes[`${request.method} ${match[2]}`];
       if (!handler) {

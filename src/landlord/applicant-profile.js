@@ -24,8 +24,9 @@ export function householdShapeOf({ adults, children }) {
 
 // The reusable, contact-free Applicant profile lookup. The chat Tool calls this directly, with the
 // flat details as `listing` (so it scores before a Listing too); names and contact details are
-// joined only by the HTTP endpoint for page display. No listing at all: no score.
-export function getApplicantProfile({ applicants, listing, applicantId, criteria = {} }) {
+// joined only by the HTTP endpoint for page display. No listing at all: no score. `ratings` and
+// `bonusPoints` are the landlord's (see rankApplicants), so the rank is the one the pages show.
+export function getApplicantProfile({ applicants, listing, applicantId, criteria = {}, ratings, bonusPoints }) {
   const applicant = applicants.find(({ id }) => id === applicantId);
   if (!applicant) return null;
   const profile = withoutDocumentNames(applicant.profile);
@@ -35,6 +36,8 @@ export function getApplicantProfile({ applicants, listing, applicantId, criteria
     profiles: applicants.map(({ profile }) => profile),
     listing,
     criteria,
+    ratings,
+    bonusPoints,
   });
   const score = ranked.find((entry) => entry.applicantId === applicantId)
     ?? excluded.find((entry) => entry.applicantId === applicantId);

@@ -3,10 +3,11 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
-import { DEFAULT_CRITERIA } from "./scorer.js";
+import { DEFAULT_BONUS_POINTS, DEFAULT_CRITERIA } from "./scorer.js";
 
 // The landlord's state in SQLite (Node's built-in node:sqlite): landlords, listings, flat_details,
-// criteria, shortlist and preference_notes (the free-text Landlord preferences).
+// criteria, shortlist, preference_notes (the free-text Landlord preferences), ratings (the landlord's
+// thumbs up 1 / down -1 per applicant) and bonus_points (what a thumb is worth).
 const SCHEMA = `
   CREATE TABLE IF NOT EXISTS landlords (
     id TEXT PRIMARY KEY,
@@ -36,6 +37,17 @@ const SCHEMA = `
     added TEXT NOT NULL,
     updated TEXT NOT NULL,
     PRIMARY KEY (landlord_id, applicant_id)
+  );
+  CREATE TABLE IF NOT EXISTS ratings (
+    landlord_id TEXT NOT NULL REFERENCES landlords(id),
+    applicant_id TEXT NOT NULL,
+    rating INTEGER NOT NULL CHECK (rating IN (1, -1)),
+    updated TEXT NOT NULL,
+    PRIMARY KEY (landlord_id, applicant_id)
+  );
+  CREATE TABLE IF NOT EXISTS bonus_points (
+    landlord_id TEXT PRIMARY KEY REFERENCES landlords(id),
+    points REAL NOT NULL
   );
   CREATE TABLE IF NOT EXISTS preference_notes (
     id TEXT PRIMARY KEY,
@@ -80,6 +92,13 @@ const toLandlord = (row) => (row ? { landlordId: row.id, name: row.name } : null
 //   status and note; an entry keeps the time it was first added. No validation: see shortlist.js.
 // - removeShortlistEntry(landlordId, applicantId): removes the entry, if there is one.
 // - getShortlist(landlordId) → [{ applicantId, status, note, added, updated }], in the order added.
+// - setRating(landlordId, applicantId, rating): saves the landlord's rating of the applicant, 1
+//   (thumbs up) or -1 (thumbs down; the database refuses any other value), replacing one saved before.
+// - removeRating(landlordId, applicantId): removes the rating, if there is one.
+// - getRatings(landlordId) → Map applicantId → 1 | -1.
+// - getBonusPoints(landlordId) → what a rating adds or subtracts: the saved points, else
+//   DEFAULT_BONUS_POINTS (5).
+// - saveBonusPoints(landlordId, points): no validation: see adjustBonusPoints in ratings.js.
 // - addNote(landlordId, note) → { noteId, note, created }: stores a free-text Landlord preference.
 // - listNotes(landlordId) → [{ noteId, note, created }], oldest first.
 // - deleteNote(landlordId, noteId) → true when the landlord had that note and it is gone.
@@ -117,6 +136,18 @@ export function createLandlordStore({ path = ":memory:" } = {}) {
   const selectShortlist = db.prepare(
     "SELECT applicant_id, status, note, added, updated FROM shortlist WHERE landlord_id = ? ORDER BY added, rowid",
   );
+
+  const upsertRating = db.prepare(
+    `INSERT INTO ratings (landlord_id, applicant_id, rating, updated) VALUES (?, ?, ?, ?)
+     ON CONFLICT (landlord_id, applicant_id) DO UPDATE SET rating = excluded.rating, updated = excluded.updated`,
+  );
+  const deleteRating = db.prepare("DELETE FROM ratings WHERE landlord_id = ? AND applicant_id = ?");
+  const selectRatings = db.prepare("SELECT applicant_id, rating FROM ratings WHERE landlord_id = ?");
+  const upsertBonusPoints = db.prepare(
+    `INSERT INTO bonus_points (landlord_id, points) VALUES (?, ?)
+     ON CONFLICT (landlord_id) DO UPDATE SET points = excluded.points`,
+  );
+  const selectBonusPoints = db.prepare("SELECT points FROM bonus_points WHERE landlord_id = ?");
 
   const insertNote = db.prepare("INSERT INTO preference_notes (id, landlord_id, note, created) VALUES (?, ?, ?, ?)");
   // rowid breaks ties between notes added within the same millisecond.
@@ -169,6 +200,21 @@ export function createLandlordStore({ path = ":memory:" } = {}) {
         added: row.added,
         updated: row.updated,
       }));
+    },
+    setRating(landlordId, applicantId, rating) {
+      upsertRating.run(landlordId, applicantId, rating, new Date().toISOString());
+    },
+    removeRating(landlordId, applicantId) {
+      deleteRating.run(landlordId, applicantId);
+    },
+    getRatings(landlordId) {
+      return new Map(selectRatings.all(landlordId).map((row) => [row.applicant_id, row.rating]));
+    },
+    getBonusPoints(landlordId) {
+      return selectBonusPoints.get(landlordId)?.points ?? DEFAULT_BONUS_POINTS;
+    },
+    saveBonusPoints(landlordId, points) {
+      upsertBonusPoints.run(landlordId, points);
     },
     addNote(landlordId, note) {
       const entry = { noteId: randomUUID(), note, created: new Date().toISOString() };
