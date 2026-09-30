@@ -149,8 +149,10 @@ export const LANDLORD_STUB_HANDLERS = {
     // Nobody is rated: no bonus, the ranking score is the Match score.
     return { profile, matchScore: ranked.matchScore, breakdown: ranked.breakdown, contributions, bonus: 0, rankingScore: ranked.matchScore, excludedBy: null, inactive: [] };
   },
-  // The real Tool's comparison over the fixed ranking, so the two cannot drift apart.
-  compare_applicants: ({ applicantIds }) => compareApplicants({ ranked: RANKED, excluded: [] }, applicantIds),
+  // The real Tool's comparison over the fixed ranking, so the two cannot drift apart; nobody is
+  // rated, and the fixed Match scores are the unrounded ones.
+  compare_applicants: ({ applicantIds }) =>
+    compareApplicants({ ranked: RANKED, excluded: [], rankingScores: new Map(RANKED.map(({ applicantId, matchScore }) => [applicantId, matchScore])) }, applicantIds),
   update_selection_criteria: ({ changes }) => ({
     previous: DEFAULT_CRITERIA,
     criteria: {

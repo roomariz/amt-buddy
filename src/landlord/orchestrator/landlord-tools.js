@@ -4,8 +4,8 @@ import { getApplicantProfile } from "../applicant-profile.js";
 import { adjustSelectionCriteria, CriteriaInputError, MAX_SHARE, updateSelectionCriteria } from "../criteria.js";
 import { flatToRank, missingForListing, updateFlatDetails } from "../flat-details.js";
 import { ListingInputError } from "../listing.js";
-import { adjustBonusPoints, BonusInputError } from "../ratings.js";
-import { MAX_BONUS_POINTS, rankApplicants } from "../scorer.js";
+import { adjustBonusPoints, BonusInputError, ratingsOf } from "../ratings.js";
+import { excludedByReason, MAX_BONUS_POINTS, rankApplicants } from "../scorer.js";
 import { ShortlistInputError, updateShortlist } from "../shortlist.js";
 import { LANDLORD_TOOL_CONTRACTS } from "./tool-contracts.js";
 
@@ -72,17 +72,20 @@ const rankingScoreOf = ({ matchScore, bonus = 0 }) => oneDecimal(matchScore + bo
 // A rated applicant's bonus and ranking score, as the model sees them; nothing for an unrated one.
 const bonusOf = (entry) => (entry.bonus === undefined ? {} : { bonus: entry.bonus, rankingScore: rankingScoreOf(entry) });
 
-// compare_applicants' result for two applicant ids in a ranking ({ ranked, excluded } of
-// rankApplicants): each one's rank and Match score, or the Requirement that excluded them; when both
-// are ranked, the leader, the Match score gap (first − second) and per active criterion both
+// compare_applicants' result for two applicant ids in a ranking ({ ranked, excluded, rankingScores }
+// of rankApplicants): each one's rank and Match score, or the Requirement that excluded them; when
+// both are ranked, the leader, the Match score gap (first − second) and per active criterion both
 // applicants' points (the contributions) with their difference (first − second), largest first.
 // When the landlord rated either of them, the bonus is one more line ("bonus", in the differences
 // or the equal ones), each applicant has bonus and rankingScore, the leader is by ranking score and
 // rankingGap is its gap (first − second); scoreGap stays the Match score gap. Unrated, none of these
 // fields appear.
+// The leader is the one ranked higher, and a tie (no leader, ordered by applicant id) only when the
+// unrounded scores the ranking is sorted by are equal: scores equal to one decimal are not a tie,
+// and the note says so, since the prompt has the model say "ordered by applicant id" for equal ones.
 // Computed here (ADR 0004): a live model given both contributions misread which criteria differed.
 // Throws a Tool input error for an id that is not in the pool.
-export function compareApplicants({ ranked, excluded }, [first, second]) {
+export function compareApplicants({ ranked, excluded, rankingScores }, [first, second]) {
   const entryOf = (id) => {
     const entry = ranked.find(({ applicantId }) => applicantId === id) ?? excluded.find(({ applicantId }) => applicantId === id);
     if (!entry) throw new LandlordToolInputError(`There is no applicant '${id}' in the Applicant pool.`);
@@ -122,15 +125,21 @@ export function compareApplicants({ ranked, excluded }, [first, second]) {
   differences.sort((x, y) => Math.abs(y.difference) - Math.abs(x.difference));
   const [scoreA, scoreB] = entries.map(({ matchScore }) => matchScore);
   const [rankingA, rankingB] = entries.map(rankingScoreOf);
-  const tie = rankingA === rankingB;
+  const tie = rankingScores.get(first) === rankingScores.get(second);
+  const leader = tie ? null : entries[0].rank < entries[1].rank ? first : second;
+  const scores = rated ? "ranking scores (Match score + bonus)" : "Match scores";
   return {
     applicants,
-    leader: tie ? null : rankingA > rankingB ? first : second,
+    leader,
     scoreGap: oneDecimal(scoreA - scoreB),
     ...(rated && { rankingGap: oneDecimal(rankingA - rankingB) }),
     differences,
     equal,
-    note: !tie ? null : rated ? "equal ranking scores (Match score + bonus); ordered by applicant id" : "equal Match scores; ordered by applicant id",
+    note: tie
+      ? `equal ${scores}; ordered by applicant id`
+      : rankingA === rankingB
+        ? `equal ${scores} to one decimal, but ${leader}'s is higher unrounded, so ${leader} ranks higher; not ordered by applicant id`
+        : null,
   };
 }
 
@@ -147,9 +156,6 @@ const shortlistEntries = (store, landlordId) => store.getShortlist(landlordId).m
 // the anonymised profiles).
 const rankPool = ({ applicants, flat, criteria, ratings, bonusPoints }) =>
   rankApplicants({ profiles: applicants.map(({ profile }) => profile), listing: flat, criteria, ratings, bonusPoints });
-
-// The landlord's ratings and bonus points, as rankApplicants takes them.
-const ratingsOf = (store, landlordId) => ({ ratings: store.getRatings(landlordId), bonusPoints: store.getBonusPoints(landlordId) });
 
 // A dashboard function's input error (CriteriaInputError, ShortlistInputError, ListingInputError)
 // as a Tool input error, with its details in the message the model reads; `addendum` follows them.
@@ -193,12 +199,6 @@ const listingFacts = ({ addressVerified, canonicalAddress, residentialLocation, 
   buildingAgePeriod,
 });
 
-function countBy(entries, key) {
-  const counts = {};
-  for (const entry of entries) counts[entry[key]] = (counts[entry[key]] ?? 0) + 1;
-  return counts;
-}
-
 // createLandlordTools({ getStore, getApplicantPool, fetchImpl }) → { tools }
 // - getStore(): the landlord store (see createLandlordStore).
 // - getApplicantPool(): the Applicant pool ({ applicants, errors }), or a promise of it.
@@ -221,7 +221,7 @@ export function createLandlordTools({ getStore, getApplicantPool, fetchImpl }) {
         stats,
         rankedCount: ranked.length,
         ranked: ranked.slice(0, RANKING_LIMIT).map(rankedEntry),
-        excludedByReason: countBy(excluded, "excludedBy"),
+        excludedByReason: excludedByReason(excluded),
         shortlist: shortlistEntries(state.store, landlordId),
         inactive,
       };
@@ -230,7 +230,8 @@ export function createLandlordTools({ getStore, getApplicantPool, fetchImpl }) {
     async get_applicant_profile({ applicantId }, landlordId) {
       const state = await landlordState(landlordId);
       const { store, applicants, flat, criteria, ratings, bonusPoints } = state;
-      const found = getApplicantProfile({ applicants, listing: flat, applicantId, criteria, ratings, bonusPoints });
+      const ranking = rankPool(state);
+      const found = getApplicantProfile({ applicants, listing: flat, applicantId, criteria, ratings, bonusPoints, ranking });
       if (!found) throw new LandlordToolInputError(`There is no applicant '${applicantId}' in the Applicant pool.`);
       const { profile, score, rentToIncome } = found;
       const shortlisted = store.getShortlist(landlordId).find((entry) => entry.applicantId === applicantId);
@@ -247,7 +248,7 @@ export function createLandlordTools({ getStore, getApplicantPool, fetchImpl }) {
         excludedBy: score?.excludedBy ?? null,
         exclusionReasons: score?.reasons ?? [],
         shortlistStatus: shortlisted?.status ?? null,
-        inactive: rankPool(state).inactive,
+        inactive: ranking.inactive,
       };
     },
 

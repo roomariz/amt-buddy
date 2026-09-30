@@ -13,6 +13,9 @@ const RATING_NAMES = new Map([[1, "up"], [-1, "down"]]);
 // 1 → "up", -1 → "down", no rating → null.
 export const ratingName = (rating) => RATING_NAMES.get(rating) ?? null;
 
+// The landlord's ratings and bonus points, as rankApplicants takes them.
+export const ratingsOf = (store, landlordId) => ({ ratings: store.getRatings(landlordId), bonusPoints: store.getBonusPoints(landlordId) });
+
 export class RatingInputError extends Error {
   constructor(details) {
     super(details[0]?.message ?? "Rating input is invalid.");

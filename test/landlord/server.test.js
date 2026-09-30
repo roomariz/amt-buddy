@@ -907,6 +907,27 @@ test("the overview's Shortlist has names, shapes, current ranks, and the Require
   assert.ok(!ranked.some(({ applicantId }) => applicantId === withPets));
 });
 
+test("the overview lists the excluded applicants by id and name with the Requirement that excludes each, and no more", async (t) => {
+  const server = await start();
+  t.after(server.close);
+  const landlordId = await signIn(server);
+  const { applicants } = await readApplicantPool(APPLICANT_POOL_DIRECTORY, { today: POOL_DATE });
+  const withPets = applicants.filter(({ profile }) => profile.pets);
+
+  assert.deepEqual((await overviewOf(server, landlordId)).excluded, [], "nobody excluded before a Requirement applies");
+  // noPets is evaluated without a Listing: exactly the pet owners are excluded, ordered by id.
+  await server.put(`/api/v1/landlord/${landlordId}/criteria`, { requirements: { noPets: true } });
+  const { excluded, excludedByReason, ranked } = await overviewOf(server, landlordId);
+
+  assert.ok(withPets.length > 0, "the pool has pet owners");
+  assert.deepEqual(
+    excluded,
+    withPets.map(({ id, contact }) => ({ applicantId: id, name: contact.name, excludedBy: "noPets" })).sort((a, b) => a.applicantId.localeCompare(b.applicantId)),
+  );
+  assert.deepEqual(excludedByReason, { noPets: withPets.length });
+  assert.equal(ranked.length + excluded.length, applicants.length);
+});
+
 test("the overview never carries contact details or protected fields; an unknown landlord is a 404", async (t) => {
   const server = await start();
   t.after(server.close);

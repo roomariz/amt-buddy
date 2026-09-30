@@ -61,9 +61,19 @@ function withTimeout(promise, timeoutMs, name) {
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
+// The Tools that wait on a network service, and their own timeout; every other Tool is local and
+// gets the general one. update_flat_details builds the Listing on the Berlin WFS: the address lookup
+// (up to 8 s), then Wohnlage and building age together (up to 8 s), and buildListing turns a service
+// that fails or times out into a Listing with a note, so the Tool returns within about 16 s. Under
+// the general 10 s it could time out while the save went on in the background: the model told it
+// failed, the page never told to refresh. Rejected: saving the flat details first and returning
+// without the Rent check past a budget, which needs a second way to tell the page later.
+export const LANDLORD_TOOL_TIMEOUTS_MS = Object.freeze({ update_flat_details: 25_000 });
+
 // ingest → agent ⇄ tools → verifyGrounding → finalize: one agent, no Intent router, no Sub-agents.
 // - tools: Map name → LangChain tool; each is invoked with config.configurable.landlordId.
 // - getContext(landlordId): the landlord's state for the system prompt, loaded every turn.
+// - toolTimeoutMs: the general Tool timeout; LANDLORD_TOOL_TIMEOUTS_MS replaces it for its Tools.
 export function buildLandlordGraph({ model, tools, getContext, log, toolTimeoutMs }) {
   const boundModel = model.bindTools([...tools.values()]);
 
@@ -88,8 +98,8 @@ export function buildLandlordGraph({ model, tools, getContext, log, toolTimeoutM
   }
 
   // Runs one Tool call → { message, evidence }. Errors go back to the model as the result.
-  // Not the tenant's wrapTool: that one cannot pass the landlord in the call's config, and the
-  // landlord Tools are local (no upstream service), so there is no retry.
+  // Not the tenant's wrapTool: that one cannot pass the landlord in the call's config. No retry:
+  // only update_flat_details reaches a service, and its Berlin WFS failures come back as a note.
   async function runTool(toolCall, landlordId) {
     const baseTool = tools.get(toolCall.name);
     const args = toolCall.args ?? {};
@@ -101,7 +111,7 @@ export function buildLandlordGraph({ model, tools, getContext, log, toolTimeoutM
       try {
         const result = await withTimeout(
           Promise.resolve(baseTool.invoke(args, { configurable: { landlordId } })),
-          toolTimeoutMs,
+          LANDLORD_TOOL_TIMEOUTS_MS[toolCall.name] ?? toolTimeoutMs,
           toolCall.name,
         );
         outcome = { result };

@@ -1,4 +1,5 @@
 import { checkGrounding, stripUngrounded } from "../../orchestrator/grounding.js";
+import { parseNumber } from "../../orchestrator/numbers.js";
 
 // The grounding check (ADR 0003) for the landlord side: every number in an answer must come from a
 // Tool result of this turn, the landlord's state in the system prompt (the Listing, its Rent check,
@@ -22,32 +23,44 @@ function maskIds(text) {
   return { masked, unmask: (value) => value.replace(PLACEHOLDER, (match, key) => ids.get(key) ?? match) };
 }
 
-// A ratio is written as a percentage ("19.3 %" for 0.1933) or to three decimals ("0.193"), neither of
-// which the shared check derives from the raw value. Ratio fields are recognised by their key, not
-// by a value between 0 and 1: that would let "50 %" pass whenever some subscore is 0.5, and a wrongly
+// A ratio is written as a percentage ("19.3 %" for 0.1933), which the shared check does not derive
+// from the raw value. Ratio fields are recognised by their key, not by a value between 0 and 1: that
+// would let "50 %" pass whenever some subscore is 0.5.
+// Which forms a ratio grounds decides both directions, and they do not cost the same: a wrongly
 // grounded figure reaches the landlord as fact, while a wrongly stripped one only costs a sentence.
+// So the loose forms go only where they are earned:
+// - An applicant's rentToIncome in this turn's Tool results grounds its percentage as a value, so the
+//   shared check's rounding also grounds the whole percent ("19 %" for 19.3): the model has just
+//   looked that applicant up.
+// - Every other ratio grounds its one-decimal percentage exactly ("33.3 %", never "33"): the context
+//   is there every turn, and its maxRentToIncome of 1/3 would otherwise ground an invented "33 %"
+//   in every answer. "About a third" or "33 %" for the limit is stripped: the cheap direction.
+// No three-decimal form ("0.193"): the shared parser reads it as 193, so it would ground 193 instead.
 const RATIO_KEYS = new Set(["rentToIncome", "maxRentToIncome"]);
 
+// → [{ key, ratio }] for every ratio field in `value`, at any depth.
 function ratiosIn(value, into = []) {
   if (Array.isArray(value)) for (const item of value) ratiosIn(item, into);
   else if (value && typeof value === "object") {
     for (const [key, item] of Object.entries(value)) {
-      if (RATIO_KEYS.has(key) && typeof item === "number") into.push(item);
+      if (RATIO_KEYS.has(key) && typeof item === "number") into.push({ key, ratio: item });
       else ratiosIn(item, into);
     }
   }
   return into;
 }
 
-// Handed over as text, so each form is parsed exactly as the answer's own figure is ("0.193" reads
-// as 193 there, a dot before three digits being a thousands separator).
-const ratioForms = (ratio) => [`${Math.round(ratio * 1000) / 10}`, `${Math.round(ratio * 100)}`, `${Math.round(ratio * 1000) / 1000}`];
+const percentOf = (ratio) => Math.round(ratio * 1000) / 10;
 
 // sources: { evidence: [{ result? }], context, userText } → { grounded, ungrounded: [token, ...] }
 export function checkLandlordAnswer(answer, { evidence = [], context = {}, userText = "" }) {
   const { masked } = maskIds(answer);
-  const derivedRatioForms = ratiosIn([evidence.map((entry) => entry.result), context]).flatMap(ratioForms);
-  return checkGrounding(masked, { evidence: [...evidence, { result: context }, { result: { derivedRatioForms } }], userText });
+  const results = evidence.map((entry) => entry.result);
+  const lookedUp = ratiosIn(results).filter(({ key }) => key === "rentToIncome").map(({ ratio }) => percentOf(ratio));
+  const exact = new Set(ratiosIn([results, context]).map(({ ratio }) => percentOf(ratio)));
+  const { ungrounded } = checkGrounding(masked, { evidence: [...evidence, { result: context }, { result: { lookedUp } }], userText });
+  const left = ungrounded.filter((token) => !exact.has(parseNumber(token)));
+  return { grounded: left.length === 0, ungrounded: left };
 }
 
 // A lead-in: a line ending with ":" (markdown emphasis after it allowed), its list on the lines below.

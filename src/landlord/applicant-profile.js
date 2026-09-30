@@ -26,13 +26,14 @@ export function householdShapeOf({ adults, children }) {
 // flat details as `listing` (so it scores before a Listing too); names and contact details are
 // joined only by the HTTP endpoint for page display. No listing at all: no score. `ratings` and
 // `bonusPoints` are the landlord's (see rankApplicants), so the rank is the one the pages show.
-export function getApplicantProfile({ applicants, listing, applicantId, criteria = {}, ratings, bonusPoints }) {
+// `ranking`: rankApplicants' result for exactly these arguments, when the caller has it already.
+export function getApplicantProfile({ applicants, listing, applicantId, criteria = {}, ratings, bonusPoints, ranking }) {
   const applicant = applicants.find(({ id }) => id === applicantId);
   if (!applicant) return null;
   const profile = withoutDocumentNames(applicant.profile);
   if (!listing) return { profile, score: null, rentToIncome: null };
 
-  const { ranked, excluded } = rankApplicants({
+  const { ranked, excluded } = ranking ?? rankApplicants({
     profiles: applicants.map(({ profile }) => profile),
     listing,
     criteria,

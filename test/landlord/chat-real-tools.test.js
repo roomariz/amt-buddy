@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { createApp } from "../../src/app.js";
 import { APPLICANT_POOL_DIRECTORY, readApplicantPool } from "../../src/landlord/applicant-pool.js";
 import { POOL_DATE } from "../../src/landlord/applicant-pool-generator.js";
-import { createLandlordOrchestrator } from "../../src/landlord/orchestrator/index.js";
+import { createLandlordOrchestrator, LANDLORD_TOOL_TIMEOUTS_MS } from "../../src/landlord/orchestrator/index.js";
 import { createLandlordStore } from "../../src/landlord/store.js";
 import { createFakeBerlinWfs } from "../helpers/fake-berlin-wfs.js";
 import { ScriptedChatModel } from "../orchestrator/helpers/scripted-model.js";
@@ -19,18 +19,19 @@ const LISTING = { address: "Wühlischstraße 30, 10245 Berlin", livingAreaSqm: 6
 // `setScript` sets the model's script once the Listing is saved, so answers can quote the real
 // figures the Tools will return. `store` lets two apps share one landlord store (a server restart:
 // the chat thread is gone, the store is not); `name` is the landlord who signs in; `listing` is
-// saved through the classic page's PUT listing first (null: none).
-async function start({ store = createLandlordStore({ path: ":memory:" }), name = "Erika Muster", listing = LISTING } = {}) {
+// saved through the classic page's PUT listing first (null: none). `fetchImpl` stands in for the
+// Berlin WFS; `toolTimeoutMs` is the orchestrator's general Tool timeout (default: its own).
+async function start({ store = createLandlordStore({ path: ":memory:" }), name = "Erika Muster", listing = LISTING, fetchImpl = createFakeBerlinWfs().fetchImpl, toolTimeoutMs } = {}) {
   let model;
   let script = [];
   const app = createApp({
     env: OPENAI_ENV,
     landlordStore: store,
-    fetchImpl: createFakeBerlinWfs().fetchImpl,
+    fetchImpl,
     // The server's own Tools and context; only the model is scripted.
     createLandlordChat: ({ tools, getContext }) => {
       model = new ScriptedChatModel(script);
-      return createLandlordOrchestrator({ model, tools, getContext, log: () => {} });
+      return createLandlordOrchestrator({ model, tools, getContext, log: () => {}, toolTimeoutMs });
     },
   });
   await new Promise((resolve) => app.listen(0, "127.0.0.1", resolve));
@@ -145,6 +146,33 @@ test("flat facts in a message are saved with update_flat_details (flat event); a
   assert.equal(rentCheck.allowedRent, 539);
   assert.ok(ranked.length > 0, "the classic dashboard ranks for the Listing the chat built");
   assert.equal((await server.overview()).rentCheck.allowedRent, 539);
+});
+
+test("a slow Berlin WFS does not fail update_flat_details: it has its own timeout, longer than the other Tools'", async (t) => {
+  // Each WFS request answers after 40 ms: the address, then Wohnlage and building age, ≈ 80 ms, over
+  // the general Tool timeout of 50 ms here, as the real WFS's 8 s + 8 s is over the default 10 s.
+  const { fetchImpl: fast } = createFakeBerlinWfs();
+  const fetchImpl = (...args) => new Promise((resolve) => setTimeout(resolve, 40)).then(() => fast(...args));
+  const server = await start({ listing: null, fetchImpl, toolTimeoutMs: 50 });
+  t.after(server.close);
+  server.setScript([
+    { toolCalls: [{ name: "update_flat_details", args: { facts: [{ fact: "address", value: "Wühlischstraße 30, 10245 Berlin" }, { fact: "askingRent", value: 700 }, { fact: "livingAreaSqm", value: 50 }, { fact: "rooms", value: 2 }] } }] },
+    "The Berliner Mietspiegel allows at most 539 € for your flat.",
+  ]);
+
+  const events = await server.chat("Wühlischstraße 30, 10245 Berlin: 700 €, 50 m², 2 rooms.");
+
+  assert.deepEqual(typesOf(events), ["flat", "token", "done"], "the page is told to refresh");
+  assert.equal(answerOf(events), "The Berliner Mietspiegel allows at most 539 € for your flat.");
+  const toolResult = JSON.parse(server.model.calls[1].at(-1).content);
+  assert.equal(toolResult.error, undefined, "the model is not told the save failed");
+  assert.equal(toolResult.rentCheck.allowedRent, 539);
+  assert.equal((await server.dashboard()).rentCheck.allowedRent, 539);
+});
+
+test("update_flat_details' own timeout covers the Berlin WFS's worst case: the address (8 s), then Wohnlage and building age (8 s)", () => {
+  assert.ok(LANDLORD_TOOL_TIMEOUTS_MS.update_flat_details >= 25_000, String(LANDLORD_TOOL_TIMEOUTS_MS.update_flat_details));
+  assert.deepEqual(Object.keys(LANDLORD_TOOL_TIMEOUTS_MS), ["update_flat_details"], "the other Tools are local: the general timeout");
 });
 
 test("a flat value the Listing form refuses is an input error the model learns; nothing is saved, no flat event", async (t) => {

@@ -5,10 +5,10 @@ import { getApplicantProfile, householdShapeOf } from "./applicant-profile.js";
 import { flatToRank, missingForListing } from "./flat-details.js";
 import { recommendationReasons } from "./recommendation-reasons.js";
 import { detectLanguage, landlordReply } from "./orchestrator/replies.js";
-import { DEFAULT_CRITERIA, rankApplicants } from "./scorer.js";
+import { DEFAULT_CRITERIA, excludedByReason, rankApplicants } from "./scorer.js";
 import { CriteriaInputError, updateSelectionCriteria } from "./criteria.js";
 import { ShortlistInputError, UnknownApplicantError, updateShortlist } from "./shortlist.js";
-import { RatingInputError, ratingName, updateRating } from "./ratings.js";
+import { RatingInputError, ratingName, ratingsOf, updateRating } from "./ratings.js";
 import { normalizeLandlordName } from "./store.js";
 
 const MAX_NAME_LENGTH = 100;
@@ -117,9 +117,6 @@ function shortlistFor(entries, { applicants }, { ranked, excluded }) {
   }));
 }
 
-// The landlord's ratings and bonus points, as rankApplicants takes them.
-const ratingsOf = (store, landlordId) => ({ ratings: store.getRatings(landlordId), bonusPoints: store.getBonusPoints(landlordId) });
-
 const oneDecimal = (weights) =>
   Object.fromEntries(Object.entries(weights).map(([criterion, weight]) => [criterion, Math.round(weight * 10) / 10]));
 
@@ -193,6 +190,8 @@ export function createLandlordApi({ getStore, getApplicantPool = () => EMPTY_POO
   // `rating` ("up" | "down" | null) and `bonus` (0 when unrated); Shortlist entries carry `rating`.
   // `excludedByReason` counts the excluded applicants per Requirement, each once under the first
   // Requirement they fail (its `excludedBy`), like get_ranking's; {} when nobody is excluded.
+  // `excluded` lists them, by applicant id: [{ applicantId, name, excludedBy }], names only, so the
+  // page can name the ids the chat gives.
   async function overview(response, landlordId) {
     const store = getStore();
     const pool = await getApplicantPool();
@@ -213,8 +212,6 @@ export function createLandlordApi({ getStore, getApplicantPool = () => EMPTY_POO
       return applicant ? householdShapeOf(applicant.profile.household) : null;
     };
     const excludedBy = new Map(ranking.excluded.map((entry) => [entry.applicantId, entry.excludedBy]));
-    const excludedByReason = {};
-    for (const reason of excludedBy.values()) excludedByReason[reason] = (excludedByReason[reason] ?? 0) + 1;
     sendJson(response, 200, {
       data: {
         flat,
@@ -238,7 +235,8 @@ export function createLandlordApi({ getStore, getApplicantPool = () => EMPTY_POO
           };
         }),
         stats: ranking.stats,
-        excludedByReason,
+        excludedByReason: excludedByReason(ranking.excluded),
+        excluded: ranking.excluded.map(({ applicantId, excludedBy }) => ({ applicantId, name: applicantsById.get(applicantId).contact.name, excludedBy })),
         shortlist: shortlistFor(store.getShortlist(landlordId), pool, ranking).map((entry) => ({
           ...entry,
           householdShape: shapeOf(entry.applicantId),

@@ -436,6 +436,30 @@ test("compare_applicants: equal Match scores have no leader and say they are ord
   assert.deepEqual(result.applicants.map(({ rank, matchScore }) => ({ rank, matchScore })), [{ rank: 1, matchScore: 78.5 }, { rank: 2, matchScore: 78.5 }]);
 });
 
+test("compare_applicants: Match scores equal to one decimal but not unrounded: the leader is the one ranked higher, not a tie", async () => {
+  // A-101 as A-100, but a net income of 3001: 900 / 3001 = 0.29990 → affordability (0.4 − 0.29990)
+  // / 0.15 × 30 = 20.02 against A-100's 20, so 78.52 against 78.5, both shown as 78.5. The scorer
+  // ranks A-101 first although its id is the larger one: not ordered by applicant id.
+  const same = { netHouseholdIncome: 3001, employmentType: "fixed_term", schufaStatus: "clean", credibilityScore: 80 };
+  const pair = comparedPair({ "A-101": same });
+  pair.applicants[1].profile.documentCheck = pair.applicants[0].profile.documentCheck;
+  const { call } = setup({ applicantPool: pair });
+
+  const result = await call("compare_applicants", { applicantIds: ["A-100", "A-101"] });
+
+  assert.deepEqual(result.applicants.map(({ applicantId, rank, matchScore }) => ({ applicantId, rank, matchScore })), [
+    { applicantId: "A-100", rank: 2, matchScore: 78.5 },
+    { applicantId: "A-101", rank: 1, matchScore: 78.5 },
+  ]);
+  assert.equal(result.leader, "A-101");
+  assert.equal(result.scoreGap, 0);
+  assert.equal(result.note, "equal Match scores to one decimal, but A-101's is higher unrounded, so A-101 ranks higher; not ordered by applicant id");
+  assert.doesNotThrow(() => LANDLORD_TOOL_CONTRACTS.compare_applicants.output.parse(result));
+  const reversed = await call("compare_applicants", { applicantIds: ["A-101", "A-100"] });
+  assert.equal(reversed.leader, "A-101", "the leader whichever is named first");
+  assert.equal(reversed.note, result.note);
+});
+
 test("compare_applicants: an excluded applicant has no points to compare; the note says which Requirement", async () => {
   const { store, landlordId, call } = setup({ applicantPool: comparedPair() });
   store.saveCriteria(landlordId, { ...store.getCriteria(landlordId), requirements: { ...store.getCriteria(landlordId).requirements, schufaCleanOnly: true } });

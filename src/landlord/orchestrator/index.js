@@ -9,6 +9,7 @@ import { assertLandlordToolsMatchContracts } from "./tool-contracts.js";
 export { LANDLORD_TOOL_CONTRACTS, LANDLORD_TOOL_NAMES } from "./tool-contracts.js";
 export { createLandlordStubTools } from "./stub-tools.js";
 export { createLandlordContext, createLandlordTools } from "./landlord-tools.js";
+export { LANDLORD_TOOL_TIMEOUTS_MS } from "./graph.js";
 
 const RECURSION_LIMIT = 25;
 
@@ -21,6 +22,7 @@ const RECURSION_LIMIT = 25;
 //   count as grounded.
 // - checkpointer: the conversation memory, one thread per landlord (default: in memory).
 // - log: receives one PII-free audit entry per Tool call (default: JSON lines on stdout).
+// - toolTimeoutMs: each Tool call's timeout, except for the Tools in LANDLORD_TOOL_TIMEOUTS_MS.
 export function createLandlordOrchestrator({
   model,
   tools,
