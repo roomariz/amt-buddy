@@ -190,6 +190,19 @@
             <p id="recommendations-empty" class="landlord-hint" hidden></p>
           </section>
 
+          <!-- The Shortlist; drawn by landlord.js -->
+          <section id="shortlist" class="landlord-card" aria-labelledby="shortlist-title" hidden>
+            <h2 id="shortlist-title" data-i18n="landlord.shortlist.title">Shortlist</h2>
+            <p class="landlord-intro" data-i18n="landlord.shortlist.intro">
+              Die Bewerber, um die Sie sich kümmern wollen. Der Status hilft Ihnen nur beim Überblick: Amt-Buddy schreibt keinem Bewerber.
+            </p>
+            <p id="shortlist-error" class="landlord-error" role="alert" hidden></p>
+            <ul id="shortlist-list" class="shortlist-list"></ul>
+            <p id="shortlist-empty" class="landlord-hint" hidden data-i18n="landlord.shortlist.empty">
+              Noch niemand auf der Shortlist. Fügen Sie Bewerber aus dem Ranking oder den Empfehlungen hinzu.
+            </p>
+          </section>
+
           <!-- The ranked applicants and the Excluded section; drawn by landlord.js -->
           <section id="ranking" class="landlord-card" aria-labelledby="ranking-title" hidden>
             <h2 id="ranking-title" tabindex="-1" data-i18n="landlord.ranking.title">Bewerber-Ranking</h2>
@@ -224,6 +237,7 @@
                       <th scope="col" data-i18n="landlord.ranking.breakdown">Aufschlüsselung</th>
                       <th scope="col" data-i18n="landlord.ranking.rentToIncome">Miete / Einkommen</th>
                       <th scope="col" data-i18n="landlord.ranking.documents">Unterlagen</th>
+                      <th scope="col" data-i18n="landlord.shortlist.title">Shortlist</th>
                     </tr>
                   </thead>
                   <tbody id="ranking-rows"></tbody>
@@ -246,6 +260,19 @@
             </div>
             <p id="applicant-detail-status" class="landlord-note" role="status" hidden></p>
             <div id="applicant-detail-body"></div>
+          </section>
+
+          <!-- The remembered Landlord preferences, each deletable; drawn by landlord.js -->
+          <section id="preferences" class="landlord-card" aria-labelledby="preferences-title" hidden>
+            <h2 id="preferences-title" tabindex="-1" data-i18n="landlord.preferences.title">Gemerkte Wünsche</h2>
+            <p class="landlord-intro" data-i18n="landlord.preferences.intro">
+              Was Sie Amt-Buddy im Chat über Ihre Wünsche erzählt haben, merkt es sich für die nächsten Gespräche. Sie können jeden Eintrag löschen.
+            </p>
+            <p id="preferences-error" class="landlord-error" role="alert" hidden></p>
+            <ul id="preferences-list" class="preferences-list"></ul>
+            <p id="preferences-empty" class="landlord-hint" hidden data-i18n="landlord.preferences.empty">
+              Noch nichts gemerkt. Sagen Sie im Chat, was Ihnen wichtig ist, zum Beispiel „Ich suche jemanden, der lange bleibt“.
+            </p>
           </section>
 
           <!-- The chat with the Landlord Orchestrator; drawn by landlord.js -->

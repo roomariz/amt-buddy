@@ -1430,8 +1430,8 @@ footer a { color: inherit; }
 .excluded-list li { padding: 8px 12px; border-radius: 10px; background: #f7f7f7; }
 .excluded-name { font-weight: 600; margin-right: 8px; }
 #ranking-body[hidden], #excluded[hidden], #ranking-empty[hidden], #ranking-hint[hidden], #ranking-pool-errors[hidden] { display: none; }
-.applicant-open { border: 0; padding: 0; background: none; color: #235d3b; text-align: left; text-decoration: underline; cursor: pointer; font: inherit; font-weight: 600; }
-.applicant-open:hover { color: #173f29; }
+.applicant-open { width: auto; margin-top: 0; border: 0; padding: 0; background: transparent; color: #235d3b; text-align: left; text-decoration: underline; cursor: pointer; font: inherit; font-weight: 600; }
+.applicant-open:hover { background: transparent; color: #173f29; }
 .applicant-open:focus-visible, .applicant-detail-close:focus-visible { outline: 2px solid #235d3b; outline-offset: 3px; }
 .applicant-detail-head { display: flex; justify-content: space-between; align-items: start; gap: 16px; }
 .applicant-detail-close { border: 1px solid #c62828; border-radius: 8px; padding: 6px 10px; background: #c62828; color: #fff; cursor: pointer; font: inherit; }
@@ -1468,9 +1468,31 @@ footer a { color: inherit; }
 .recommendation-rank { font-size: 0.75rem; color: #5d5d5d; }
 .recommendation-reason { margin: 6px 0 0; font-size: 0.9rem; line-height: 1.45; }
 
-
 .applicant-clarification { margin-top: 22px; padding: 18px; border: 1px solid #b7c8ba; border-radius: 10px; background: #f4f8f4; }
 .applicant-clarification h3 { margin-top: 0; }
 .clarification-draft { margin-top: 14px; }
 .clarification-draft summary { cursor: pointer; font-weight: 600; }
 .clarification-draft textarea { display: block; box-sizing: border-box; width: 100%; margin: 10px 0; padding: 12px; border: 1px solid #89988b; border-radius: 8px; font: inherit; line-height: 1.5; resize: vertical; color: #171714; background: white; }
+
+/* The Shortlist */
+.shortlist-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.shortlist-entry { padding: 10px 12px; border: 1px solid #e5e5e5; border-radius: 12px; background: #fafafa; }
+.shortlist-entry.is-invited { border-color: #cfe3d4; background: #f3f9f4; }
+.shortlist-entry.is-declined { opacity: 0.7; }
+.shortlist-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.shortlist-name { font-weight: 700; }
+.shortlist-score { font-size: 0.85rem; color: #5d5d5d; }
+.shortlist-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
+.shortlist-status,
+.shortlist-note { padding: 6px 8px; border: 1px solid #d9d9d9; border-radius: 8px; font: inherit; font-size: 0.9rem; background: #fff; }
+.shortlist-note { flex: 1 1 180px; min-width: 0; }
+.shortlist-add:disabled { cursor: default; color: #1f5f2e; background: none; }
+.recommendation-card .shortlist-add { margin-top: 8px; padding-left: 0; }
+#applicant-detail-body > .shortlist-add { margin-bottom: 8px; padding-left: 0; }
+
+/* The remembered Landlord preferences */
+.preferences-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.preferences-entry { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 10px 12px; border: 1px solid #e5e5e5; border-radius: 12px; background: #fafafa; }
+.preferences-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
+.preferences-date { font-size: 0.8rem; color: #5d5d5d; }
+.preferences-delete { flex: none; }

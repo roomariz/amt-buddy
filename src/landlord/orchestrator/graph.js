@@ -31,7 +31,7 @@ export const LandlordState = Annotation.Root({
 const MAX_GROUNDING_REWRITES = 1;
 
 // Tool results that change what the landlord page shows → the event that tells it.
-const CHANGE_EVENTS = { update_selection_criteria: "criteria", update_shortlist: "shortlist" };
+const CHANGE_EVENTS = { update_selection_criteria: "criteria", update_shortlist: "shortlist", remember_preference: "notes" };
 
 function emit(event) {
   try {

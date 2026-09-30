@@ -23,7 +23,7 @@ async function start({ store = createLandlordStore({ path: ":memory:" }), wfs = 
       headers: { "content-type": "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
-    return { status: response.status, body: await response.json() };
+    return { status: response.status, headers: response.headers, body: await response.json() };
   };
   return {
     base,
@@ -31,6 +31,7 @@ async function start({ store = createLandlordStore({ path: ":memory:" }), wfs = 
     get: (path) => send("GET", path),
     post: (path, body) => send("POST", path, body),
     put: (path, body) => send("PUT", path, body),
+    del: (path) => send("DELETE", path),
   };
 }
 
@@ -519,6 +520,17 @@ test("applicant detail returns 404 for an unknown applicant or landlord", async 
   assert.equal(unknownLandlord.body.error.code, "landlord_not_found");
 });
 
+test("applicant detail responses cannot be cached", async (t) => {
+  const server = await start();
+  t.after(server.close);
+  const landlordId = await signIn(server);
+
+  const response = await server.get(`/api/v1/landlord/${landlordId}/applicants/A-001`);
+
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("cache-control"), "no-store");
+});
+
 test("the dashboard has the pool stats and the Recommendations, with names joined in", async (t) => {
   const server = await start();
   t.after(server.close);
@@ -743,4 +755,196 @@ test("saved seven-day demo requests adopt the 24-hour deadline from their origin
   assert.equal(detail.clarification.request.deadline, "2026-09-30T12:00:00.123Z");
   assert.equal(detail.clarification.request.status, "overdue");
   assert.deepEqual((await server.post(`${applicantPath}/clarification`, {})).body.data.clarification, detail.clarification);
+});
+// --- The Shortlist ------------------------------------------------------------------------------
+
+const shortlistPath = (landlordId, applicantId) => `/api/v1/landlord/${landlordId}/shortlist/${applicantId}`;
+
+test("putting an applicant on the Shortlist returns the entry; the dashboard lists it with name, score and status", async (t) => {
+  const server = await start();
+  t.after(server.close);
+  const landlordId = await signIn(server);
+  await server.put(`/api/v1/landlord/${landlordId}/listing`, WUEHLISCH_LISTING);
+  const { ranked } = (await server.get(`/api/v1/landlord/${landlordId}/dashboard`)).body.data;
+  const [first, second] = ranked;
+
+  const added = await server.put(shortlistPath(landlordId, second.applicantId), { status: "to_invite", note: "Stable income" });
+  await server.put(shortlistPath(landlordId, first.applicantId), { status: "invited" });
+  const { shortlist } = (await server.get(`/api/v1/landlord/${landlordId}/dashboard`)).body.data;
+
+  assert.equal(added.status, 200);
+  assert.deepEqual(added.body.data, { applicantId: second.applicantId, status: "to_invite", note: "Stable income" });
+  assert.deepEqual(
+    shortlist.map(({ applicantId, name, status, note, rank, matchScore, excluded }) => ({ applicantId, name, status, note, rank, matchScore, excluded })),
+    [
+      { applicantId: second.applicantId, name: second.name, status: "to_invite", note: "Stable income", rank: 2, matchScore: second.matchScore, excluded: false },
+      { applicantId: first.applicantId, name: first.name, status: "invited", note: null, rank: 1, matchScore: first.matchScore, excluded: false },
+    ],
+  );
+  for (const entry of shortlist) assert.equal(entry.email, undefined);
+});
+
+test("changing a Shortlist entry's status keeps its note; DELETE removes it", async (t) => {
+  const server = await start();
+  t.after(server.close);
+  const landlordId = await signIn(server);
+
+  await server.put(shortlistPath(landlordId, "A-001"), { status: "to_invite", note: "Call Monday" });
+  const changed = await server.put(shortlistPath(landlordId, "A-001"), { status: "declined" });
+  const removed = await server.del(shortlistPath(landlordId, "A-001"));
+  const { shortlist } = (await server.get(`/api/v1/landlord/${landlordId}/dashboard`)).body.data;
+
+  assert.deepEqual(changed.body.data, { applicantId: "A-001", status: "declined", note: "Call Monday" });
+  assert.equal(removed.status, 200);
+  assert.deepEqual(removed.body.data, { applicantId: "A-001", status: "removed", note: null });
+  assert.deepEqual(shortlist, []);
+});
+
+test("without a Listing, Shortlist entries have no rank or score; an excluded applicant is marked excluded", async (t) => {
+  const server = await start();
+  t.after(server.close);
+  const landlordId = await signIn(server);
+  // A-017 is a household too large for 50 m² (see the ranking test above).
+  await server.put(shortlistPath(landlordId, "A-017"), { status: "to_invite" });
+
+  const before = (await server.get(`/api/v1/landlord/${landlordId}/dashboard`)).body.data.shortlist;
+  await server.put(`/api/v1/landlord/${landlordId}/listing`, WUEHLISCH_LISTING);
+  const after = (await server.get(`/api/v1/landlord/${landlordId}/dashboard`)).body.data.shortlist;
+
+  assert.equal(typeof before[0].name, "string");
+  assert.deepEqual([before[0].rank, before[0].matchScore, before[0].excluded], [null, null, false]);
+  assert.deepEqual([after[0].rank, after[0].matchScore, after[0].excluded], [null, null, true]);
+});
+
+test("an invalid status or note is a 422, an applicant outside the pool a 404, and nothing is saved", async (t) => {
+  const server = await start();
+  t.after(server.close);
+  const landlordId = await signIn(server);
+
+  for (const body of [{ status: "maybe" }, {}, { status: "remove" }, { status: "invited", note: "x".repeat(501) }, []]) {
+    const { status, body: error } = await server.put(shortlistPath(landlordId, "A-001"), body);
+    assert.equal(status, 422, JSON.stringify(body));
+    assert.equal(error.error.code, "validation_error");
+  }
+  const unknown = await server.put(shortlistPath(landlordId, "A-999"), { status: "to_invite" });
+  const unknownDelete = await server.del(shortlistPath(landlordId, "A-999"));
+  const { shortlist } = (await server.get(`/api/v1/landlord/${landlordId}/dashboard`)).body.data;
+
+  assert.equal(unknown.status, 404);
+  assert.equal(unknown.body.error.code, "applicant_not_found");
+  assert.equal(unknownDelete.status, 404);
+  assert.deepEqual(shortlist, []);
+});
+
+test("the Shortlist of an unknown landlord is a 404", async (t) => {
+  const server = await start();
+  t.after(server.close);
+
+  const { status, body } = await server.put(shortlistPath("nobody", "A-001"), { status: "to_invite" });
+
+  assert.equal(status, 404);
+  assert.equal(body.error.code, "landlord_not_found");
+});
+
+test("the Shortlist survives re-creating the app on the same database file", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "amt-buddy-landlord-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const path = join(directory, "landlord.sqlite");
+
+  const firstStore = createLandlordStore({ path });
+  const first = await start({ store: firstStore });
+  const landlordId = await signIn(first);
+  await first.put(shortlistPath(landlordId, "A-003"), { status: "invited", note: "Viewing Tuesday" });
+  await first.close();
+  firstStore.close();
+
+  const secondStore = createLandlordStore({ path });
+  const second = await start({ store: secondStore });
+  t.after(async () => {
+    await second.close();
+    secondStore.close();
+  });
+  const { shortlist } = (await second.get(`/api/v1/landlord/${landlordId}/dashboard`)).body.data;
+
+  assert.deepEqual(
+    shortlist.map(({ applicantId, status, note }) => ({ applicantId, status, note })),
+    [{ applicantId: "A-003", status: "invited", note: "Viewing Tuesday" }],
+  );
+});
+
+// Landlord preferences: the notes are remembered by the chat (remember_preference); here they
+// are put in the store directly, and listed and deleted through the API.
+const notesOf = async (server, landlordId) => (await server.get(`/api/v1/landlord/${landlordId}/dashboard`)).body.data.notes;
+
+test("the dashboard lists the landlord's remembered preferences, oldest first, with or without a Listing", async (t) => {
+  const store = createLandlordStore({ path: ":memory:" });
+  const server = await start({ store });
+  t.after(server.close);
+  const landlordId = await signIn(server);
+  const other = await signIn(server, "Max Mustermann");
+  const first = store.addNote(landlordId, "Wants someone who stays long-term.");
+  const second = store.addNote(landlordId, "Prefers a quiet tenant.");
+
+  assert.deepEqual(await notesOf(server, landlordId), [first, second]);
+  assert.deepEqual(
+    Object.keys(first).sort(),
+    ["created", "note", "noteId"],
+  );
+  assert.deepEqual(await notesOf(server, other), []);
+  await server.put(`/api/v1/landlord/${landlordId}/listing`, WUEHLISCH_LISTING);
+  assert.deepEqual(await notesOf(server, landlordId), [first, second]);
+});
+
+test("DELETE a note removes it; an unknown note, or another landlord's, is a 404 and nothing changes", async (t) => {
+  const store = createLandlordStore({ path: ":memory:" });
+  const server = await start({ store });
+  t.after(server.close);
+  const landlordId = await signIn(server);
+  const other = await signIn(server, "Max Mustermann");
+  const kept = store.addNote(landlordId, "Wants someone who stays long-term.");
+  const gone = store.addNote(landlordId, "Prefers a quiet tenant.");
+  const othersNote = store.addNote(other, "No pets.");
+
+  const deleted = await server.del(`/api/v1/landlord/${landlordId}/notes/${gone.noteId}`);
+  const again = await server.del(`/api/v1/landlord/${landlordId}/notes/${gone.noteId}`);
+  const foreign = await server.del(`/api/v1/landlord/${landlordId}/notes/${othersNote.noteId}`);
+  const bare = await server.del(`/api/v1/landlord/${landlordId}/notes`);
+  const noLandlord = await server.del(`/api/v1/landlord/nobody/notes/${kept.noteId}`);
+
+  assert.equal(deleted.status, 200);
+  assert.deepEqual(deleted.body.data, { noteId: gone.noteId, deleted: true });
+  assert.equal(again.status, 404);
+  assert.equal(again.body.error.code, "note_not_found");
+  assert.equal(foreign.status, 404);
+  assert.equal(foreign.body.error.code, "note_not_found");
+  assert.equal(bare.status, 404);
+  assert.equal(noLandlord.body.error.code, "landlord_not_found");
+  assert.deepEqual(await notesOf(server, landlordId), [kept]);
+  assert.deepEqual(await notesOf(server, other), [othersNote]);
+});
+
+test("remembered preferences and their deletion survive re-creating the app on the same database file", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "amt-buddy-landlord-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const path = join(directory, "landlord.sqlite");
+  const restart = async () => {
+    const store = createLandlordStore({ path });
+    const server = await start({ store });
+    return { store, server, stop: async () => { await server.close(); store.close(); } };
+  };
+
+  const first = await restart();
+  const landlordId = await signIn(first.server);
+  const kept = first.store.addNote(landlordId, "Wants someone who stays long-term.");
+  const gone = first.store.addNote(landlordId, "Prefers a quiet tenant.");
+  await first.stop();
+
+  const second = await restart();
+  assert.deepEqual(await notesOf(second.server, landlordId), [kept, gone]);
+  assert.equal((await second.server.del(`/api/v1/landlord/${landlordId}/notes/${gone.noteId}`)).status, 200);
+  await second.stop();
+
+  const third = await restart();
+  t.after(third.stop);
+  assert.deepEqual(await notesOf(third.server, landlordId), [kept]);
 });

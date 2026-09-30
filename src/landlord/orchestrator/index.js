@@ -8,6 +8,7 @@ import { assertLandlordToolsMatchContracts } from "./tool-contracts.js";
 
 export { LANDLORD_TOOL_CONTRACTS, LANDLORD_TOOL_NAMES } from "./tool-contracts.js";
 export { createLandlordStubTools } from "./stub-tools.js";
+export { createLandlordContext, createLandlordTools } from "./landlord-tools.js";
 
 const RECURSION_LIMIT = 25;
 
@@ -31,6 +32,7 @@ export function createLandlordOrchestrator({
   const graph = buildLandlordGraph({ model, tools: toolsByName, getContext, log, toolTimeoutMs }).compile({ checkpointer });
 
   // One landlord turn. Yields { type: "token", text } | { type: "criteria" } | { type: "shortlist" }
+  // | { type: "notes" } (a Landlord preference was remembered)
   // | { type: "done" } | { type: "error", message }; exactly one terminal event (done or error)
   // ends every turn. `signal` (an AbortSignal) cancels the run; the turn then ends with `error`.
   async function* send({ landlordId, message, signal } = {}) {

@@ -1,0 +1,171 @@
+import { tool } from "@langchain/core/tools";
+
+import { getApplicantProfile } from "../applicant-profile.js";
+import { CriteriaInputError, updateSelectionCriteria } from "../criteria.js";
+import { rankApplicants } from "../scorer.js";
+import { ShortlistInputError, updateShortlist } from "../shortlist.js";
+import { LANDLORD_TOOL_CONTRACTS } from "./tool-contracts.js";
+
+// The real landlord Tools, built on the dashboard's functions (scorer, criteria, applicant
+// profile, Shortlist). Every result names applicants by id only: the Applicant profile is the
+// anonymised one, and neither names, contact details nor Shortlist notes are passed on.
+
+// How many ranked applicants get_ranking shows, and update_selection_criteria's "new top".
+const RANKING_LIMIT = 10;
+const TOP_LIMIT = 3;
+
+const LISTING_REQUIRED =
+  "The landlord has not saved a Listing yet: the applicants are ranked for its rent and size. Ask them to save it on the page first.";
+
+class LandlordToolInputError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "LandlordToolInputError";
+    this.kind = "input";
+  }
+}
+
+// Weights to one decimal, so the chat can quote them ("from 15 % to 26.1 %") and stay grounded.
+const roundedCriteria = ({ weights, requirements }) => ({
+  weights: Object.fromEntries(Object.entries(weights).map(([criterion, weight]) => [criterion, Math.round(weight * 10) / 10])),
+  requirements,
+});
+
+// A ranked applicant as the model sees it.
+const rankedEntry = ({ applicantId, rank, matchScore, rentToIncome, breakdown }) => ({ applicantId, rank, matchScore, rentToIncome, breakdown });
+
+// The pool ranked for the Listing under the criteria (rankApplicants on the anonymised profiles).
+const rankPool = ({ applicants, listing, criteria }) =>
+  rankApplicants({ profiles: applicants.map(({ profile }) => profile), listing, criteria });
+
+// A dashboard function's input error (CriteriaInputError, ShortlistInputError) as a Tool input
+// error, with its details in the message the model reads.
+function asToolInputError(error) {
+  const details = (error.details ?? []).map(({ field, message }) => `${field}: ${message}`).join("; ");
+  return new LandlordToolInputError(details && details !== error.message ? `${error.message} ${details}` : error.message);
+}
+
+function countBy(entries, key) {
+  const counts = {};
+  for (const entry of entries) counts[entry[key]] = (counts[entry[key]] ?? 0) + 1;
+  return counts;
+}
+
+// createLandlordTools({ getStore, getApplicantPool }) → { tools }
+// - getStore(): the landlord store (see createLandlordStore).
+// - getApplicantPool(): the Applicant pool ({ applicants, errors }), or a promise of it.
+// Each Tool reads the landlord from config.configurable.landlordId.
+export function createLandlordTools({ getStore, getApplicantPool }) {
+  async function landlordState(landlordId) {
+    const store = getStore();
+    const { applicants } = await getApplicantPool();
+    return { store, applicants, listing: store.getListing(landlordId), criteria: store.getCriteria(landlordId) };
+  }
+
+  const handlers = {
+    async get_ranking(args, landlordId) {
+      const state = await landlordState(landlordId);
+      if (!state.listing) throw new LandlordToolInputError(LISTING_REQUIRED);
+      const { ranked, excluded, stats } = rankPool(state);
+      return {
+        criteria: roundedCriteria(state.criteria),
+        stats,
+        rankedCount: ranked.length,
+        ranked: ranked.slice(0, RANKING_LIMIT).map(rankedEntry),
+        excludedByReason: countBy(excluded, "excludedBy"),
+        // The Shortlist by id and status; notes are the landlord's free text and may name people.
+        shortlist: state.store.getShortlist(landlordId).map(({ applicantId, status }) => ({ applicantId, status })),
+      };
+    },
+
+    async get_applicant_profile({ applicantId }, landlordId) {
+      const { store, applicants, listing, criteria } = await landlordState(landlordId);
+      const found = getApplicantProfile({ applicants, listing, applicantId, criteria });
+      if (!found) throw new LandlordToolInputError(`There is no applicant '${applicantId}' in the Applicant pool.`);
+      const { profile, score, rentToIncome } = found;
+      const shortlisted = store.getShortlist(landlordId).find((entry) => entry.applicantId === applicantId);
+      return {
+        profile,
+        rank: score?.rank ?? null,
+        matchScore: score?.matchScore ?? null,
+        breakdown: score?.breakdown ?? null,
+        rentToIncome,
+        excludedBy: score?.excludedBy ?? null,
+        exclusionReasons: score?.reasons ?? [],
+        shortlistStatus: shortlisted?.status ?? null,
+        ...(!listing && { note: LISTING_REQUIRED }),
+      };
+    },
+
+    async update_selection_criteria({ weights, requirements }, landlordId) {
+      const store = getStore();
+      let updated;
+      try {
+        updated = updateSelectionCriteria({ store, landlordId, input: { weights, requirements } });
+      } catch (error) {
+        throw error instanceof CriteriaInputError ? asToolInputError(error) : error;
+      }
+      const state = await landlordState(landlordId);
+      const top = state.listing ? rankPool(state).ranked.slice(0, TOP_LIMIT).map(rankedEntry) : [];
+      return { previous: roundedCriteria(updated.previous), criteria: roundedCriteria(updated.criteria), top };
+    },
+
+    async remember_preference({ note }, landlordId) {
+      const text = note.trim();
+      if (!text) throw new LandlordToolInputError("The note is empty: say in a few words what the landlord prefers.");
+      const { noteId, note: saved } = getStore().addNote(landlordId, text);
+      return { noteId, note: saved };
+    },
+
+    async update_shortlist({ applicantId, status, note }, landlordId) {
+      const { applicants } = await getApplicantPool();
+      const applicantIds = new Set(applicants.map(({ id }) => id));
+      let entry;
+      try {
+        entry = updateShortlist({ store: getStore(), landlordId, applicantIds, applicantId, status, note });
+      } catch (error) {
+        throw error instanceof ShortlistInputError ? asToolInputError(error) : error;
+      }
+      // A note the model did not write this call is the landlord's free text: it stays unseen.
+      return { ...entry, note: note === undefined ? null : entry.note };
+    },
+
+    async get_rent_check(args, landlordId) {
+      const listing = getStore().getListing(landlordId);
+      if (!listing) return { rentCheck: null, note: LISTING_REQUIRED };
+      return { rentCheck: listing.rentCheck ?? null, note: listing.rentCheck ? null : (listing.note?.message ?? null) };
+    },
+  };
+
+  const tools = Object.values(LANDLORD_TOOL_CONTRACTS).map((contract) =>
+    tool(
+      async (args, config) => {
+        const landlordId = config?.configurable?.landlordId;
+        if (!landlordId) throw new Error(`${contract.name} needs the landlord (config.configurable.landlordId).`);
+        return handlers[contract.name](args, landlordId);
+      },
+      { name: contract.name, description: contract.description, schema: contract.schema },
+    ),
+  );
+  return { tools };
+}
+
+// createLandlordContext({ getStore, getApplicantPool }) → getContext(landlordId) for the Landlord
+// Orchestrator: what its system prompt shows every turn, loaded from the store so it outlives the
+// chat thread (the long-term memory): the Landlord preferences (saved Selection criteria and the
+// remembered notes), the Listing (with its Rent check) and the pool stats under those criteria (no
+// stats without a Listing).
+export function createLandlordContext({ getStore, getApplicantPool }) {
+  return async (landlordId) => {
+    const store = getStore();
+    const criteria = store.getCriteria(landlordId);
+    const preferences = {
+      criteria: roundedCriteria(criteria),
+      notes: store.listNotes(landlordId).map(({ note, created }) => ({ note, created: created.slice(0, 10) })),
+    };
+    const listing = store.getListing(landlordId);
+    if (!listing) return { listing: null, preferences };
+    const { applicants } = await getApplicantPool();
+    return { listing, preferences, stats: rankPool({ applicants, listing, criteria }).stats };
+  };
+}
