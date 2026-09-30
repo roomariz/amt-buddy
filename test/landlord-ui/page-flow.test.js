@@ -128,7 +128,7 @@ test("with a Listing saved, the page opens with the pool summary, the stat tiles
 
   const dashboard = await fetchDashboard({ fetchImpl, landlordId });
 
-  assert.match(poolSummary(dashboard.stats), /^Sie haben 40 Bewerber, \d+ können sich diese Miete leisten\.$/);
+  assert.match(poolSummary(dashboard.stats), /^Sie haben 95 Bewerber, \d+ können sich diese Miete leisten\.$/);
   const tiles = statTiles(dashboard.stats);
   assert.equal(tiles.length, 6);
   assert.ok(tiles.every(({ available }) => available));

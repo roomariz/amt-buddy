@@ -59,7 +59,9 @@ Data row numbers below exclude the CSV header. Each pair lists the female row fo
 
 ## Using this fixture
 
-Commit the CSV with this README to the feature branch. Treat columns 2 and 3 as candidate mutations of column 1; define acceptance thresholds in the application tests. The file does not assert that all heavily truncated names must be accepted as matches. In particular, Li-like short names and deletion results of one character are intentional stress cases.
+`npm run pool:generate` reads this CSV and creates 50 complete applicant profiles (`A-041`–`A-090`) alongside the original 40. Fifteen profiles have exactly one document whose name uses the deliberately lossy `special_characters_removed` value, spread across SCHUFA, income proof and previous-landlord documents. Five additional files (`A-091`–`A-095`) duplicate selected CSV profiles with the `german_alphabet_variant` spelling; the applicant facts and submitted documents stay the same apart from the spelling and required unique application ID.
+
+The original 40 include accent-marked applicant names where a seeded selection of document names replaces marked letters with their unaccented base letter. These cases should match without a clarification. Name spelling differences remain neutral to Credibility; the generated mismatches exercise the clarification flow rather than lowering the score. The CSV does not assert that heavily truncated names must be accepted as matches. In particular, Li-like short names and deletion results of one character are intentional stress cases.
 
 A matching feature also needs separate negative pairs and native-script tests. This fixture covers Latin letters and romanizations only; it does not test Chinese characters, Arabic script, Devanagari or Cyrillic directly. To test Unicode canonical equivalence, derive an NFD copy of column 1 in the test harness while retaining this NFC fixture.
 

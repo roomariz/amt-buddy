@@ -332,7 +332,7 @@ The Rent check runs `evaluateMietspiegel` with the asking rent as contract rent 
 - `stats`: the pool statistics, counted over the whole pool (excluded applicants too), or `null` without a Listing:
 
 ```json
-{ "total": 40, "completeDocuments": 19, "canAfford": 22, "canAffordAtMedian": 31, "cleanSchufa": 24, "excluded": 4, "maxRentToIncome": 0.3333, "medianRent": 490 }
+{ "total": 95, "completeDocuments": 86, "canAfford": 79, "canAffordAtMedian": 84, "cleanSchufa": 70, "excluded": 4, "maxRentToIncome": 0.3333, "medianRent": 490 }
 ```
 
   `canAfford`: rent-to-income at the asking rent at most `maxRentToIncome` (the Requirement's value, or 1/3 while it is off). `canAffordAtMedian`: the same at the Rent check's Mietspiegel median (`medianRent`, i.e. median €/m² × living area), showing how much a lower rent would widen the pool; both are `null` when the Listing has no Rent check (unknown, not zero).

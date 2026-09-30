@@ -408,8 +408,8 @@ test("with a Listing the dashboard ranks the committed pool, households too larg
   // 50 m²: the pool's households of six and seven need 51–63 m² under § 7 WoAufG Bln.
   assert.deepEqual(excluded.map(({ applicantId }) => applicantId), ["A-017", "A-020", "A-021", "A-035"]);
   assert.ok(excluded.every(({ excludedBy }) => excludedBy === "occupancyCompliant"));
-  assert.equal(ranked.length, 36);
-  assert.deepEqual(ranked.map(({ rank }) => rank), Array.from({ length: 36 }, (_, index) => index + 1));
+  assert.equal(ranked.length, 91);
+  assert.deepEqual(ranked.map(({ rank }) => rank), Array.from({ length: 91 }, (_, index) => index + 1));
   for (let index = 1; index < ranked.length; index += 1) assert.ok(ranked[index - 1].matchScore >= ranked[index].matchScore);
 });
 
@@ -527,8 +527,8 @@ test("the dashboard has the pool stats and the Recommendations, with names joine
 
   const { stats, recommendations, ranked } = (await server.get(`/api/v1/landlord/${landlordId}/dashboard`)).body.data;
 
-  // The committed pool: 40 applicants, 4 households too large for 50 m².
-  assert.equal(stats.total, 40);
+  // The committed pool: 95 applicants, 4 households too large for 50 m².
+  assert.equal(stats.total, 95);
   assert.equal(stats.excluded, 4);
   assert.equal(stats.maxRentToIncome, 1 / 3);
   // The Rent check's median for this flat is 490 €, below the asking 700 €: more can afford it.
@@ -559,7 +559,7 @@ test("without a Listing there are no stats and no Recommendations; without a Ren
   assert.equal(before.stats, null);
   assert.deepEqual(before.recommendations, []);
   assert.equal(after.rentCheck, null);
-  assert.equal(after.stats.total, 40);
+  assert.equal(after.stats.total, 95);
   assert.equal(after.stats.canAffordAtMedian, null);
   assert.equal(after.stats.medianRent, null);
   assert.equal(after.recommendations.length, 2);

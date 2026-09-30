@@ -4,6 +4,7 @@
 // scripts/generate-applicant-pool.js). All people, employers and documents are made up.
 
 import { DOCUMENT_HEADINGS } from "./applicant-pool.js";
+import { readFileSync } from "node:fs";
 
 export const DEFAULT_POOL_SEED = 20260929;
 
@@ -81,6 +82,30 @@ const NATIONALITIES = ["German", "Turkish", "Polish", "Italian", "Syrian", "Fren
 const RELIGIONS = ["none", "Protestant", "Catholic", "Muslim", "Jewish", "Orthodox", "Buddhist", "Hindu"];
 const GENDERS = ["female", "male", "diverse"];
 const FAMILY_PLANS = ["none stated", "planning children", "expecting a child", "no further children"];
+const DOCUMENT_NAMES = ["schufa", "incomeProof", "previousLandlord"];
+
+function readNameMatchingRows() {
+  const path = new URL("../../data/name_matching_50.csv", import.meta.url);
+  const lines = readFileSync(path, "utf8").trim().split(/\r?\n/);
+  const parseRow = (line) => line.match(/"((?:[^"]|"")*)"/g)?.map((value) => value.slice(1, -1).replaceAll('""', '"')) ?? [];
+  const header = parseRow(lines.shift());
+  if (header.join(",") !== "name,german_alphabet_variant,special_characters_removed,gender") {
+    throw new Error("Unexpected name-matching CSV header");
+  }
+  const rows = lines.map(parseRow);
+  if (rows.length !== 50 || rows.some((row) => row.length !== header.length || row.some((value) => !value))) {
+    throw new Error("Expected 50 complete rows in data/name_matching_50.csv");
+  }
+  return rows.map(([name, germanAlphabetVariant, specialCharactersRemoved]) => ({
+    name,
+    germanAlphabetVariant,
+    specialCharactersRemoved,
+  }));
+}
+
+const NAME_MATCHING_ROWS = readNameMatchingRows();
+const NAME_DUPLICATE_ROWS = [0, 20, 30, 40, 49];
+const NAME_MISMATCH_ROWS = Array.from({ length: 15 }, (_, index) => index + 5);
 
 // --- Dates and amounts, formatted without locale data so the output never varies ---------------
 
@@ -112,11 +137,12 @@ function weightedPick(random, weighted) {
 }
 
 // The made-up facts of applicant number `index` (0-based) for its scenario, declared and documented.
-function applicantData(index, scenario, random) {
+function applicantData(index, scenario, random, suppliedName, simplifyAccentedDocuments = false, variationRandom = random) {
   const { int, pick, chance } = randomTools(random);
-  const firstName = pick(FIRST_NAMES);
-  const lastName = pick(LAST_NAMES);
-  const name = `${firstName} ${lastName}`;
+  const nameParts = suppliedName?.split(/\s+/);
+  const firstName = nameParts ? nameParts[0] : pick(FIRST_NAMES);
+  const lastName = nameParts ? nameParts.slice(1).join(" ") : pick(LAST_NAMES);
+  const name = suppliedName ?? `${firstName} ${lastName}`;
   const firstTimeRenter = scenario === "first_time_renter";
   const employmentType = firstTimeRenter && chance(0.6) ? "student_with_guarantor" : weightedPick(random, EMPLOYMENT_WEIGHTS);
 
@@ -129,7 +155,7 @@ function applicantData(index, scenario, random) {
   const birthYear = firstTimeRenter ? int(1998, 2006) : int(1960, 1998);
 
   const slug = (text) => text.toLowerCase().normalize("NFD").replace(/[^a-z]/g, "");
-  return {
+  const applicant = {
     id: `A-${pad(index + 1, 3)}`,
     scenario,
     name,
@@ -167,6 +193,15 @@ function applicantData(index, scenario, random) {
     arrearsMonths: int(1, 3),
     rentAtPreviousFlat: int(450, 1100),
   };
+
+  if (simplifyAccentedDocuments && /\p{M}/u.test(name.normalize("NFD"))) {
+    const chooseVariant = randomTools(variationRandom);
+    applicant.unaccentedNameDocuments = DOCUMENT_NAMES.filter(() => chooseVariant.chance(0.45));
+    if (applicant.unaccentedNameDocuments.length === 0) {
+      applicant.unaccentedNameDocuments = [chooseVariant.pick(DOCUMENT_NAMES)];
+    }
+  }
+  return applicant;
 }
 
 // The declared data, including the protected fields the reader must drop.
@@ -195,14 +230,27 @@ function frontMatter(a) {
     `religion: ${a.religion}`,
     `dateOfBirth: ${a.dateOfBirth}`,
     `gender: ${a.gender}`,
-    `photo: photos/${a.id}.jpg`,
+    `photo: photos/${a.photoId ?? a.id}.jpg`,
     `familyPlans: ${a.familyPlans}`,
     "---",
   ].join("\n");
 }
 
-// The name printed on a document: the applicant's, or another person's on the chosen document.
-const nameOn = (a, document) => (a.otherName && a.otherNameDocument === document ? a.otherName : a.name);
+function removeAccentMarks(name) {
+  return name
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .replace(/[ŁłĐđı]/gu, (letter) => ({ Ł: "L", ł: "l", Đ: "D", đ: "d", ı: "i" })[letter]);
+}
+
+// The name printed on a document: either the applicant, a controlled spelling variation, or
+// another person's name on the existing wrong-person scenario.
+const nameOn = (a, document) => {
+  if (a.otherName && a.otherNameDocument === document) return a.otherName;
+  if (a.documentNameOverrides?.[document]) return a.documentNameOverrides[document];
+  if (a.unaccentedNameDocuments?.includes(document)) return removeAccentMarks(a.name);
+  return a.name;
+};
 
 // The Application documents as text extracted from an upload, one `## Heading` section each.
 function schufaSection(a) {
@@ -255,15 +303,36 @@ function applicantFile(a) {
   return `${frontMatter(a)}\n\n${sections.join("\n\n")}\n`;
 }
 
-// generateApplicantPool({ seed }) → [{ file, content }]: about 40 applicant files (Markdown with
-// front matter), in id order. The same seed always gives byte-identical files.
+// generateApplicantPool({ seed }) → 95 applicant files (Markdown with front matter), in id order.
+// The same seed always gives byte-identical files.
 export function generateApplicantPool({ seed = DEFAULT_POOL_SEED } = {}) {
   const random = seededRandom(seed);
+  const variationRandom = seededRandom(seed ^ 0x4e414d45);
   const scenarios = randomTools(random).shuffle(
     Object.entries(SCENARIO_COUNTS).flatMap(([scenario, count]) => Array(count).fill(scenario)),
   );
-  return scenarios.map((scenario, index) => {
-    const applicant = applicantData(index, scenario, random);
-    return { file: `${applicant.id}.md`, content: applicantFile(applicant) };
+  const applicants = scenarios.map((scenario, index) => applicantData(index, scenario, random, undefined, true, variationRandom));
+  const additions = NAME_MATCHING_ROWS.map(({ name, specialCharactersRemoved }, row) => {
+    const applicant = applicantData(applicants.length + row, "clean", random, name);
+    if (NAME_MISMATCH_ROWS.includes(row)) {
+      applicant.documentNameOverrides = {
+        [DOCUMENT_NAMES[(row - NAME_MISMATCH_ROWS[0]) % DOCUMENT_NAMES.length]]: specialCharactersRemoved,
+      };
+    }
+    return applicant;
   });
+  const duplicates = NAME_DUPLICATE_ROWS.map((row, duplicateIndex) => {
+    const duplicate = structuredClone(additions[row]);
+    duplicate.id = `A-${pad(applicants.length + additions.length + duplicateIndex + 1, 3)}`;
+    duplicate.photoId = additions[row].id;
+    duplicate.name = NAME_MATCHING_ROWS[row].germanAlphabetVariant;
+    duplicate.documentNameOverrides = Object.fromEntries(
+      DOCUMENT_NAMES.map((document) => [document, duplicate.name]),
+    );
+    return duplicate;
+  });
+  return [...applicants, ...additions, ...duplicates].map((applicant) => ({
+    file: `${applicant.id}.md`,
+    content: applicantFile(applicant),
+  }));
 }

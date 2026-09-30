@@ -267,7 +267,7 @@ test("the pool summary counts the applicants per defect type and lists the unrea
 test("the 50-name corpus accepts its German-alphabet variants and flags destructive deletions", async (t) => {
   const csv = await readFile(new URL("../../data/name_matching_50.csv", import.meta.url), "utf8");
   const fixtureNotes = await readFile(new URL("../../data/README_NAME_MATCHING.md", import.meta.url), "utf8");
-  assert.match(fixtureNotes, /does not assert that all heavily truncated names must be accepted as matches/);
+  assert.match(fixtureNotes, /does not assert that heavily truncated names must be accepted as matches/);
   const [header, ...lines] = csv.trimEnd().split("\n");
   assert.deepEqual(header.match(/"(?:[^"]|"")*"/g).map((value) => value.slice(1, -1)), [
     "name", "german_alphabet_variant", "special_characters_removed", "gender",

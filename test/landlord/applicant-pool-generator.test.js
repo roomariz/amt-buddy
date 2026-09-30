@@ -9,6 +9,15 @@ import { fileURLToPath } from "node:url";
 import { DEFAULT_POOL_SEED, generateApplicantPool, POOL_DATE } from "../../src/landlord/applicant-pool-generator.js";
 import { readApplicantPool, summarizeApplicantPool } from "../../src/landlord/applicant-pool.js";
 
+async function readMatchingNames() {
+  const csv = await readFile(fileURLToPath(new URL("../../data/name_matching_50.csv", import.meta.url)), "utf8");
+  return csv.trim().split(/\r?\n/).slice(1).map((line) => line.match(/"((?:[^"]|"")*)"/g).map((value) => value.slice(1, -1).replaceAll('""', '"')));
+}
+
+function fieldsById(files) {
+  return new Map(files.map(({ file, content }) => [content.match(/^id: (.+)$/m)[1], { file, content }]));
+}
+
 test("the same seed generates byte-identical applicant files; another seed generates others", () => {
   const first = generateApplicantPool({ seed: 42 });
   const again = generateApplicantPool({ seed: 42 });
@@ -16,7 +25,7 @@ test("the same seed generates byte-identical applicant files; another seed gener
 
   assert.deepEqual(again, first);
   assert.notDeepEqual(other, first);
-  assert.ok(first.length >= 35 && first.length <= 45, `about 40 applicants, got ${first.length}`);
+  assert.equal(first.length, 95, `50 CSV applicants, 5 spelling duplicates, and the original 40; got ${first.length}`);
   for (const { file, content } of first) {
     assert.match(file, /^[\w-]+\.md$/);
     assert.equal(typeof content, "string");
@@ -52,7 +61,7 @@ test("the committed pool reads without errors and contains every deliberate defe
   const summary = summarizeApplicantPool(pool);
 
   assert.deepEqual(pool.errors, []);
-  assert.ok(summary.total >= 35 && summary.total <= 45, `about 40 applicants, got ${summary.total}`);
+  assert.equal(summary.total, 95);
   assert.ok(summary.clean > 0, "some applications are complete and clean");
   for (const defect of [
     "schufa_missing",
@@ -69,6 +78,61 @@ test("the committed pool reads without errors and contains every deliberate defe
   const protectedFields = ["nationality", "religion", "dateOfBirth", "gender", "photo", "familyPlans"];
   const raw = await readFile(join(COMMITTED_POOL, "A-001.md"), "utf8");
   for (const field of protectedFields) assert.match(raw, new RegExp(`^${field}: `, "m"), `the pool declares ${field}`);
+});
+
+test("the CSV profiles include all names, spelling-only duplicates, and cross-document mismatches", async (t) => {
+  const rows = await readMatchingNames();
+  const files = generateApplicantPool({ seed: DEFAULT_POOL_SEED });
+  const byId = fieldsById(files);
+  assert.equal(rows.length, 50);
+  for (let index = 0; index < rows.length; index += 1) {
+    const applicant = byId.get(`A-${String(index + 41).padStart(3, "0")}`);
+    assert.ok(applicant, `missing CSV applicant row ${index + 1}`);
+    assert.ok(applicant.content.includes(`name: ${rows[index][0]}\n`), `CSV name not used: ${rows[index][0]}`);
+  }
+
+  const duplicateRows = [0, 20, 30, 40, 49];
+  const normalizeNameAndId = (content) => content
+    .replace(/^id: .+$/m, "id: <id>")
+    .replace(/^name: .+$/m, "name: <name>")
+    .replace(/^Name: .+$/gm, "Name: <name>");
+  duplicateRows.forEach((row, duplicateIndex) => {
+    const original = byId.get(`A-${String(row + 41).padStart(3, "0")}`).content;
+    const duplicate = byId.get(`A-${String(duplicateIndex + 91).padStart(3, "0")}`).content;
+    assert.notEqual(original.match(/^name: (.+)$/m)[1], duplicate.match(/^name: (.+)$/m)[1]);
+    assert.equal(normalizeNameAndId(original), normalizeNameAndId(duplicate), "duplicate should differ only by name spelling and required unique ID");
+  });
+
+  const directory = await mkdtemp(join(tmpdir(), "name-variants-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  for (const { file, content } of files) await writeFile(join(directory, file), content);
+  const pool = await readApplicantPool(directory, { today: POOL_DATE });
+  assert.deepEqual(pool.errors, []);
+  const nameMismatches = pool.applicants.filter(({ profile }) => profile.documentCheck.issues.some(({ code }) => code === "name_mismatch"));
+  assert.equal(nameMismatches.length, 18, "15 CSV document differences plus 3 existing other-person names");
+  assert.ok(nameMismatches.every(({ profile }) => profile.credibilityScore === 100), "name differences stay neutral to credibility");
+  const byApplicantId = new Map(pool.applicants.map((applicant) => [applicant.id, applicant]));
+  for (let row = 0; row < 15; row += 1) {
+    const applicant = byApplicantId.get(`A-${String(row + 46).padStart(3, "0")}`);
+    assert.equal(applicant.profile.documentCheck.issues.filter(({ code }) => code === "name_mismatch").length, 1);
+    assert.equal(applicant.profile.documentCheck.complete, true, "one name spelling difference does not make the other documents incomplete");
+  }
+  for (const id of ["A-091", "A-092", "A-093", "A-094", "A-095"]) {
+    const duplicate = byApplicantId.get(id);
+    assert.equal(duplicate.profile.documentCheck.issues.some(({ code }) => code === "name_mismatch"), false);
+    assert.equal(duplicate.profile.documentCheck.complete, true);
+  }
+});
+
+test("some existing accented-name documents use the same letters without accent marks", () => {
+  const files = generateApplicantPool({ seed: DEFAULT_POOL_SEED }).filter(({ file }) => Number(file.slice(2, 5)) <= 40);
+  const changed = files.filter(({ content }) => {
+    const name = content.match(/^name: (.+)$/m)?.[1];
+    if (!name || !/\p{M}/u.test(name.normalize("NFD"))) return false;
+    const documentNames = [...content.matchAll(/^Name: (.+)$/gm)].map((match) => match[1]);
+    return documentNames.some((documentName) => documentName === name.normalize("NFD").replace(/\p{M}/gu, ""));
+  });
+  assert.ok(changed.length >= 3, `expected several accent-simplified existing profiles, got ${changed.length}`);
 });
 
 test("the pool summary command prints the applicants, the defect counts and the unreadable files", () => {
