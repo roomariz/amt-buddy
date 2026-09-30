@@ -1319,6 +1319,11 @@ footer a { color: inherit; }
 .criteria-weight input { grid-column: 1 / -1; width: 100%; min-width: 0; padding: 0; }
 .criteria-weight output { font-variant-numeric: tabular-nums; }
 .criteria-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; }
+/* No yellow focus box around the sliders and checkboxes; keyboard focus keeps a quiet outline. */
+.criteria-controls input[type="range"]:focus,
+.criteria-controls input[type="checkbox"]:focus { outline: none; }
+.criteria-controls input[type="range"]:focus-visible,
+.criteria-controls input[type="checkbox"]:focus-visible { outline: 2px solid #5d5d5d; outline-offset: 3px; }
 .criteria-controls input[aria-invalid="true"] { outline: 2px solid #b3261e; }
 @media (max-width: 560px) { .criteria-grid { grid-template-columns: 1fr; } }
 
