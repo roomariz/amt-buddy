@@ -340,7 +340,7 @@ const de = {
     classicLink: "Klassische Ansicht",
     chatLink: "Chat-Ansicht (Prototyp)",
     welcome:
-      "Hallo! Links sehen Sie Ihre zwei am besten passenden Bewerber, rechts Ihre Shortlist. Sagen Sie mir, was Ihnen wichtig ist, dann passe ich das Ranking an. Die Tipps unter dem Eingabefeld zeigen, was ich kann.",
+      "Hallo! Ich bin Amt-Buddy und helfe Ihnen, Bewerber auszuwählen. Links sehen Sie zwei Ihrer am besten passenden Bewerber, rechts Ihre Shortlist. Sagen Sie mir, was Ihnen wichtig ist, dann passe ich meine Empfehlungen an. Die Tipps unter dem Eingabefeld zeigen, was ich kann.",
     slotsTitle: "Empfehlungen",
     slotRank: "Platz {rank} von {total}",
     slotScore: "Match-Score {score}",
@@ -746,7 +746,7 @@ const en = {
     classicLink: "Classic dashboard",
     chatLink: "Chat view (prototype)",
     welcome:
-      "Hello! On the left are your two best-matching applicants, on the right your Shortlist. Tell me what matters to you and I'll adapt the ranking. The tips below the input show what I can do.",
+      "Hello! I'm Amt-Buddy, here to help you choose applicants. On the left are two of your best-matching applicants, on the right your Shortlist. Tell me what matters to you and I'll adapt my recommendations. The tips below the input show what I can do.",
     slotsTitle: "Recommendations",
     slotRank: "#{rank} of {total}",
     slotScore: "Match score {score}",
