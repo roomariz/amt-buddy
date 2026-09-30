@@ -14,4 +14,4 @@ We rejected a seventh weighted criterion ("your impression", unrated = half mark
 
 **The model sees ratings only as ids with +N or −N.** It cannot set them, and it must refuse to suggest them on protected grounds.
 
-**A subjective rating is where discrimination under the AGG can enter**, because it bypasses the lawful criteria. The page puts a hint beside the thumbs: "rate only what you could defend: reliability, communication, the viewing". Whether ratings should also need a short reason, so a landlord can later show why, is open for the team.
+**A subjective rating is where discrimination under the AGG can enter**, because it bypasses the lawful criteria. The thumbs' hover tip says "rate only what you could defend: reliability, communication, the viewing". A visible hint line was tried and removed at the user's request (2026-09-30). Whether ratings should also need a short reason, so a landlord can later show why, is open for the team.
