@@ -1,5 +1,5 @@
 /**
- * Amt-Buddy /landlord page: sign in with a name, enter the Listing, see its Rent check and the
+ * Amt-Buddy landlord page (/ and /landlord): sign in with a name, enter the Listing, see its Rent check and the
  * pool stats, the Recommendations, the Shortlist and the ranked applicants, and chat with the
  * Landlord Orchestrator, which remembers the landlord's preferences (listed here, each deletable).
  *
@@ -656,13 +656,25 @@ function breakdownCell(entry) {
   return bars;
 }
 
+// The Documents column: a short checklist, ✓ for a document in order, – for one not required,
+// ✕ and the problem for the rest; the full wording is the tooltip and what screen readers hear.
 function flagsCell(documents) {
-  const flags = el("div", "ranking-flags");
+  const list = el("ul", "ranking-docs");
   for (const flag of documentFlags(documents)) {
-    const text = `${t(`landlord.ranking.document.${flag.document}`)}: ${t(`landlord.ranking.documentStatus.${flag.status}`)}`;
-    flags.append(el("span", `ranking-flag${flag.ok ? "" : " is-problem"}`, text));
+    const status = t(`landlord.ranking.documentStatus.${flag.status}`);
+    const state = !flag.ok ? "is-problem" : flag.status === "not_required" ? "is-neutral" : "is-ok";
+    const item = el("li", `ranking-doc ${state}`);
+    item.title = `${t(`landlord.ranking.document.${flag.document}`)}: ${status}`;
+    const icon = el("span", "ranking-doc-icon", state === "is-ok" ? "✓" : state === "is-neutral" ? "–" : "✕");
+    icon.setAttribute("aria-hidden", "true");
+    const label = el("span", "", t(`landlord.ranking.documentShort.${flag.document}`));
+    const hidden = el("span", "visually-hidden", `: ${status}`);
+    item.append(icon, label);
+    if (state === "is-problem") item.append(el("span", "ranking-doc-status", status));
+    else item.append(hidden);
+    list.append(item);
   }
-  return flags;
+  return list;
 }
 
 function renderRanking() {

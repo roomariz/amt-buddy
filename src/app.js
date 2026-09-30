@@ -112,10 +112,9 @@ async function handleChat(request, response) {
 
 async function serveStatic(pathname, response) {
   let relativePath = pathname.slice(1);
-  if (relativePath === "" || relativePath === "chatbot" || relativePath === "chat") {
-    relativePath = "chatbot.html";
-  }
-  if (relativePath === "landlord") relativePath = "landlord.html";
+  // The landlord page is the home page; the tenant chat stays at /chat.
+  if (relativePath === "chatbot" || relativePath === "chat") relativePath = "chatbot.html";
+  if (relativePath === "" || relativePath === "landlord") relativePath = "landlord.html";
   const filePath = normalize(join(publicDirectory, relativePath));
 
   if (!filePath.startsWith(publicDirectory)) {

@@ -12,7 +12,7 @@ const de = {
     chatTitle: "Amt-Buddy · Chat",
     chatDescription:
       "Amt-Buddy Chat: Fragen zu Berliner Adressen, Mietspiegel 2026 und Belegung (§ 7 WoAufG Bln) stellen oder den Mietvertrag prüfen lassen.",
-    landlordTitle: "Amt-Buddy · Vermieter",
+    landlordTitle: "Amt-Buddy",
     landlordDescription:
       "Amt-Buddy für Vermieter: Wohnung eintragen und die Angebotsmiete mit dem Berliner Mietspiegel 2026 und der Mietpreisbremse vergleichen.",
   },
@@ -126,7 +126,7 @@ const de = {
     leaseUploaded: "Mietvertrag hochgeladen",
   },
   landlord: {
-    title: "Amt-Buddy Vermieter",
+    title: "Amt-Buddy",
     criteria: {
       title: "Auswahlkriterien",
       intro: "Passen Sie die Gewichtung an. Beim Speichern werden die Gewichte auf insgesamt 100 % umgerechnet und das Ranking aktualisiert.",
@@ -140,7 +140,6 @@ const de = {
       positiveTotal: "Mindestens ein Gewicht muss größer als 0 sein.",
     },
 
-    toChat: "Zum Mieter-Chat",
     signOut: "Abmelden",
     signedInAs: "Angemeldet als {name}",
     signInTitle: "Anmelden",
@@ -328,6 +327,7 @@ const de = {
         previousLandlord: "Vorvermieter",
       },
       document: { schufa: "SCHUFA", incomeProof: "Einkommensnachweis", previousLandlord: "Vorvermieterbescheinigung" },
+      documentShort: { schufa: "SCHUFA", incomeProof: "Einkommen", previousLandlord: "Vorvermieter" },
       documentStatus: {
         present: "vorhanden",
         missing: "fehlt",
@@ -356,7 +356,7 @@ const en = {
     chatTitle: "Amt-Buddy · Chat",
     chatDescription:
       "Amt-Buddy chat: ask about Berlin addresses, the Mietspiegel 2026 and occupancy (§ 7 WoAufG Bln), or have your lease checked.",
-    landlordTitle: "Amt-Buddy · Landlord",
+    landlordTitle: "Amt-Buddy",
     landlordDescription:
       "Amt-Buddy for landlords: enter your flat and compare the asking rent with the Berlin Mietspiegel 2026 and the Mietpreisbremse.",
   },
@@ -469,7 +469,7 @@ const en = {
     leaseUploaded: "Lease uploaded",
   },
   landlord: {
-    title: "Amt-Buddy Landlord",
+    title: "Amt-Buddy",
     criteria: {
       title: "Selection criteria",
       intro: "Adjust the weights. Saving scales them to a total of 100% and updates the ranking.",
@@ -483,7 +483,6 @@ const en = {
       positiveTotal: "At least one weight must be above zero.",
     },
 
-    toChat: "Tenant chat",
     signOut: "Sign out",
     signedInAs: "Signed in as {name}",
     signInTitle: "Sign in",
@@ -670,6 +669,7 @@ const en = {
         previousLandlord: "Previous landlord",
       },
       document: { schufa: "SCHUFA", incomeProof: "Income proof", previousLandlord: "Previous-landlord confirmation" },
+      documentShort: { schufa: "SCHUFA", incomeProof: "Income", previousLandlord: "Landlord ref." },
       documentStatus: {
         present: "present",
         missing: "missing",

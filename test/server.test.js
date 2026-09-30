@@ -332,7 +332,7 @@ test("the existing chat and OCR endpoints answer as before", async (t) => {
   assert.deepEqual(ocr.body, { data: await processDocumentOcr({ text }) });
 });
 
-test("the chat is the home page, and /chatbot still opens it", async (t) => {
+test("the tenant chat is at /chat and /chatbot; the home page is the landlord page", async (t) => {
   const server = await start({ env: {} });
   t.after(server.close);
   const page = async (path) => {
@@ -341,11 +341,13 @@ test("the chat is the home page, and /chatbot still opens it", async (t) => {
   };
 
   const home = await page("/");
+  const chat = await page("/chat");
   const chatbot = await page("/chatbot");
 
-  assert.equal(home.status, 200);
-  assert.ok(home.html.includes('src="/chatbot.js"'));
-  assert.equal(chatbot.html, home.html);
+  assert.equal(chat.status, 200);
+  assert.ok(chat.html.includes('src="/chatbot.js"'));
+  assert.equal(chatbot.html, chat.html);
+  assert.ok(home.html.includes('src="/landlord.js"'));
   assert.equal((await page("/app.js")).status, 404);
 });
 

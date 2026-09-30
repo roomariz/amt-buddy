@@ -373,16 +373,19 @@ test("the landlord and the Listing survive re-creating the app on the same datab
   assert.deepEqual(dashboard.body.data.listing, saved.body.data);
 });
 
-test("the landlord page is served at /landlord", async (t) => {
+test("the landlord page is the home page, and /landlord still opens it; it links to no tenant chat", async (t) => {
   const server = await start();
   t.after(server.close);
 
-  const response = await fetch(`${server.base}/landlord`);
-  const html = await response.text();
+  for (const path of ["/", "/landlord"]) {
+    const response = await fetch(`${server.base}${path}`);
+    const html = await response.text();
 
-  assert.equal(response.status, 200);
-  assert.match(response.headers.get("content-type"), /^text\/html/);
-  assert.ok(html.includes('src="/landlord.js"'));
+    assert.equal(response.status, 200, path);
+    assert.match(response.headers.get("content-type"), /^text\/html/);
+    assert.ok(html.includes('src="/landlord.js"'), path);
+    assert.ok(!html.includes('href="/"'), `${path}: no link to the tenant chat`);
+  }
 });
 
 test("with a stated building year, a failing building-age service does not stop the Rent check", async (t) => {

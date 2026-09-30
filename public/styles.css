@@ -1219,7 +1219,6 @@ footer a { color: inherit; }
 
 .landlord-main { width: 100vw; }
 
-.landlord-nav-link,
 .landlord-link-btn {
   width: auto;
   margin: 0;
@@ -1233,7 +1232,6 @@ footer a { color: inherit; }
   cursor: pointer;
 }
 
-.landlord-nav-link:hover,
 .landlord-link-btn:hover { background: #f0f0f0; color: #0d0d0d; }
 
 .topbar-actions { display: flex; align-items: center; gap: 8px; }
@@ -1430,11 +1428,15 @@ footer a { color: inherit; }
 .ranking-bars { display: grid; grid-template-columns: repeat(6, 1fr); gap: 3px; min-width: 150px; }
 .ranking-bar { position: relative; height: 22px; border-radius: 4px; background: #ececec; overflow: hidden; }
 .ranking-bar-fill { position: absolute; left: 0; right: 0; bottom: 0; background: #7fb08b; }
-.ranking-flags { display: flex; gap: 4px; flex-wrap: wrap; }
-.ranking-flag { padding: 2px 6px; border-radius: 999px; font-size: 0.7rem; white-space: nowrap; background: #e3f1e6; color: #1f5f2e; }
-.ranking-flag.is-problem { background: #fae4df; color: #8b1f1f; }
 /* In the table a long chip wraps and the Shortlist button keeps its own small size, so the row fits the card. */
-.ranking-table .ranking-flag { white-space: normal; }
+.ranking-docs { margin: 0; padding: 0; list-style: none; display: grid; gap: 3px; font-size: 0.8rem; }
+.ranking-doc { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 6px; color: #3d3d3d; white-space: nowrap; }
+.ranking-doc-icon { width: 1em; font-weight: 700; text-align: center; }
+.ranking-doc.is-ok .ranking-doc-icon { color: #2e7d45; }
+.ranking-doc.is-neutral { color: #8a8a8a; }
+.ranking-doc.is-problem { color: #8b1f1f; font-weight: 600; }
+.ranking-doc-status { font-weight: 400; }
+.ranking-doc-status::before { content: "· "; }
 .ranking-table .applicant-open { white-space: nowrap; }
 .ranking-table .shortlist-add { padding: 4px 0; font: 600 0.8rem/1.2 Arial, sans-serif; text-align: left; }
 .ranking-subtitle { margin: 20px 0 4px; font-size: 0.95rem; }
