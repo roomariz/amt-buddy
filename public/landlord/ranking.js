@@ -11,12 +11,11 @@ const FINE_STATUSES = new Set(["present", "not_required"]);
 const byRank = (a, b) => a.rank - b.rank;
 const COMPARATORS = {
   score: byRank,
-  name: (a, b) => a.name.localeCompare(b.name, getLanguage()) || byRank(a, b),
   rentToIncome: (a, b) => a.rentToIncome - b.rentToIncome || byRank(a, b),
 };
 
 // The ranked applicants the table shows: sorted by `sort` ("score", best first, the default;
-// "name"; "rentToIncome", lowest first) and, with `completeOnly`, only those with complete
+// "rentToIncome", lowest first) and, with `completeOnly`, only those with complete
 // documents. Returns a new list.
 export function rankingRows(ranked, { sort = "score", completeOnly = false } = {}) {
   const rows = completeOnly ? ranked.filter(({ documents }) => documents.complete) : [...ranked];

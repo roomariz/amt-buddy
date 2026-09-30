@@ -46,13 +46,12 @@ export function recommendationsEmptyText(stats, recommendations) {
   return t(stats.total === 0 ? "landlord.poolOverview.poolEmpty" : "landlord.poolOverview.recommendationsEmpty");
 }
 
-// The dashboard's Recommendations → the cards: [{ applicantId, rank, name, matchScore, reason }],
+// The dashboard's Recommendations → the cards: [{ applicantId, rank, matchScore, reason }],
 // the code-generated reason in the page language.
 export function recommendationCards(recommendations) {
-  return recommendations.map(({ applicantId, rank, name, matchScore, reason }) => ({
+  return recommendations.map(({ applicantId, rank, matchScore, reason }) => ({
     applicantId,
     rank,
-    name,
     matchScore: formatNumber(matchScore),
     reason: reason[getLanguage()] ?? reason.de,
   }));

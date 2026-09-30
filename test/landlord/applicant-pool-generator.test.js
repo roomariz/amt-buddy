@@ -80,6 +80,29 @@ test("the committed pool reads without errors and contains every deliberate defe
   for (const field of protectedFields) assert.match(raw, new RegExp(`^${field}: `, "m"), `the pool declares ${field}`);
 });
 
+test("name mismatch reasons stay generic and all personal names stay outside Applicant profiles", async () => {
+  const { applicants } = await readApplicantPool(COMMITTED_POOL, { today: POOL_DATE });
+  const byId = new Map(applicants.map((applicant) => [applicant.id, applicant]));
+
+  for (const [id, personalNames] of [
+    ["A-002", ["Olga Rossi", "Diego Rossi"]],
+    ["A-011", ["Aylin Rossi", "Wei Rossi", "Lina Rossi", "Paul Rossi"]],
+  ]) {
+    const profile = byId.get(id).profile;
+    const nameIssues = profile.documentCheck.issues.filter(({ code }) => code === "name_mismatch");
+    assert.ok(nameIssues.length > 0, `${id} should contain a name discrepancy`);
+    assert.ok(nameIssues.every(({ message }) => /needs clarification/.test(message)));
+    const serialized = JSON.stringify(profile);
+    for (const name of personalNames) assert.ok(!serialized.includes(name), `${id}'s ${name} reached the profile`);
+  }
+  for (const { id, contact, profile } of applicants) {
+    const serialized = JSON.stringify(profile);
+    for (const value of [contact.name, contact.email, contact.phone]) {
+      assert.ok(!serialized.includes(value), `${id}'s contact detail reached its profile`);
+    }
+  }
+});
+
 test("the CSV profiles include all names, spelling-only duplicates, and cross-document mismatches", async (t) => {
   const rows = await readMatchingNames();
   const files = generateApplicantPool({ seed: DEFAULT_POOL_SEED });

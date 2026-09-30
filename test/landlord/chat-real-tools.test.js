@@ -251,6 +251,7 @@ test("no applicant name, contact detail or protected field appears in any messag
   const { plain, quoted } = identifyingValues();
   assert.ok(plain.length > 100 && quoted.length > 20, "the pool's identifying values were found");
   for (const value of [...plain, ...quoted, "Erika Muster"]) assert.ok(!sent.includes(value), `${value} reached the model`);
+  for (const value of ["Diego Rossi", "Wei Rossi", "Lina Rossi"]) assert.ok(!sent.includes(value), `${value} reached the model`);
   assert.doesNotMatch(sent, /\\"(contact|email|phone|nationality|religion|dateOfBirth|gender|photo|familyPlans)\\":/);
 });
 

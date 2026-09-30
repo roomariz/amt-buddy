@@ -1,7 +1,7 @@
 import { rankApplicants } from "./scorer.js";
 
-// The reusable, contact-free Applicant profile lookup. The later chat Tool can call this
-// directly; names and contact details are joined only by the HTTP endpoint for page display.
+// The reusable, contact-free Applicant profile lookup. The later chat Tool and HTTP endpoint can
+// use this directly; names and contact details stay in the source pool.
 export function getApplicantProfile({ applicants, listing, applicantId, criteria = {} }) {
   const applicant = applicants.find(({ id }) => id === applicantId);
   if (!applicant) return null;
