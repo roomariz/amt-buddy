@@ -77,7 +77,7 @@ const applicantDetailClose = $("#applicant-detail-close");
 const landlordTabs = $("#landlord-tabs");
 const tabShortlistCount = $("#tab-shortlist-count");
 
-let currentTab = "criteria";
+let currentTab = "chat";
 
 function updateTabVisibility() {
   const signedIn = Boolean(landlord);
