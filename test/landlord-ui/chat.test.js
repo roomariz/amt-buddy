@@ -15,6 +15,7 @@ import {
   reduceLandlordTurn,
   renderAnswerWithNames,
   runLandlordTurn,
+  splitAnswer,
   withApplicantNames,
 } from "../../public/landlord/chat.js";
 import { setLanguage } from "../../public/i18n.js";
@@ -241,4 +242,31 @@ test("the dashboard is fetched again only after a turn that changed the criteria
   assert.equal(changedDashboard(run([{ type: "shortlist" }, { type: "done" }])), true);
   assert.equal(changedDashboard(run([{ type: "notes" }, { type: "done" }])), true, "a remembered preference");
   assert.equal(changedDashboard(run([{ type: "shortlist" }, { type: "error" }])), true, "saved before the turn failed");
+});
+
+// After a turn that changed the ranking the model writes two parts, separated by a line that is
+// only "---": the change, then the current top applicants and a next step. The page shows them as
+// two messages (the user's request, round 3).
+test("splitAnswer: the first line that is only --- splits the answer into two messages", () => {
+  assert.deepEqual(splitAnswer("SCHUFA now counts 20 %.\n---\nYour current top applicants are: A-003 …"), [
+    "SCHUFA now counts 20 %.",
+    "Your current top applicants are: A-003 …",
+  ]);
+  assert.deepEqual(splitAnswer("One.\n\n  ---  \n\nTwo."), ["One.", "Two."], "spaces and blank lines around it");
+  assert.deepEqual(splitAnswer("One.\n---\nTwo.\n---\nThree."), ["One.", "Two.\n---\nThree."], "only the first splits");
+});
+
+test("splitAnswer: no separator, one message; nothing after it, one message; not a separator inside a line", () => {
+  assert.deepEqual(splitAnswer("Just one answer."), ["Just one answer.", null]);
+  assert.deepEqual(splitAnswer("One.\n---\n  "), ["One.", null]);
+  assert.deepEqual(splitAnswer("A range of 7.90---11.50 €"), ["A range of 7.90---11.50 €", null]);
+  assert.deepEqual(splitAnswer("One.\n----\nTwo."), ["One.\n----\nTwo.", null], "four dashes are not the separator");
+  assert.deepEqual(splitAnswer(""), ["", null]);
+});
+
+test("splitAnswer while streaming: a separator still being typed does not show", () => {
+  // Tokens arrive in pieces; a trailing "-" or "--" line may be the start of the separator.
+  assert.deepEqual(splitAnswer("One.\n--"), ["One.", null]);
+  assert.deepEqual(splitAnswer("One.\n-"), ["One.", null]);
+  assert.deepEqual(splitAnswer("One.\n---"), ["One.", null]);
 });

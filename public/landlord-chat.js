@@ -16,7 +16,7 @@
 import { fetchOverview, removeRating, removeShortlistEntry, saveRating, saveShortlistEntry, signIn } from "./landlord/api.js";
 import { avatarSvg } from "./landlord/avatar.js";
 import { excludedTip, fillSlots, sidebarRows, slotCard } from "./landlord/board.js";
-import { applicantNames, changedDashboard, renderAnswerWithNames, runLandlordTurn } from "./landlord/chat.js";
+import { applicantNames, changedDashboard, renderAnswerWithNames, runLandlordTurn, splitAnswer } from "./landlord/chat.js";
 import { statTiles } from "./landlord/pool-overview.js";
 import { rankMoves } from "./landlord/rank-moves.js";
 import { formatNumber } from "./landlord/ranking.js";
@@ -746,11 +746,27 @@ function appendChatMessage(role, text) {
 
 // Draws the answer as it streams: markdown (escaped first by renderMarkdown) with the applicants'
 // names next to their ids, escaped and added after rendering (renderAnswerWithNames), or the turn's error.
-function drawTurn(item, state) {
-  item.classList.toggle("is-pending", state.phase === "streaming" && !state.answer);
-  item.classList.toggle("is-error", state.phase === "error");
-  if (state.phase === "error" && !state.answer) item.textContent = state.error;
-  else if (state.answer) item.innerHTML = renderAnswerWithNames(state.answer, namesById);
+// An answer in two parts (splitAnswer) shows as two messages: `turn.second` is added below
+// `turn.first` once the second part starts.
+function drawTurn(turn, state) {
+  const [first, second] = splitAnswer(state.answer);
+  const { first: item } = turn;
+  item.classList.toggle("is-pending", state.phase === "streaming" && !first);
+  item.classList.toggle("is-error", state.phase === "error" && !second);
+  if (state.phase === "error" && !first) item.textContent = state.error;
+  else if (first) item.innerHTML = renderAnswerWithNames(first, namesById);
+  if (second && !turn.second) {
+    turn.second = el("li", "landlord-chat-msg is-answer");
+    turn.second.setAttribute("aria-label", t("landlord.chat.amtBuddy"));
+    item.after(turn.second);
+  } else if (!second && turn.second) {
+    turn.second.remove();
+    turn.second = null;
+  }
+  if (turn.second) {
+    turn.second.classList.toggle("is-error", state.phase === "error");
+    turn.second.innerHTML = renderAnswerWithNames(second, namesById);
+  }
   stickToBottom();
 }
 
@@ -761,8 +777,8 @@ chatForm.addEventListener("submit", async (event) => {
   const landlordId = landlord.landlordId;
   chatInput.value = "";
   appendChatMessage("user", message);
-  const answer = appendChatMessage("answer", t("landlord.chat.thinking"));
-  answer.classList.add("is-pending");
+  const answer = { first: appendChatMessage("answer", t("landlord.chat.thinking")), second: null };
+  answer.first.classList.add("is-pending");
   // Only sending is blocked: the landlord may type the next message (or take a tip) meanwhile.
   streaming = true;
   chatSendButton.disabled = true;

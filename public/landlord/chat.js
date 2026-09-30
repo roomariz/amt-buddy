@@ -118,6 +118,20 @@ export function applicantNames(dashboard) {
   return names;
 }
 
+// After a turn that changed the ranking the model writes two parts separated by a line that is only
+// "---" (the system prompt asks for it): splitAnswer(text) → [first, second], second null when there
+// is no second part. While the answer streams, a trailing "-" or "--" line may be the separator
+// being typed, so it does not show.
+export function splitAnswer(text) {
+  const lines = String(text ?? "").split("\n");
+  const at = lines.findIndex((line) => line.trim() === "---");
+  if (at === -1) {
+    if (/^-{1,2}$/.test(lines.at(-1).trim())) lines.pop();
+    return [lines.join("\n").trim(), null];
+  }
+  return [lines.slice(0, at).join("\n").trim(), lines.slice(at + 1).join("\n").trim() || null];
+}
+
 const APPLICANT_ID = /\b[A-Z]-\d+\b/g;
 
 // The model only knows applicant ids ("A-007"): the panel adds the name after each id it knows.

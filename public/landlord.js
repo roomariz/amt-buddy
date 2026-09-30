@@ -10,7 +10,7 @@
 import { deleteNote, fetchApplicantProfile, fetchDashboard, removeShortlistEntry, saveCriteria, saveListing, saveShortlistEntry, signIn } from "./landlord/api.js";
 import { applicantDetailView } from "./landlord/applicant-detail.js";
 import { criteriaFormValues, criteriaRequest, WEIGHT_FIELDS } from "./landlord/criteria.js";
-import { applicantNames, changedDashboard, renderAnswerWithNames, runLandlordTurn } from "./landlord/chat.js";
+import { applicantNames, changedDashboard, renderAnswerWithNames, runLandlordTurn, splitAnswer } from "./landlord/chat.js";
 import { listingFormValues, listingRequest, rentCheckView } from "./landlord/listing.js";
 import { breakdownBars, documentFlags, exclusionText, formatMoney, formatNumber, formatPercent, rankingRows } from "./landlord/ranking.js";
 import { poolSummary, recommendationCards, recommendationsEmptyText, statTiles } from "./landlord/pool-overview.js";
@@ -801,11 +801,13 @@ function appendChatMessage(role, text) {
 
 // Draws the answer as it streams: markdown (escaped first by renderMarkdown) with the applicants'
 // names next to their ids, escaped and added after rendering (renderAnswerWithNames), or the turn's error.
+// An answer in two parts (splitAnswer) shows here as one message, without the separator line.
 function drawTurn(item, state) {
-  item.classList.toggle("is-pending", state.phase === "streaming" && !state.answer);
+  const answer = splitAnswer(state.answer).filter(Boolean).join("\n\n");
+  item.classList.toggle("is-pending", state.phase === "streaming" && !answer);
   item.classList.toggle("is-error", state.phase === "error");
-  if (state.phase === "error" && !state.answer) item.textContent = state.error;
-  else if (state.answer) item.innerHTML = renderAnswerWithNames(state.answer, namesById);
+  if (state.phase === "error" && !answer) item.textContent = state.error;
+  else if (answer) item.innerHTML = renderAnswerWithNames(answer, namesById);
 }
 
 chatForm.addEventListener("submit", async (event) => {

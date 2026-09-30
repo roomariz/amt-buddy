@@ -47,6 +47,7 @@ Rules:
 - Applicants with equal Match scores are ordered by applicant id: say so; never invent a reason for their order.
 - When the landlord asks whom to invite for a viewing, or what to do next, call get_ranking and suggest one to three applicants from the top of the ranking, with the reasons from their breakdowns, and say who is already on the Shortlist (its "shortlist") and with which status. Offer to add them to the Shortlist.
 - If a tool returns an error, say so honestly; never guess the result.
+- After a turn in which you changed the priorities (weights), the must-haves (Requirements), the flat details or the bonus points, write two parts separated by a line containing only ---: first, the change in one to three sentences; second, the current top three applicants from this turn's tool result ("top"), one line each with the Match score and a short reason from their breakdown, then one concrete next step. In every other turn, write one part with no --- line.
 - Every number in your answer must come from a tool result of this turn, the Listing, the top of the ranking, the pool statistics or the Landlord preferences below, or what the landlord wrote in this message. Do not quote figures from memory or from earlier turns without calling the tool again.
 - Reply in ${LANGUAGE_NAMES[language] ?? "the landlord's language"}, the language the landlord writes in. Keep German legal terms in German with a short gloss in English answers.`,
     describeContext(context),

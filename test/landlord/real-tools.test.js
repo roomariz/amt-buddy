@@ -801,3 +801,14 @@ test("the system prompt keeps the Mietspiegel range apart from the allowed rent,
   assert.match(system, /"buildingAgePeriod"\) is when the flat's block was predominantly built .*not the flat's own construction year/);
   assert.match(system, /unless the landlord stated the building year/);
 });
+
+test("the system prompt asks for two parts separated by --- after a turn that changed the ranking, one part otherwise", async () => {
+  const { store, landlordId } = setup();
+  const context = await createLandlordContext({ getStore: () => store, getApplicantPool: async () => pool })(landlordId);
+
+  const system = landlordSystemMessage({ context, language: "en" }).content;
+
+  assert.match(system, /changed the priorities \(weights\), the must-haves \(Requirements\), the flat details or the bonus points, write two parts separated by a line containing only ---/);
+  assert.match(system, /second, the current top three applicants from this turn's tool result \("top"\)/);
+  assert.match(system, /In every other turn, write one part with no --- line/);
+});
