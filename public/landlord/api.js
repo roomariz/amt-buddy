@@ -84,6 +84,28 @@ export async function removeShortlistEntry({ fetchImpl, landlordId, applicantId 
   throw new Error(t("landlord.errors.failed"));
 }
 
+const ratingPath = (landlordId, applicantId) => landlordPath(landlordId, `ratings/${encodeURIComponent(applicantId)}`);
+
+// Rates an applicant "up" or "down" → { rating }, { notFound: true } for an applicant the pool
+// does not know, or { signedOut: true }.
+export async function saveRating({ fetchImpl, landlordId, applicantId, rating }) {
+  const { status, body } = await call(fetchImpl, ratingPath(landlordId, applicantId), { method: "PUT", body: { rating } });
+  if (status === 200 && body?.data) return { rating: body.data.rating };
+  if (status === 404 && body?.error?.code === "landlord_not_found") return { signedOut: true };
+  if (status === 404 && body?.error?.code === "applicant_not_found") return { notFound: true };
+  throw new Error(t("landlord.errors.failed"));
+}
+
+// Takes an applicant's rating away → { rating: null }, { notFound: true } for an applicant the pool
+// does not know, or { signedOut: true }.
+export async function removeRating({ fetchImpl, landlordId, applicantId }) {
+  const { status, body } = await call(fetchImpl, ratingPath(landlordId, applicantId), { method: "DELETE" });
+  if (status === 200 && body?.data) return { rating: null };
+  if (status === 404 && body?.error?.code === "landlord_not_found") return { signedOut: true };
+  if (status === 404 && body?.error?.code === "applicant_not_found") return { notFound: true };
+  throw new Error(t("landlord.errors.failed"));
+}
+
 // Deletes a remembered Landlord preference → { deleted: true }, { notFound: true } when the landlord
 // has no such note (any more), or { signedOut: true }.
 export async function deleteNote({ fetchImpl, landlordId, noteId }) {

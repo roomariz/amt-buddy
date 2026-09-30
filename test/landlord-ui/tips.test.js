@@ -40,6 +40,7 @@ const firstVisit = () => ({
   flat: NO_FLAT,
   rentCheck: null,
   ranked: RANKED,
+  bonusPoints: 5,
 });
 
 // The overview once address, size, rooms and rent are known and the Rent check ran.
@@ -88,6 +89,8 @@ test("first visit: the full order — heaviest, missing flat facts, other active
     "heaviest",
     "noRent",
     "noSize",
+    // The landlord's own bonus (thumbs up/down), then the other criteria.
+    "bonus",
     // Active criteria other than the heaviest, largest active share first, ties in criteria order.
     // Affordability is inactive (share 0): the noRent tip speaks for it.
     "criterion:documents",
@@ -208,4 +211,15 @@ test("ties for the heaviest go to the first criterion in criteria order; the exa
   const [first] = inLanguage("en", () => landlordTips(overview));
   assert.equal(first.example, "give Documents 30% more importance");
   assert.match(first.text, /ranked mostly by SCHUFA;/);
+});
+
+test("the bonus tip names the current bonus points and how to make them count more", () => {
+  const tip = inLanguage("en", () => landlordTips(firstVisit())).find(({ id }) => id === "bonus");
+  assert.deepEqual(tip, {
+    id: "bonus",
+    text: "Use 👍/👎 to give applicants your own bonus (±5 points); say 'give my impression more weight' to make it count more.",
+    example: "give my impression more weight",
+  });
+  const german = inLanguage("de", () => landlordTips({ ...firstVisit(), bonusPoints: 6.5 })).find(({ id }) => id === "bonus");
+  assert.equal(german.text, "Mit 👍/👎 geben Sie Bewerbern Ihren eigenen Bonus (±6,5 Punkte); sagen Sie „Gib meinem Eindruck mehr Gewicht“, damit er stärker zählt.");
 });

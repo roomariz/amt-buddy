@@ -4,6 +4,7 @@
 // prompt, or null when the tip has nothing to say back to the assistant.
 
 import { t } from "../i18n.js";
+import { formatNumber } from "./ranking.js";
 
 // Criteria order is that of the weights object; ties in a share go to the earlier criterion.
 const CRITERIA = ["affordability", "schufa", "documents", "credibility", "employment", "previousLandlord"];
@@ -23,7 +24,7 @@ function activeByShare(activeWeights) {
   );
 }
 
-export function landlordTips({ criteria, inactive, flat, rentCheck, ranked }) {
+export function landlordTips({ criteria, inactive, flat, rentCheck, ranked, bonusPoints = 5 }) {
   const active = activeByShare(criteria.activeWeights);
   // Nothing active (all weights 0) still needs a first tip; the first criterion stands in.
   const heaviest = active[0] ?? CRITERIA[0];
@@ -46,6 +47,9 @@ export function landlordTips({ criteria, inactive, flat, rentCheck, ranked }) {
   if (!known(flat.askingRent)) add("noRent", "noRent", "landlordChat.tips.noRentExample");
   if (!known(flat.livingAreaSqm) || !known(flat.rooms)) add("noSize", "noSize", "landlordChat.tips.noSizeExample");
   if (known(flat.askingRent) && !rentCheck) add("noRentCheck", "noRentCheck", "landlordChat.tips.noRentCheckExample");
+
+  // The landlord's own bonus (thumbs up/down), before the criteria it competes with.
+  add("bonus", "bonus", "landlordChat.tips.bonusExample", { points: formatNumber(bonusPoints) });
 
   // The other active criteria, largest share first. A criterion at 0 % is not counting (the flat-fact
   // tips above speak for it) and the heaviest already has the first tip.
