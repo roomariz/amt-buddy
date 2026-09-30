@@ -1439,6 +1439,74 @@ footer a { color: inherit; }
   resize: vertical;
 }
 
+/* Selection criteria: the minimum-income line. Positions are fractions of the line, inset by the
+   handle's radius so the marks sit where the slider puts its handle. */
+.income-line { display: grid; gap: 10px; margin-top: 16px; }
+.income-line-toggle { color: #171714; font-weight: 600; }
+.income-line-body[hidden], .income-line [hidden] { display: none; }
+.income-line-graph {
+  --thumb: 22px;
+  --x-rent: calc(var(--thumb) / 2 + (100% - var(--thumb)) * var(--rent, 0));
+  --x-income: calc(var(--thumb) / 2 + (100% - var(--thumb)) * var(--income, 0));
+  position: relative;
+  height: 104px;
+  --accent: #2e7d45;
+}
+.income-line-graph[data-relation="below"] { --accent: #b3261e; }
+.income-line-graph[data-relation="equal"] { --accent: #5d5d5d; }
+.income-line-label { position: absolute; white-space: nowrap; font-size: 0.8rem; font-weight: 700; }
+.income-line-label.is-rent { top: 0; left: var(--x-rent); transform: translateX(calc(-100% * var(--rent, 0))); color: #171714; }
+.income-line-label.is-income { top: 80px; left: var(--x-income); transform: translateX(calc(-100% * var(--income, 0))); color: var(--accent); }
+.income-line-span {
+  position: absolute;
+  top: 22px;
+  height: 18px;
+  left: calc(var(--thumb) / 2 + (100% - var(--thumb)) * var(--span-start, 0));
+  width: calc((100% - var(--thumb)) * (var(--span-end, 0) - var(--span-start, 0)));
+  border-left: 2px solid var(--accent);
+  border-right: 2px solid var(--accent);
+  box-sizing: border-box;
+}
+.income-line-span::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; border-top: 2px solid var(--accent); }
+.income-line-span span {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  padding: 0 6px;
+  background: #ffffff;
+  color: var(--accent);
+  font-size: 0.8rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.income-line-track { position: absolute; top: 58px; left: 0; right: 0; height: 4px; border-radius: 999px; background: #d9d9d9; }
+.income-line-rent-mark { position: absolute; left: var(--x-rent); top: -10px; width: 3px; height: 24px; margin-left: -1.5px; border-radius: 2px; background: #171714; }
+.income-line-range {
+  position: absolute;
+  top: 49px;
+  left: 0;
+  width: 100%;
+  height: 22px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+}
+.income-line-range:focus { outline: none; }
+.income-line-range::-webkit-slider-runnable-track { background: transparent; }
+.income-line-range::-moz-range-track { background: transparent; }
+.income-line-range::-webkit-slider-thumb { -webkit-appearance: none; width: 22px; height: 22px; border: 3px solid #ffffff; border-radius: 50%; background: var(--accent); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3); }
+.income-line-range::-moz-range-thumb { width: 16px; height: 16px; border: 3px solid #ffffff; border-radius: 50%; background: var(--accent); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3); }
+.income-line-range:focus-visible::-webkit-slider-thumb { outline: 2px solid #5d5d5d; outline-offset: 2px; }
+.income-line-range:focus-visible::-moz-range-thumb { outline: 2px solid #5d5d5d; outline-offset: 2px; }
+.income-line-values { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 16px; }
+.income-line-input { flex: 0 1 220px; }
+.income-line-summary { flex: 1 1 240px; margin: 0 0 10px; font-size: 0.85rem; color: #3d3d3d; }
+
 /* Landlord page: the ranked applicants and the Excluded section */
 .ranking-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; margin: 0 0 12px; font-size: 0.85rem; }
 .ranking-control { display: flex; align-items: center; gap: 8px; color: #5d5d5d; }

@@ -18,7 +18,8 @@ import { poolSummary, recommendationCards, recommendationsEmptyText, statTiles }
 import { preferenceRows, withoutNote } from "./landlord/preferences.js";
 import { forgetLandlord, rememberLandlord, storedLandlord } from "./landlord/session.js";
 import { applyShortlistChange, isShortlisted, shortlistRows, statusOptions } from "./landlord/shortlist.js";
-import { onLanguageChange, startI18n, t } from "./i18n.js";
+import { incomeFromRatio, incomeLineView, ratioPercent } from "./landlord/income-line.js";
+import { getLanguage, onLanguageChange, startI18n, t } from "./i18n.js";
 
 const $ = (selector) => document.querySelector(selector);
 
@@ -69,6 +70,12 @@ const criteriaControls = $("#criteria-controls");
 const criteriaError = $("#criteria-error");
 const criteriaStatus = $("#criteria-status");
 const resetCriteriaButton = $("#btn-reset-criteria");
+const incomeLineOn = $("#income-line-on");
+const incomeLineNoRent = $("#income-line-no-rent");
+const incomeLineBody = $("#income-line-body");
+const incomeLineRange = $("#income-line-range");
+const incomeLineInput = $("#income-line-input");
+const incomeLineRatio = criteriaForm.elements.maxRentToIncome;
 const applicantDetailSection = $("#applicant-detail");
 const applicantDetailTitle = $("#applicant-detail-title");
 const applicantDetailStatus = $("#applicant-detail-status");
@@ -738,6 +745,7 @@ function signOut() {
   notes = null;
   defaultCriteria = null;
   criteriaForm.reset();
+  syncIncomeLine();
   criteriaStatusKey = null;
   clearCriteriaProblems();
   fillForm(listingFormValues(null));
@@ -785,6 +793,7 @@ function applyDashboard(dashboard) {
     else input.value = value;
   }
   criteriaSection.hidden = false;
+  syncIncomeLine();
   renderCriteriaText();
   renderRentCheck();
   renderPoolOverview();
@@ -792,6 +801,75 @@ function applyDashboard(dashboard) {
   renderRanking();
   renderPreferences();
 }
+
+// --- minimum income line ------------------------------------------------------------------------
+
+// The minimum income on the line (whole euros), or null while the Requirement is off.
+let minimumIncome = null;
+const askingRent = () => listing?.askingRent ?? null;
+const formatEuros = (amount) =>
+  new Intl.NumberFormat(getLanguage() === "en" ? "en-GB" : "de-DE", { style: "currency", currency: "EUR", minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(amount);
+const incomeBelowRent = () => incomeLineOn.checked && askingRent() !== null && minimumIncome < askingRent();
+
+// Reads the saved ratio from the form's maxRentToIncome field back onto the line.
+function syncIncomeLine() {
+  const rent = askingRent();
+  const percent = Number(incomeLineRatio.value);
+  const on = rent !== null && incomeLineRatio.value !== "" && percent > 0;
+  incomeLineOn.checked = on;
+  minimumIncome = on ? incomeFromRatio(rent, percent / 100) : null;
+  renderIncomeLine();
+}
+
+function renderIncomeLine() {
+  const rent = askingRent();
+  incomeLineNoRent.hidden = rent !== null;
+  incomeLineOn.disabled = rent === null;
+  incomeLineBody.hidden = rent === null || !incomeLineOn.checked;
+  if (incomeLineBody.hidden) {
+    if (rent !== null) incomeLineRatio.value = "";
+    return;
+  }
+  const view = incomeLineView({ rent, income: minimumIncome });
+  // The slider starts one step above 0: no minimum income of 0.
+  Object.assign(incomeLineRange, { min: view.scale.step, max: view.scale.max, step: view.scale.step });
+  incomeLineRange.value = String(minimumIncome);
+  if (Number(incomeLineInput.value) !== minimumIncome) incomeLineInput.value = String(minimumIncome);
+  incomeLineInput.step = String(view.scale.step);
+  incomeLineRatio.value = minimumIncome > 0 ? ratioPercent(rent, minimumIncome) : "";
+
+  const graph = incomeLineBody.querySelector(".income-line-graph");
+  graph.dataset.relation = view.relation;
+  // Fractions (0–1): the CSS insets them by the slider handle's radius, as the browser does the handle.
+  for (const [name, percent] of [["rent", view.rentPercent], ["income", view.incomePercent], ["span-start", view.spanStart], ["span-end", view.spanEnd]]) {
+    graph.style.setProperty(`--${name}`, String(percent / 100));
+  }
+  $("#income-line-rent-label").textContent = t("landlord.criteria.income.rent", { amount: formatEuros(rent) });
+  $("#income-line-income-label").textContent = t("landlord.criteria.income.income", { amount: formatEuros(minimumIncome) });
+  $("#income-line-span-label").textContent = `${view.difference > 0 ? "+" : view.difference < 0 ? "−" : "±"}${formatEuros(Math.abs(view.difference))}`;
+  incomeLineRange.setAttribute("aria-valuetext", formatEuros(minimumIncome));
+  $("#income-line-summary").textContent = t(`landlord.criteria.income.${view.relation}`, {
+    amount: formatEuros(Math.abs(view.difference)),
+    percent: formatPercent(rent / minimumIncome),
+  });
+}
+
+incomeLineOn.addEventListener("change", () => {
+  const rent = askingRent();
+  // Switched on: start where a third of the income goes to the rent.
+  if (incomeLineOn.checked && rent !== null) minimumIncome = minimumIncome ?? rent * 3;
+  renderIncomeLine();
+});
+incomeLineRange.addEventListener("input", () => {
+  minimumIncome = Number(incomeLineRange.value);
+  renderIncomeLine();
+});
+incomeLineInput.addEventListener("input", () => {
+  const value = Number(incomeLineInput.value);
+  if (incomeLineInput.value === "" || !Number.isFinite(value) || value <= 0) return;
+  minimumIncome = Math.round(value);
+  renderIncomeLine();
+});
 
 function renderCriteriaText() {
   for (const key of WEIGHT_FIELDS) {
@@ -847,6 +925,15 @@ criteriaForm.addEventListener("input", () => {
 });
 criteriaForm.addEventListener("submit", (event) => {
   event.preventDefault();
+  if (incomeBelowRent()) {
+    criteriaStatusKey = null;
+    clearCriteriaProblems();
+    criteriaErrorKey = "landlord.criteria.income.belowRent";
+    incomeLineInput.setAttribute("aria-invalid", "true");
+    renderCriteriaText();
+    incomeLineInput.focus();
+    return;
+  }
   submitCriteria(criteriaRequest(Object.fromEntries(new FormData(criteriaForm))));
 });
 resetCriteriaButton.addEventListener("click", () => submitCriteria(defaultCriteria));
@@ -950,6 +1037,7 @@ signOutButton.addEventListener("click", signOut);
 
 onLanguageChange(() => {
   renderCriteriaText();
+  renderIncomeLine();
   renderSignedIn();
   renderRentCheck();
   renderPoolOverview();

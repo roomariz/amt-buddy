@@ -159,17 +159,38 @@
                       <span data-i18n="landlord.criteria.occupancyCompliant">Haushalt passt zur Wohnfläche</span>
                     </label>
                   </div>
-                  <div class="landlord-row">
-                    <label class="landlord-field">
-                      <span data-i18n="landlord.criteria.maxRentToIncome">Miete höchstens in % des Einkommens (optional)</span>
-                      <input name="maxRentToIncome" inputmode="decimal" aria-describedby="criteria-optional-hint" />
+                  <!-- Minimum income: the rent is fixed on the line, the landlord drags the income; drawn by landlord.js -->
+                  <div id="income-line" class="income-line">
+                    <label class="ranking-control ranking-check income-line-toggle">
+                      <input type="checkbox" id="income-line-on" />
+                      <span data-i18n="landlord.criteria.income.toggle">Mindest-Haushaltsnettoeinkommen verlangen (pro Monat)</span>
                     </label>
+                    <p id="income-line-no-rent" class="landlord-hint" data-i18n="landlord.criteria.income.noRent" hidden>Speichern Sie zuerst Ihre Wohnung: Ihre Miete ist der feste Punkt dieser Linie.</p>
+                    <div id="income-line-body" class="income-line-body" hidden>
+                      <div class="income-line-graph">
+                        <span id="income-line-rent-label" class="income-line-label is-rent"></span>
+                        <div id="income-line-span" class="income-line-span" aria-hidden="true"><span id="income-line-span-label"></span></div>
+                        <div class="income-line-track" aria-hidden="true"><span id="income-line-rent-mark" class="income-line-rent-mark"></span></div>
+                        <input type="range" id="income-line-range" class="income-line-range" aria-describedby="income-line-summary" data-i18n-attr="aria-label:landlord.criteria.income.rangeLabel" aria-label="Mindesteinkommen" />
+                        <span id="income-line-income-label" class="income-line-label is-income"></span>
+                      </div>
+                      <div class="income-line-values">
+                        <label class="landlord-field income-line-input">
+                          <span data-i18n="landlord.criteria.income.inputLabel">Mindesteinkommen (€ / Monat)</span>
+                          <input type="number" id="income-line-input" inputmode="numeric" min="0" aria-describedby="income-line-summary" />
+                        </label>
+                        <p id="income-line-summary" class="income-line-summary" aria-live="polite"></p>
+                      </div>
+                    </div>
+                    <input type="hidden" name="maxRentToIncome" />
+                  </div>
+                  <div class="landlord-row">
                     <label class="landlord-field">
                       <span data-i18n="landlord.criteria.latestMoveIn">Einzug spätestens am (optional)</span>
                       <input name="latestMoveIn" type="date" aria-describedby="criteria-optional-hint" />
                     </label>
                   </div>
-                  <p id="criteria-optional-hint" class="landlord-hint" data-i18n="landlord.criteria.optionalHint">Leere Felder setzen keine Grenze.</p>
+                  <p id="criteria-optional-hint" class="landlord-hint" data-i18n="landlord.criteria.optionalHint">Ohne Datum gibt es keine Grenze für den Einzug.</p>
                   <div class="criteria-actions">
                     <button type="submit" class="landlord-btn" data-i18n="landlord.criteria.save">Kriterien speichern</button>
                     <button type="button" id="btn-reset-criteria" class="landlord-link-btn" data-i18n="landlord.criteria.reset">Standardwerte wiederherstellen</button>
