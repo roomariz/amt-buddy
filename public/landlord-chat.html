@@ -62,6 +62,15 @@
           <h2 id="glance-title" class="lc-heading" data-i18n="landlordChat.glanceTitle">Auf einen Blick</h2>
           <ul id="glance-tiles" class="lc-tiles" aria-labelledby="glance-title"></ul>
           <p id="pool-errors" class="landlord-note lc-pool-errors" hidden></p>
+          <h2 id="weights-title" class="lc-heading lc-weights-title" data-i18n="landlordChat.weightsTitle">Gewichtung</h2>
+          <!-- The pie (an SVG drawn from numbers) beside its legend: the legend is what screen readers get. -->
+          <div id="weights" class="lc-weights" hidden>
+            <div id="weights-pie" class="lc-pie"></div>
+            <div class="lc-weights-text">
+              <ul id="weights-legend" class="lc-legend" aria-labelledby="weights-title"></ul>
+              <p id="weights-bonus" class="lc-weights-bonus"></p>
+            </div>
+          </div>
         </section>
 
         <section class="lc-chat" aria-labelledby="chat-title">

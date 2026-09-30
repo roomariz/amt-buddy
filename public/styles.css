@@ -1522,6 +1522,14 @@ footer a { color: inherit; }
   --lc-link: #1a56b0;
   --avatar-bg: #e8eef7;
   --avatar-fg: #4a5b78;
+  /* The weights pie: six categorical colours, validated (dataviz palette check) for colour-blind
+     separation between neighbours in criteria order; the dark set is stepped for the dark surface. */
+  --pie-affordability: #2a78d6;
+  --pie-schufa: #eb6834;
+  --pie-documents: #1baf7a;
+  --pie-credibility: #eda100;
+  --pie-employment: #e87ba4;
+  --pie-previousLandlord: #008300;
   color-scheme: light;
   background: var(--lc-bg);
   color: var(--lc-text);
@@ -1552,6 +1560,12 @@ footer a { color: inherit; }
     --lc-link: #8ab4f8;
     --avatar-bg: #2c3a4f;
     --avatar-fg: #c9d6ea;
+    --pie-affordability: #3987e5;
+    --pie-schufa: #d95926;
+    --pie-documents: #199e70;
+    --pie-credibility: #c98500;
+    --pie-employment: #d55181;
+    --pie-previousLandlord: #008300;
     color-scheme: dark;
   }
 }
@@ -1694,6 +1708,28 @@ footer a { color: inherit; }
 .lc-tile-label { font-size: 0.72rem; color: var(--lc-muted); line-height: 1.3; overflow-wrap: normal; hyphens: auto; }
 .lc-tile.is-unavailable { cursor: help; }
 .lc-tile.is-unavailable .lc-tile-value { color: var(--lc-muted); }
+
+/* The weights pie beside its legend; the legend drops below the pie when the column is too narrow.
+   A slice's outline in the surface colour is the gap between neighbours. Muted: not counted yet. */
+.lc-weights-title { margin-top: 20px; }
+.lc-weights { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.lc-pie { flex: none; line-height: 0; }
+.lc-pie svg { display: block; }
+.lc-pie-slice { stroke: var(--lc-surface); stroke-width: 2; stroke-linejoin: round; }
+.lc-pie-slice.is-muted,
+.lc-pie-swatch.is-muted { opacity: 0.3; }
+.lc-weights-text { flex: 1 1 150px; min-width: 0; }
+.lc-legend { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
+.lc-legend-row { display: flex; align-items: baseline; gap: 6px; font-size: 0.8rem; line-height: 1.35; overflow-wrap: anywhere; }
+.lc-legend-row.is-muted { color: var(--lc-muted); }
+.lc-pie-swatch { flex: none; width: 10px; height: 10px; border-radius: 3px; transform: translateY(1px); }
+.lc-weights-bonus { margin: 8px 0 0; font-size: 0.8rem; line-height: 1.35; color: var(--lc-muted); }
+.lc-pie-slice[data-criterion="affordability"], .lc-pie-swatch[data-criterion="affordability"] { fill: var(--pie-affordability); background: var(--pie-affordability); }
+.lc-pie-slice[data-criterion="schufa"], .lc-pie-swatch[data-criterion="schufa"] { fill: var(--pie-schufa); background: var(--pie-schufa); }
+.lc-pie-slice[data-criterion="documents"], .lc-pie-swatch[data-criterion="documents"] { fill: var(--pie-documents); background: var(--pie-documents); }
+.lc-pie-slice[data-criterion="credibility"], .lc-pie-swatch[data-criterion="credibility"] { fill: var(--pie-credibility); background: var(--pie-credibility); }
+.lc-pie-slice[data-criterion="employment"], .lc-pie-swatch[data-criterion="employment"] { fill: var(--pie-employment); background: var(--pie-employment); }
+.lc-pie-slice[data-criterion="previousLandlord"], .lc-pie-swatch[data-criterion="previousLandlord"] { fill: var(--pie-previousLandlord); background: var(--pie-previousLandlord); }
 
 /* The chat: turns scroll, the prompt and the tip stay at the bottom */
 .lc-chat {

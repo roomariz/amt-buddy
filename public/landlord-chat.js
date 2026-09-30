@@ -9,8 +9,8 @@
  * The logic lives in ./landlord/ (server calls, the slots and sidebar, tips, avatars, rank moves,
  * the stored sign-in); this file only wires it to the DOM. Names and model answers are untrusted:
  * they go in as textContent, answers through renderAnswerWithNames (Markdown escaped first, names
- * escaped and added after rendering, never parsed). Only avatarSvg's code-generated markup goes
- * through innerHTML.
+ * escaped and added after rendering, never parsed). Only avatarSvg's and weightsPieSvg's
+ * code-generated markup goes through innerHTML.
  */
 
 import { fetchOverview, removeRating, removeShortlistEntry, saveRating, saveShortlistEntry, signIn } from "./landlord/api.js";
@@ -23,6 +23,7 @@ import { formatNumber } from "./landlord/ranking.js";
 import { forgetLandlord, rememberLandlord, storedLandlord } from "./landlord/session.js";
 import { statusOptions } from "./landlord/shortlist.js";
 import { landlordTips } from "./landlord/tips.js";
+import { weightsPie, weightsPieSvg } from "./landlord/weights-pie.js";
 import { onLanguageChange, startI18n, t } from "./i18n.js";
 
 const $ = (selector) => document.querySelector(selector);
@@ -38,6 +39,10 @@ const boardError = $("#board-error");
 const slotList = $("#slots");
 const tileList = $("#glance-tiles");
 const poolErrors = $("#pool-errors");
+const weightsBox = $("#weights");
+const weightsPieBox = $("#weights-pie");
+const weightsLegend = $("#weights-legend");
+const weightsBonus = $("#weights-bonus");
 const chatMessages = $("#chat-messages");
 const chatWelcome = $("#chat-welcome");
 const chatForm = $("#chat-form");
@@ -235,6 +240,32 @@ function renderTiles() {
   poolErrors.textContent = count ? t("landlord.ranking.poolErrors", { count }) : "";
 }
 
+// The weights pie under the tiles, redrawn with every overview (so after each chat turn, rating or
+// Shortlist change) and on a language switch. The legend's swatches take their colour from the
+// same --pie-<criterion> tokens as the slices, through data-criterion (styles.css).
+function renderWeights() {
+  weightsBox.hidden = !overview;
+  if (!overview) {
+    weightsPieBox.replaceChildren();
+    weightsLegend.replaceChildren();
+    weightsBonus.textContent = "";
+    return;
+  }
+  const pie = weightsPie(overview);
+  weightsPieBox.innerHTML = weightsPieSvg(pie);
+  weightsLegend.replaceChildren(
+    ...pie.legend.map(({ criterion, text, counted }) => {
+      const item = el("li", `lc-legend-row${counted ? "" : " is-muted"}`);
+      const swatch = el("span", `lc-pie-swatch${counted ? "" : " is-muted"}`);
+      swatch.dataset.criterion = criterion;
+      swatch.setAttribute("aria-hidden", "true");
+      item.append(swatch, el("span", "", text));
+      return item;
+    }),
+  );
+  weightsBonus.textContent = pie.bonusText;
+}
+
 // The expander under a Shortlist entry: status, a note (for "to invite" and "invited" only), Save.
 // What is typed survives the redraws until it is saved.
 function statusEditor(row, busy) {
@@ -334,6 +365,7 @@ function renderSidebar() {
 function renderBoard() {
   renderSlots();
   renderTiles();
+  renderWeights();
   renderSidebar();
 }
 

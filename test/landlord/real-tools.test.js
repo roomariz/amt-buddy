@@ -553,6 +553,7 @@ test("the system prompt explains the pool stats fields and when a share may be c
   assert.match(system, /canAffordAtMedian = how many could afford the Mietspiegel median rent "medianRent"/);
   assert.match(system, /canAfford = how many can afford the asking rent/);
   assert.match(system, /capped only for a change whose "capped" is true/);
+  assert.match(system, /page shows all the weights as a chart.*name only what changed.*"SCHUFA 20 → 26 %".*do not list all six weights unless the landlord asks/);
   assert.match(system, /call compare_applicants and go through its "differences" in order: say which criteria favour which applicant and by how many points, including those that favour the lower-ranked one; call criteria equal only if they are in "equal"/);
 });
 
