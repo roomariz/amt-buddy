@@ -154,6 +154,13 @@ test("a sidebar row without a name shows the applicant id; a missing rating is n
   assert.equal(row.rating, null);
 });
 
+// Shortlisted, then gone from the pool: neither ranked nor excluded, so there is no rank to show.
+test("a sidebar row for an applicant who left the pool says so, never '#null' (EN and DE)", () => {
+  const gone = [{ applicantId: "A-050", name: null, householdShape: null, status: "invited", note: null, rank: null, excluded: false, excludedBy: null }];
+  assert.equal(inLanguage("en", () => sidebarRows(gone))[0].placeText, "no longer in the pool");
+  assert.equal(inLanguage("de", () => sidebarRows(gone))[0].placeText, "nicht mehr im Bewerberpool");
+});
+
 // The "Excluded" tile's hover tip: why applicants are excluded, grouped by Requirement (each applicant
 // counted once, under the first Requirement they fail — the overview's excludedByReason), largest
 // group first, ties in the order of the Requirements.

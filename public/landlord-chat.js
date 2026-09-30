@@ -582,11 +582,12 @@ async function addToShortlist(applicantId, card) {
 
 async function removeFromShortlist(applicantId, index) {
   if (!(await changeShortlist(applicantId, shortlistError, (call) => removeShortlistEntry(call)))) return;
-  // Keep the keyboard in the list: the remove button that took this one's place, or the heading.
-  const buttons = shortlistList.querySelectorAll("button");
-  const next = buttons[Math.min(index, buttons.length - 1)];
+  // Keep the keyboard in the list: the remove button of the entry that took this one's place, the
+  // one above when the last entry was removed, or the heading when the Shortlist is now empty.
   const active = document.activeElement;
-  if (!active || active === document.body) (next ?? $("#shortlist-title")).focus();
+  if (active && active !== document.body) return;
+  const removeButton = (at) => shortlistList.querySelector(`[data-focus-key="remove:${at}"]`);
+  (removeButton(index) ?? removeButton(index - 1) ?? $("#shortlist-title")).focus();
 }
 
 // Saves the status (and note, null where the status has none) from an entry's expander; the

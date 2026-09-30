@@ -3,7 +3,7 @@
 
 import { getLanguage, t } from "../i18n.js";
 import { moveText } from "./rank-moves.js";
-import { formatNumber } from "./ranking.js";
+import { formatNumber, REQUIREMENTS } from "./ranking.js";
 
 // Which applicant sits in which Recommendation slot. The candidates are the best `poolSize` ranked
 // applicants who are not hidden (shortlisted or skipped). Someone still among them keeps their
@@ -46,8 +46,9 @@ export function slotCard({ applicantId, name, householdShape, rank, matchScore, 
 }
 
 // The overview's Shortlist → the sidebar rows. Where an entry stands is its current rank (no move
-// arrow here), or the short label of the Requirement that now excludes them; a missing name falls
-// back to the id. A note only makes sense for someone still to be invited or already invited.
+// arrow here), the short label of the Requirement that now excludes them, or, when neither (the
+// applicant left the pool), that they are gone; a missing name falls back to the id. A note only
+// makes sense for someone still to be invited or already invited.
 export function sidebarRows(shortlist) {
   return shortlist.map(({ applicantId, name, householdShape, status, note, rank, excluded, excludedBy, rating }) => {
     const displayName = name ?? applicantId;
@@ -57,7 +58,9 @@ export function sidebarRows(shortlist) {
       householdShape,
       placeText: excluded
         ? t("landlordChat.shortlistExcluded", { reason: t(`landlordChat.excludedBy.${excludedBy}`) })
-        : t("landlordChat.shortlistRank", { rank }),
+        : typeof rank === "number"
+          ? t("landlordChat.shortlistRank", { rank })
+          : t("landlordChat.shortlistGone"),
       excluded,
       status,
       statusText: t(`landlord.shortlist.status.${status}`),
@@ -68,9 +71,6 @@ export function sidebarRows(shortlist) {
     };
   });
 }
-
-// The order of the Requirements (the Scorer's DEFAULT_CRITERIA.requirements), for ties below.
-const REQUIREMENTS = ["schufaCleanOnly", "completeDocumentsOnly", "maxRentToIncome", "noPets", "noSmoking", "latestMoveIn", "occupancyCompliant"];
 
 // The overview's excludedByReason ({ <requirement>: count }) → the Excluded tile's hover tip: the
 // groups with their counts, largest first, ties in the order of the Requirements.

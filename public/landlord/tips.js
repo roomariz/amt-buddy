@@ -4,10 +4,8 @@
 // prompt, or null when the tip has nothing to say back to the assistant.
 
 import { t } from "../i18n.js";
-import { formatNumber } from "./ranking.js";
+import { CRITERIA, formatNumber } from "./ranking.js";
 
-// Criteria order is that of the weights object; ties in a share go to the earlier criterion.
-const CRITERIA = ["affordability", "schufa", "documents", "credibility", "employment", "previousLandlord"];
 // Requirement tips in the order they are suggested. occupancyCompliant never gets one: it is a
 // legal check that is on by default, not a preference to steer.
 const REQUIREMENT_TIPS = ["schufaCleanOnly", "completeDocumentsOnly", "maxRentToIncome", "noPets", "noSmoking", "latestMoveIn"];
@@ -15,9 +13,9 @@ const REQUIREMENT_TIPS = ["schufaCleanOnly", "completeDocumentsOnly", "maxRentTo
 const criterionLabel = (criterion) => t(`landlord.ranking.criteria.${criterion}`);
 const known = (value) => value !== null && value !== undefined;
 
-// Criteria with a share above 0, largest first. It reads the *active* shares, not the saved
-// weights: without an asking rent affordability is off and the others are renormalised, so the
-// saved weights would name a criterion that is not counting.
+// Criteria with a share above 0, largest first, ties to the earlier one in CRITERIA. It reads the
+// *active* shares, not the saved weights: without an asking rent affordability is off and the
+// others are renormalised, so the saved weights would name a criterion that is not counting.
 function activeByShare(activeWeights) {
   return CRITERIA.filter((criterion) => activeWeights[criterion] > 0).sort(
     (a, b) => activeWeights[b] - activeWeights[a] || CRITERIA.indexOf(a) - CRITERIA.indexOf(b),

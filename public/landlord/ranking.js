@@ -5,6 +5,9 @@ import { getLanguage, t } from "../i18n.js";
 // The scoring criteria, in the order the breakdown bars show them.
 export const CRITERIA = ["affordability", "schufa", "documents", "credibility", "employment", "previousLandlord"];
 
+// The Requirements, in the order of the Scorer's DEFAULT_CRITERIA.requirements.
+export const REQUIREMENTS = ["schufaCleanOnly", "completeDocumentsOnly", "maxRentToIncome", "noPets", "noSmoking", "latestMoveIn", "occupancyCompliant"];
+
 const DOCUMENTS = ["schufa", "incomeProof", "previousLandlord"];
 const FINE_STATUSES = new Set(["present", "not_required"]);
 
