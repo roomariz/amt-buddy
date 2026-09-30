@@ -198,7 +198,7 @@ const de = {
       nameRequired: "Bitte geben Sie Ihren Namen ein (höchstens 100 Zeichen).",
     },
     chat: {
-      title: "Chat mit Amt-Buddy",
+      title: "Agentische Verfeinerung",
       intro:
         "Fragen Sie nach Ihren Bewerbern oder Ihrer Miete, oder sagen Sie, was Ihnen wichtig ist (zum Beispiel „nur saubere SCHUFA“). Amt-Buddy wählt nie nach Herkunft, Geschlecht, Religion, Alter oder Behinderung aus (AGG).",
       label: "Ihre Nachricht",
@@ -540,7 +540,7 @@ const en = {
       nameRequired: "Please enter your name (at most 100 characters).",
     },
     chat: {
-      title: "Chat with Amt-Buddy",
+      title: "Agentic refinement",
       intro:
         "Ask about your applicants or your rent, or say what matters to you (for example “clean SCHUFA only”). Amt-Buddy never selects by origin, gender, religion, age or disability (AGG).",
       label: "Your message",

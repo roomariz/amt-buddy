@@ -1381,7 +1381,33 @@ footer a { color: inherit; }
 }
 
 /* Landlord chat panel */
-.landlord-chat-messages { margin: 0 0 12px; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; }
+/* The page scrolls on the left; the chat is docked on the right, always in view (at the bottom on narrow screens). */
+.landlord-layout { flex: 1; min-height: 0; display: flex; }
+.landlord-layout > .gpt-scroll-container { min-width: 0; }
+.landlord-chat-panel {
+  flex: none;
+  width: 400px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 20px;
+  border-left: 1px solid #e5e5e5;
+  background: #fafafa;
+}
+.landlord-chat-panel[hidden] { display: none; }
+.landlord-chat-panel h2 { margin: 0 0 6px; font-size: 1.1rem; }
+.landlord-chat-panel .landlord-intro { margin: 0 0 12px; font-size: 0.8rem; }
+.landlord-chat-panel .landlord-chat-form { margin-top: auto; align-items: center; }
+.landlord-chat-panel .landlord-chat-field textarea { min-height: 0; margin-top: 0; resize: none; }
+.landlord-chat-panel .landlord-btn { margin: 0; }
+.landlord-chat-panel .landlord-chat-msg.is-answer { background: #ffffff; }
+@media (max-width: 1000px) {
+  .landlord-layout { flex-direction: column; }
+  .landlord-chat-panel { width: auto; max-height: 45vh; padding: 12px 16px; border-left: 0; border-top: 1px solid #e5e5e5; box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.06); }
+  .landlord-chat-panel .landlord-intro { display: none; }
+}
+
+.landlord-chat-messages { flex: 1; min-height: 0; overflow-y: auto; margin: 0 0 12px; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; }
 
 .landlord-chat-messages:empty { display: none; }
 

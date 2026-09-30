@@ -28,267 +28,269 @@
         </div>
       </header>
 
-      <div class="gpt-scroll-container">
-        <div class="landlord-column">
-          <!-- Sign-in: just a name -->
-          <section id="sign-in" class="landlord-card" aria-labelledby="sign-in-title">
-            <h2 id="sign-in-title" data-i18n="landlord.signInTitle">Anmelden</h2>
-            <p class="landlord-intro" data-i18n="landlord.signInIntro">
-              Geben Sie Ihren Namen ein. Ein Passwort gibt es nicht: Mit demselben Namen finden Sie Ihre Wohnung beim nächsten Mal wieder.
-            </p>
-            <form id="sign-in-form" class="landlord-form" novalidate>
-              <label class="landlord-field">
-                <span data-i18n="landlord.name">Ihr Name</span>
-                <input id="sign-in-name" name="name" autocomplete="name" maxlength="100" required />
-              </label>
-              <p id="sign-in-error" class="landlord-error" role="alert" hidden></p>
-              <button type="submit" class="landlord-btn" data-i18n="landlord.signIn">Anmelden</button>
-            </form>
-          </section>
+      <div class="landlord-layout">
+        <div class="gpt-scroll-container">
+          <div class="landlord-column">
+            <!-- Sign-in: just a name -->
+            <section id="sign-in" class="landlord-card" aria-labelledby="sign-in-title">
+              <h2 id="sign-in-title" data-i18n="landlord.signInTitle">Anmelden</h2>
+              <p class="landlord-intro" data-i18n="landlord.signInIntro">
+                Geben Sie Ihren Namen ein. Ein Passwort gibt es nicht: Mit demselben Namen finden Sie Ihre Wohnung beim nächsten Mal wieder.
+              </p>
+              <form id="sign-in-form" class="landlord-form" novalidate>
+                <label class="landlord-field">
+                  <span data-i18n="landlord.name">Ihr Name</span>
+                  <input id="sign-in-name" name="name" autocomplete="name" maxlength="100" required />
+                </label>
+                <p id="sign-in-error" class="landlord-error" role="alert" hidden></p>
+                <button type="submit" class="landlord-btn" data-i18n="landlord.signIn">Anmelden</button>
+              </form>
+            </section>
 
-          <!-- The Listing -->
-          <section id="listing" class="landlord-card" aria-labelledby="listing-title" hidden>
-            <h2 id="listing-title" data-i18n="landlord.listingTitle">Ihre Wohnung</h2>
-            <p class="landlord-intro" data-i18n="landlord.listingIntro">
-              Amt-Buddy prüft die Adresse im amtlichen Berliner Register, sucht Wohnlage und Baualter heraus und vergleicht Ihre Angebotsmiete mit dem Mietspiegel 2026.
-            </p>
-            <form id="listing-form" class="landlord-form" novalidate>
-              <label class="landlord-field">
-                <span data-i18n="landlord.address">Adresse</span>
-                <input name="address" autocomplete="street-address" maxlength="300" placeholder="Wühlischstraße 30, 10245 Berlin" data-i18n-attr="placeholder:landlord.addressPlaceholder" />
-                <span class="landlord-field-error" data-error-for="address" hidden></span>
-              </label>
-              <div class="landlord-row">
+            <!-- The Listing -->
+            <section id="listing" class="landlord-card" aria-labelledby="listing-title" hidden>
+              <h2 id="listing-title" data-i18n="landlord.listingTitle">Ihre Wohnung</h2>
+              <p class="landlord-intro" data-i18n="landlord.listingIntro">
+                Amt-Buddy prüft die Adresse im amtlichen Berliner Register, sucht Wohnlage und Baualter heraus und vergleicht Ihre Angebotsmiete mit dem Mietspiegel 2026.
+              </p>
+              <form id="listing-form" class="landlord-form" novalidate>
                 <label class="landlord-field">
-                  <span data-i18n="landlord.livingArea">Wohnfläche (m²)</span>
-                  <input name="livingAreaSqm" inputmode="decimal" />
-                  <span class="landlord-field-error" data-error-for="livingAreaSqm" hidden></span>
+                  <span data-i18n="landlord.address">Adresse</span>
+                  <input name="address" autocomplete="street-address" maxlength="300" placeholder="Wühlischstraße 30, 10245 Berlin" data-i18n-attr="placeholder:landlord.addressPlaceholder" />
+                  <span class="landlord-field-error" data-error-for="address" hidden></span>
                 </label>
-                <label class="landlord-field">
-                  <span data-i18n="landlord.rooms">Zimmer</span>
-                  <input name="rooms" inputmode="decimal" />
-                  <span class="landlord-field-error" data-error-for="rooms" hidden></span>
-                </label>
-              </div>
-              <div class="landlord-row">
-                <label class="landlord-field">
-                  <span data-i18n="landlord.askingRent">Angebotsmiete netto kalt (€ / Monat)</span>
-                  <input name="askingRent" inputmode="decimal" />
-                  <span class="landlord-field-error" data-error-for="askingRent" hidden></span>
-                </label>
-                <label class="landlord-field">
-                  <span data-i18n="landlord.buildingYear">Baujahr (optional)</span>
-                  <input name="buildingYear" inputmode="numeric" maxlength="4" />
-                  <span class="landlord-field-error" data-error-for="buildingYear" hidden></span>
-                </label>
-              </div>
-              <p class="landlord-hint" data-i18n="landlord.buildingYearHint">Ohne Baujahr nimmt Amt-Buddy das überwiegende Baualter des Blocks, bei gemischtem Baualter das häufigste Jahrzehnt.</p>
-              <p id="listing-error" class="landlord-error" role="alert" hidden></p>
-              <button type="submit" id="btn-save-listing" class="landlord-btn" data-i18n="landlord.save">Wohnung speichern und prüfen</button>
-            </form>
-          </section>
-
-          <!-- The Rent check; drawn by landlord.js -->
-          <section id="rent-check" class="landlord-card" aria-labelledby="rent-check-title" aria-live="polite" hidden>
-            <h2 id="rent-check-title" data-i18n="landlord.rentCheckTitle">Mietcheck</h2>
-            <div id="rent-check-body"></div>
-            <p class="landlord-hint" data-i18n="landlord.disclaimer">
-              Der Mietcheck dient der Orientierung und ist keine Rechtsberatung. Nicht berücksichtigt: eine höhere Vormiete, Modernisierung und die Ausnahme für Neubauten.
-            </p>
-          </section>
-
-          <section id="selection-criteria" class="landlord-card" aria-labelledby="criteria-title" hidden>
-            <h2 id="criteria-title" data-i18n="landlord.criteria.title">Auswahlkriterien</h2>
-            <p class="landlord-intro" data-i18n="landlord.criteria.intro">Passen Sie die Gewichtung an. Beim Speichern werden die Gewichte auf insgesamt 100 % umgerechnet und das Ranking aktualisiert.</p>
-            <form id="criteria-form" class="landlord-form">
-              <fieldset id="criteria-controls" class="criteria-controls">
-                <legend data-i18n="landlord.criteria.weights">Gewichtung</legend>
-                <div class="criteria-grid">
-                  <label class="criteria-weight" for="criteria-affordability">
-                    <span data-i18n="landlord.ranking.criteria.affordability">Bezahlbarkeit</span>
-                    <output id="criteria-value-affordability" for="criteria-affordability"></output>
-                    <input id="criteria-affordability" name="affordability" type="range" min="0" max="100" step="any" />
+                <div class="landlord-row">
+                  <label class="landlord-field">
+                    <span data-i18n="landlord.livingArea">Wohnfläche (m²)</span>
+                    <input name="livingAreaSqm" inputmode="decimal" />
+                    <span class="landlord-field-error" data-error-for="livingAreaSqm" hidden></span>
                   </label>
-                  <label class="criteria-weight" for="criteria-schufa">
-                    <span data-i18n="landlord.ranking.criteria.schufa">SCHUFA</span>
-                    <output id="criteria-value-schufa" for="criteria-schufa"></output>
-                    <input id="criteria-schufa" name="schufa" type="range" min="0" max="100" step="any" />
-                  </label>
-                  <label class="criteria-weight" for="criteria-documents">
-                    <span data-i18n="landlord.ranking.criteria.documents">Unterlagen</span>
-                    <output id="criteria-value-documents" for="criteria-documents"></output>
-                    <input id="criteria-documents" name="documents" type="range" min="0" max="100" step="any" />
-                  </label>
-                  <label class="criteria-weight" for="criteria-credibility">
-                    <span data-i18n="landlord.ranking.criteria.credibility">Glaubwürdigkeit</span>
-                    <output id="criteria-value-credibility" for="criteria-credibility"></output>
-                    <input id="criteria-credibility" name="credibility" type="range" min="0" max="100" step="any" />
-                  </label>
-                  <label class="criteria-weight" for="criteria-employment">
-                    <span data-i18n="landlord.ranking.criteria.employment">Beschäftigung</span>
-                    <output id="criteria-value-employment" for="criteria-employment"></output>
-                    <input id="criteria-employment" name="employment" type="range" min="0" max="100" step="any" />
-                  </label>
-                  <label class="criteria-weight" for="criteria-previousLandlord">
-                    <span data-i18n="landlord.ranking.criteria.previousLandlord">Vorvermieter</span>
-                    <output id="criteria-value-previousLandlord" for="criteria-previousLandlord"></output>
-                    <input id="criteria-previousLandlord" name="previousLandlord" type="range" min="0" max="100" step="any" />
-                  </label>
-                </div>
-                <h3 class="ranking-subtitle" data-i18n="landlord.criteria.requirements">Anforderungen</h3>
-                <div class="criteria-grid">
-                  <label class="ranking-control ranking-check">
-                    <input type="checkbox" name="schufaCleanOnly" />
-                    <span data-i18n="landlord.criteria.schufaCleanOnly">Nur saubere SCHUFA</span>
-                  </label>
-                  <label class="ranking-control ranking-check">
-                    <input type="checkbox" name="completeDocumentsOnly" />
-                    <span data-i18n="landlord.criteria.completeDocumentsOnly">Nur vollständige Unterlagen</span>
-                  </label>
-                  <label class="ranking-control ranking-check">
-                    <input type="checkbox" name="noPets" />
-                    <span data-i18n="landlord.criteria.noPets">Keine Haustiere</span>
-                  </label>
-                  <label class="ranking-control ranking-check">
-                    <input type="checkbox" name="noSmoking" />
-                    <span data-i18n="landlord.criteria.noSmoking">Nichtraucher</span>
-                  </label>
-                  <label class="ranking-control ranking-check">
-                    <input type="checkbox" name="occupancyCompliant" />
-                    <span data-i18n="landlord.criteria.occupancyCompliant">Haushalt passt zur Wohnfläche</span>
+                  <label class="landlord-field">
+                    <span data-i18n="landlord.rooms">Zimmer</span>
+                    <input name="rooms" inputmode="decimal" />
+                    <span class="landlord-field-error" data-error-for="rooms" hidden></span>
                   </label>
                 </div>
                 <div class="landlord-row">
                   <label class="landlord-field">
-                    <span data-i18n="landlord.criteria.maxRentToIncome">Miete höchstens in % des Einkommens (optional)</span>
-                    <input name="maxRentToIncome" inputmode="decimal" aria-describedby="criteria-optional-hint" />
+                    <span data-i18n="landlord.askingRent">Angebotsmiete netto kalt (€ / Monat)</span>
+                    <input name="askingRent" inputmode="decimal" />
+                    <span class="landlord-field-error" data-error-for="askingRent" hidden></span>
                   </label>
                   <label class="landlord-field">
-                    <span data-i18n="landlord.criteria.latestMoveIn">Einzug spätestens am (optional)</span>
-                    <input name="latestMoveIn" type="date" aria-describedby="criteria-optional-hint" />
+                    <span data-i18n="landlord.buildingYear">Baujahr (optional)</span>
+                    <input name="buildingYear" inputmode="numeric" maxlength="4" />
+                    <span class="landlord-field-error" data-error-for="buildingYear" hidden></span>
                   </label>
                 </div>
-                <p id="criteria-optional-hint" class="landlord-hint" data-i18n="landlord.criteria.optionalHint">Leere Felder setzen keine Grenze.</p>
-                <div class="criteria-actions">
-                  <button type="submit" class="landlord-btn" data-i18n="landlord.criteria.save">Kriterien speichern</button>
-                  <button type="button" id="btn-reset-criteria" class="landlord-link-btn" data-i18n="landlord.criteria.reset">Standardwerte wiederherstellen</button>
+                <p class="landlord-hint" data-i18n="landlord.buildingYearHint">Ohne Baujahr nimmt Amt-Buddy das überwiegende Baualter des Blocks, bei gemischtem Baualter das häufigste Jahrzehnt.</p>
+                <p id="listing-error" class="landlord-error" role="alert" hidden></p>
+                <button type="submit" id="btn-save-listing" class="landlord-btn" data-i18n="landlord.save">Wohnung speichern und prüfen</button>
+              </form>
+            </section>
+
+            <!-- The Rent check; drawn by landlord.js -->
+            <section id="rent-check" class="landlord-card" aria-labelledby="rent-check-title" aria-live="polite" hidden>
+              <h2 id="rent-check-title" data-i18n="landlord.rentCheckTitle">Mietcheck</h2>
+              <div id="rent-check-body"></div>
+              <p class="landlord-hint" data-i18n="landlord.disclaimer">
+                Der Mietcheck dient der Orientierung und ist keine Rechtsberatung. Nicht berücksichtigt: eine höhere Vormiete, Modernisierung und die Ausnahme für Neubauten.
+              </p>
+            </section>
+
+            <section id="selection-criteria" class="landlord-card" aria-labelledby="criteria-title" hidden>
+              <h2 id="criteria-title" data-i18n="landlord.criteria.title">Auswahlkriterien</h2>
+              <p class="landlord-intro" data-i18n="landlord.criteria.intro">Passen Sie die Gewichtung an. Beim Speichern werden die Gewichte auf insgesamt 100 % umgerechnet und das Ranking aktualisiert.</p>
+              <form id="criteria-form" class="landlord-form">
+                <fieldset id="criteria-controls" class="criteria-controls">
+                  <legend data-i18n="landlord.criteria.weights">Gewichtung</legend>
+                  <div class="criteria-grid">
+                    <label class="criteria-weight" for="criteria-affordability">
+                      <span data-i18n="landlord.ranking.criteria.affordability">Bezahlbarkeit</span>
+                      <output id="criteria-value-affordability" for="criteria-affordability"></output>
+                      <input id="criteria-affordability" name="affordability" type="range" min="0" max="100" step="any" />
+                    </label>
+                    <label class="criteria-weight" for="criteria-schufa">
+                      <span data-i18n="landlord.ranking.criteria.schufa">SCHUFA</span>
+                      <output id="criteria-value-schufa" for="criteria-schufa"></output>
+                      <input id="criteria-schufa" name="schufa" type="range" min="0" max="100" step="any" />
+                    </label>
+                    <label class="criteria-weight" for="criteria-documents">
+                      <span data-i18n="landlord.ranking.criteria.documents">Unterlagen</span>
+                      <output id="criteria-value-documents" for="criteria-documents"></output>
+                      <input id="criteria-documents" name="documents" type="range" min="0" max="100" step="any" />
+                    </label>
+                    <label class="criteria-weight" for="criteria-credibility">
+                      <span data-i18n="landlord.ranking.criteria.credibility">Glaubwürdigkeit</span>
+                      <output id="criteria-value-credibility" for="criteria-credibility"></output>
+                      <input id="criteria-credibility" name="credibility" type="range" min="0" max="100" step="any" />
+                    </label>
+                    <label class="criteria-weight" for="criteria-employment">
+                      <span data-i18n="landlord.ranking.criteria.employment">Beschäftigung</span>
+                      <output id="criteria-value-employment" for="criteria-employment"></output>
+                      <input id="criteria-employment" name="employment" type="range" min="0" max="100" step="any" />
+                    </label>
+                    <label class="criteria-weight" for="criteria-previousLandlord">
+                      <span data-i18n="landlord.ranking.criteria.previousLandlord">Vorvermieter</span>
+                      <output id="criteria-value-previousLandlord" for="criteria-previousLandlord"></output>
+                      <input id="criteria-previousLandlord" name="previousLandlord" type="range" min="0" max="100" step="any" />
+                    </label>
+                  </div>
+                  <h3 class="ranking-subtitle" data-i18n="landlord.criteria.requirements">Anforderungen</h3>
+                  <div class="criteria-grid">
+                    <label class="ranking-control ranking-check">
+                      <input type="checkbox" name="schufaCleanOnly" />
+                      <span data-i18n="landlord.criteria.schufaCleanOnly">Nur saubere SCHUFA</span>
+                    </label>
+                    <label class="ranking-control ranking-check">
+                      <input type="checkbox" name="completeDocumentsOnly" />
+                      <span data-i18n="landlord.criteria.completeDocumentsOnly">Nur vollständige Unterlagen</span>
+                    </label>
+                    <label class="ranking-control ranking-check">
+                      <input type="checkbox" name="noPets" />
+                      <span data-i18n="landlord.criteria.noPets">Keine Haustiere</span>
+                    </label>
+                    <label class="ranking-control ranking-check">
+                      <input type="checkbox" name="noSmoking" />
+                      <span data-i18n="landlord.criteria.noSmoking">Nichtraucher</span>
+                    </label>
+                    <label class="ranking-control ranking-check">
+                      <input type="checkbox" name="occupancyCompliant" />
+                      <span data-i18n="landlord.criteria.occupancyCompliant">Haushalt passt zur Wohnfläche</span>
+                    </label>
+                  </div>
+                  <div class="landlord-row">
+                    <label class="landlord-field">
+                      <span data-i18n="landlord.criteria.maxRentToIncome">Miete höchstens in % des Einkommens (optional)</span>
+                      <input name="maxRentToIncome" inputmode="decimal" aria-describedby="criteria-optional-hint" />
+                    </label>
+                    <label class="landlord-field">
+                      <span data-i18n="landlord.criteria.latestMoveIn">Einzug spätestens am (optional)</span>
+                      <input name="latestMoveIn" type="date" aria-describedby="criteria-optional-hint" />
+                    </label>
+                  </div>
+                  <p id="criteria-optional-hint" class="landlord-hint" data-i18n="landlord.criteria.optionalHint">Leere Felder setzen keine Grenze.</p>
+                  <div class="criteria-actions">
+                    <button type="submit" class="landlord-btn" data-i18n="landlord.criteria.save">Kriterien speichern</button>
+                    <button type="button" id="btn-reset-criteria" class="landlord-link-btn" data-i18n="landlord.criteria.reset">Standardwerte wiederherstellen</button>
+                  </div>
+                </fieldset>
+                <p id="criteria-error" class="landlord-error" role="alert" hidden></p>
+                <p id="criteria-status" class="landlord-hint" role="status"></p>
+              </form>
+            </section>
+
+            <!-- The pool overview: pool summary, stat tiles and Recommendations; drawn by landlord.js -->
+            <section id="pool-overview" class="landlord-card" aria-labelledby="pool-overview-title" aria-live="polite" hidden>
+              <h2 id="pool-overview-title" data-i18n="landlord.poolOverview.title">Ihre Bewerber auf einen Blick</h2>
+              <p id="pool-overview-summary" class="pool-summary"></p>
+              <ul id="pool-overview-tiles" class="pool-tiles"></ul>
+              <h3 class="ranking-subtitle" data-i18n="landlord.poolOverview.recommendationsTitle">Empfehlungen</h3>
+              <ul id="recommendation-cards" class="recommendation-cards"></ul>
+              <p id="recommendations-empty" class="landlord-hint" hidden></p>
+            </section>
+
+            <!-- The Shortlist; drawn by landlord.js -->
+            <section id="shortlist" class="landlord-card" aria-labelledby="shortlist-title" hidden>
+              <h2 id="shortlist-title" data-i18n="landlord.shortlist.title">Shortlist</h2>
+              <p class="landlord-intro" data-i18n="landlord.shortlist.intro">
+                Die Bewerber, um die Sie sich kümmern wollen. Der Status hilft Ihnen nur beim Überblick: Amt-Buddy schreibt keinem Bewerber.
+              </p>
+              <p id="shortlist-error" class="landlord-error" role="alert" hidden></p>
+              <ul id="shortlist-list" class="shortlist-list"></ul>
+              <p id="shortlist-empty" class="landlord-hint" hidden data-i18n="landlord.shortlist.empty">
+                Noch niemand auf der Shortlist. Fügen Sie Bewerber aus dem Ranking oder den Empfehlungen hinzu.
+              </p>
+            </section>
+
+            <!-- The ranked applicants and the Excluded section; drawn by landlord.js -->
+            <section id="ranking" class="landlord-card" aria-labelledby="ranking-title" hidden>
+              <h2 id="ranking-title" tabindex="-1" data-i18n="landlord.ranking.title">Bewerber-Ranking</h2>
+              <p class="landlord-intro" data-i18n="landlord.ranking.intro">
+                Jeder Bewerber bekommt aus Ihren Auswahlkriterien einen Match-Score von 0 bis 100: Bezahlbarkeit, SCHUFA, Unterlagen, Glaubwürdigkeit, Beschäftigung und Vorvermieter. Der Name wird nur angezeigt, er zählt nicht.
+              </p>
+              <p id="ranking-hint" class="landlord-note" hidden></p>
+              <p id="ranking-pool-errors" class="landlord-note" hidden></p>
+              <div id="ranking-body">
+                <div class="ranking-controls">
+                  <label class="ranking-control">
+                    <span data-i18n="landlord.ranking.sort">Sortieren nach</span>
+                    <select id="ranking-sort">
+                      <option value="score" data-i18n="landlord.ranking.sortBy.score">Match-Score</option>
+                      <option value="rentToIncome" data-i18n="landlord.ranking.sortBy.rentToIncome">Miete / Einkommen</option>
+                    </select>
+                  </label>
+                  <label class="ranking-control ranking-check">
+                    <input type="checkbox" id="ranking-complete-only" />
+                    <span data-i18n="landlord.ranking.completeOnly">Nur vollständige Unterlagen</span>
+                  </label>
+                  <span id="ranking-count" class="ranking-count" aria-live="polite"></span>
                 </div>
-              </fieldset>
-              <p id="criteria-error" class="landlord-error" role="alert" hidden></p>
-              <p id="criteria-status" class="landlord-hint" role="status"></p>
-            </form>
-          </section>
-
-          <!-- The pool overview: pool summary, stat tiles and Recommendations; drawn by landlord.js -->
-          <section id="pool-overview" class="landlord-card" aria-labelledby="pool-overview-title" aria-live="polite" hidden>
-            <h2 id="pool-overview-title" data-i18n="landlord.poolOverview.title">Ihre Bewerber auf einen Blick</h2>
-            <p id="pool-overview-summary" class="pool-summary"></p>
-            <ul id="pool-overview-tiles" class="pool-tiles"></ul>
-            <h3 class="ranking-subtitle" data-i18n="landlord.poolOverview.recommendationsTitle">Empfehlungen</h3>
-            <ul id="recommendation-cards" class="recommendation-cards"></ul>
-            <p id="recommendations-empty" class="landlord-hint" hidden></p>
-          </section>
-
-          <!-- The Shortlist; drawn by landlord.js -->
-          <section id="shortlist" class="landlord-card" aria-labelledby="shortlist-title" hidden>
-            <h2 id="shortlist-title" data-i18n="landlord.shortlist.title">Shortlist</h2>
-            <p class="landlord-intro" data-i18n="landlord.shortlist.intro">
-              Die Bewerber, um die Sie sich kümmern wollen. Der Status hilft Ihnen nur beim Überblick: Amt-Buddy schreibt keinem Bewerber.
-            </p>
-            <p id="shortlist-error" class="landlord-error" role="alert" hidden></p>
-            <ul id="shortlist-list" class="shortlist-list"></ul>
-            <p id="shortlist-empty" class="landlord-hint" hidden data-i18n="landlord.shortlist.empty">
-              Noch niemand auf der Shortlist. Fügen Sie Bewerber aus dem Ranking oder den Empfehlungen hinzu.
-            </p>
-          </section>
-
-          <!-- The ranked applicants and the Excluded section; drawn by landlord.js -->
-          <section id="ranking" class="landlord-card" aria-labelledby="ranking-title" hidden>
-            <h2 id="ranking-title" tabindex="-1" data-i18n="landlord.ranking.title">Bewerber-Ranking</h2>
-            <p class="landlord-intro" data-i18n="landlord.ranking.intro">
-              Jeder Bewerber bekommt aus Ihren Auswahlkriterien einen Match-Score von 0 bis 100: Bezahlbarkeit, SCHUFA, Unterlagen, Glaubwürdigkeit, Beschäftigung und Vorvermieter. Der Name wird nur angezeigt, er zählt nicht.
-            </p>
-            <p id="ranking-hint" class="landlord-note" hidden></p>
-            <p id="ranking-pool-errors" class="landlord-note" hidden></p>
-            <div id="ranking-body">
-              <div class="ranking-controls">
-                <label class="ranking-control">
-                  <span data-i18n="landlord.ranking.sort">Sortieren nach</span>
-                  <select id="ranking-sort">
-                    <option value="score" data-i18n="landlord.ranking.sortBy.score">Match-Score</option>
-                    <option value="rentToIncome" data-i18n="landlord.ranking.sortBy.rentToIncome">Miete / Einkommen</option>
-                  </select>
-                </label>
-                <label class="ranking-control ranking-check">
-                  <input type="checkbox" id="ranking-complete-only" />
-                  <span data-i18n="landlord.ranking.completeOnly">Nur vollständige Unterlagen</span>
-                </label>
-                <span id="ranking-count" class="ranking-count" aria-live="polite"></span>
+                <div class="ranking-table-wrap">
+                  <table class="ranking-table">
+                    <thead>
+                      <tr>
+                        <th scope="col" data-i18n="landlord.ranking.rank">Platz</th>
+                        <th scope="col" data-i18n="landlord.ranking.name">Name</th>
+                        <th scope="col" data-i18n="landlord.ranking.score">Score</th>
+                        <th scope="col" data-i18n="landlord.ranking.breakdown">Aufschlüsselung</th>
+                        <th scope="col" data-i18n="landlord.ranking.rentToIncome">Miete / Einkommen</th>
+                        <th scope="col" data-i18n="landlord.ranking.documents">Unterlagen</th>
+                        <th scope="col" data-i18n="landlord.shortlist.title">Shortlist</th>
+                      </tr>
+                    </thead>
+                    <tbody id="ranking-rows"></tbody>
+                  </table>
+                </div>
+                <p id="ranking-empty" class="landlord-hint" hidden data-i18n="landlord.ranking.empty">Kein Bewerber passt zu diesem Filter.</p>
+                <div id="excluded" hidden>
+                  <h3 class="ranking-subtitle" data-i18n="landlord.ranking.excludedTitle">Ausgeschlossen</h3>
+                  <p class="landlord-hint ranking-excluded-intro" data-i18n="landlord.ranking.excludedIntro">Diese Bewerber erfüllen eine Ihrer Anforderungen nicht.</p>
+                  <ul id="excluded-list" class="excluded-list"></ul>
+                </div>
               </div>
-              <div class="ranking-table-wrap">
-                <table class="ranking-table">
-                  <thead>
-                    <tr>
-                      <th scope="col" data-i18n="landlord.ranking.rank">Platz</th>
-                      <th scope="col" data-i18n="landlord.ranking.name">Name</th>
-                      <th scope="col" data-i18n="landlord.ranking.score">Score</th>
-                      <th scope="col" data-i18n="landlord.ranking.breakdown">Aufschlüsselung</th>
-                      <th scope="col" data-i18n="landlord.ranking.rentToIncome">Miete / Einkommen</th>
-                      <th scope="col" data-i18n="landlord.ranking.documents">Unterlagen</th>
-                      <th scope="col" data-i18n="landlord.shortlist.title">Shortlist</th>
-                    </tr>
-                  </thead>
-                  <tbody id="ranking-rows"></tbody>
-                </table>
+            </section>
+
+            <!-- The selected Applicant's profile; drawn by landlord.js -->
+            <section id="applicant-detail" class="landlord-card applicant-detail" aria-labelledby="applicant-detail-title" hidden>
+              <div class="applicant-detail-head">
+                <h2 id="applicant-detail-title" tabindex="-1" data-i18n="landlord.detail.title">Bewerberprofil</h2>
+                <button id="applicant-detail-close" class="applicant-detail-close" type="button" data-i18n="landlord.detail.close">Profil schließen</button>
               </div>
-              <p id="ranking-empty" class="landlord-hint" hidden data-i18n="landlord.ranking.empty">Kein Bewerber passt zu diesem Filter.</p>
-              <div id="excluded" hidden>
-                <h3 class="ranking-subtitle" data-i18n="landlord.ranking.excludedTitle">Ausgeschlossen</h3>
-                <p class="landlord-hint ranking-excluded-intro" data-i18n="landlord.ranking.excludedIntro">Diese Bewerber erfüllen eine Ihrer Anforderungen nicht.</p>
-                <ul id="excluded-list" class="excluded-list"></ul>
-              </div>
-            </div>
-          </section>
+              <p id="applicant-detail-status" class="landlord-note" role="status" hidden></p>
+              <div id="applicant-detail-body"></div>
+            </section>
 
-          <!-- The selected Applicant's profile; drawn by landlord.js -->
-          <section id="applicant-detail" class="landlord-card applicant-detail" aria-labelledby="applicant-detail-title" hidden>
-            <div class="applicant-detail-head">
-              <h2 id="applicant-detail-title" tabindex="-1" data-i18n="landlord.detail.title">Bewerberprofil</h2>
-              <button id="applicant-detail-close" class="applicant-detail-close" type="button" data-i18n="landlord.detail.close">Profil schließen</button>
-            </div>
-            <p id="applicant-detail-status" class="landlord-note" role="status" hidden></p>
-            <div id="applicant-detail-body"></div>
-          </section>
-
-          <!-- The remembered Landlord preferences, each deletable; drawn by landlord.js -->
-          <section id="preferences" class="landlord-card" aria-labelledby="preferences-title" hidden>
-            <h2 id="preferences-title" tabindex="-1" data-i18n="landlord.preferences.title">Gemerkte Wünsche</h2>
-            <p class="landlord-intro" data-i18n="landlord.preferences.intro">
-              Was Sie Amt-Buddy im Chat über Ihre Wünsche erzählt haben, merkt es sich für die nächsten Gespräche. Sie können jeden Eintrag löschen.
-            </p>
-            <p id="preferences-error" class="landlord-error" role="alert" hidden></p>
-            <ul id="preferences-list" class="preferences-list"></ul>
-            <p id="preferences-empty" class="landlord-hint" hidden data-i18n="landlord.preferences.empty">
-              Noch nichts gemerkt. Sagen Sie im Chat, was Ihnen wichtig ist, zum Beispiel „Ich suche jemanden, der lange bleibt“.
-            </p>
-          </section>
-
-          <!-- The chat with the Landlord Orchestrator; drawn by landlord.js -->
-          <section id="landlord-chat" class="landlord-card" aria-labelledby="landlord-chat-title" hidden>
-            <h2 id="landlord-chat-title" data-i18n="landlord.chat.title">Chat mit Amt-Buddy</h2>
-            <p class="landlord-intro" data-i18n="landlord.chat.intro">
-              Fragen Sie nach Ihren Bewerbern oder Ihrer Miete, oder sagen Sie, was Ihnen wichtig ist (zum Beispiel „nur saubere SCHUFA“). Amt-Buddy wählt nie nach Herkunft, Geschlecht, Religion, Alter oder Behinderung aus (AGG).
-            </p>
-            <ol id="landlord-chat-messages" class="landlord-chat-messages" aria-live="polite"></ol>
-            <form id="landlord-chat-form" class="landlord-chat-form" novalidate>
-              <label class="landlord-field landlord-chat-field">
-                <span class="visually-hidden" data-i18n="landlord.chat.label">Ihre Nachricht</span>
-                <textarea id="landlord-chat-input" name="message" rows="2" maxlength="4000" placeholder="Wer ist mein bester Bewerber?" data-i18n-attr="placeholder:landlord.chat.placeholder"></textarea>
-              </label>
-              <button type="submit" id="btn-landlord-chat-send" class="landlord-btn" data-i18n="landlord.chat.send">Senden</button>
-            </form>
-          </section>
+            <!-- The remembered Landlord preferences, each deletable; drawn by landlord.js -->
+            <section id="preferences" class="landlord-card" aria-labelledby="preferences-title" hidden>
+              <h2 id="preferences-title" tabindex="-1" data-i18n="landlord.preferences.title">Gemerkte Wünsche</h2>
+              <p class="landlord-intro" data-i18n="landlord.preferences.intro">
+                Was Sie Amt-Buddy im Chat über Ihre Wünsche erzählt haben, merkt es sich für die nächsten Gespräche. Sie können jeden Eintrag löschen.
+              </p>
+              <p id="preferences-error" class="landlord-error" role="alert" hidden></p>
+              <ul id="preferences-list" class="preferences-list"></ul>
+              <p id="preferences-empty" class="landlord-hint" hidden data-i18n="landlord.preferences.empty">
+                Noch nichts gemerkt. Sagen Sie im Chat, was Ihnen wichtig ist, zum Beispiel „Ich suche jemanden, der lange bleibt“.
+              </p>
+            </section>
+          </div>
         </div>
+
+        <!-- The chat with the Landlord Orchestrator, docked beside the page so it is always in view; drawn by landlord.js -->
+        <aside id="landlord-chat" class="landlord-chat-panel" aria-labelledby="landlord-chat-title" hidden>
+          <h2 id="landlord-chat-title" data-i18n="landlord.chat.title">Agentische Verfeinerung</h2>
+          <p class="landlord-intro" data-i18n="landlord.chat.intro">
+            Fragen Sie nach Ihren Bewerbern oder Ihrer Miete, oder sagen Sie, was Ihnen wichtig ist (zum Beispiel „nur saubere SCHUFA“). Amt-Buddy wählt nie nach Herkunft, Geschlecht, Religion, Alter oder Behinderung aus (AGG).
+          </p>
+          <ol id="landlord-chat-messages" class="landlord-chat-messages" aria-live="polite"></ol>
+          <form id="landlord-chat-form" class="landlord-chat-form" novalidate>
+            <label class="landlord-field landlord-chat-field">
+              <span class="visually-hidden" data-i18n="landlord.chat.label">Ihre Nachricht</span>
+              <textarea id="landlord-chat-input" name="message" rows="2" maxlength="4000" placeholder="Wer ist mein bester Bewerber?" data-i18n-attr="placeholder:landlord.chat.placeholder"></textarea>
+            </label>
+            <button type="submit" id="btn-landlord-chat-send" class="landlord-btn" data-i18n="landlord.chat.send">Senden</button>
+          </form>
+        </aside>
       </div>
     </main>
 
