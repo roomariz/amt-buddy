@@ -1433,6 +1433,10 @@ footer a { color: inherit; }
 .ranking-flags { display: flex; gap: 4px; flex-wrap: wrap; }
 .ranking-flag { padding: 2px 6px; border-radius: 999px; font-size: 0.7rem; white-space: nowrap; background: #e3f1e6; color: #1f5f2e; }
 .ranking-flag.is-problem { background: #fae4df; color: #8b1f1f; }
+/* In the table a long chip wraps and the Shortlist button keeps its own small size, so the row fits the card. */
+.ranking-table .ranking-flag { white-space: normal; }
+.ranking-table .applicant-open { white-space: nowrap; }
+.ranking-table .shortlist-add { padding: 4px 0; font: 600 0.8rem/1.2 Arial, sans-serif; text-align: left; }
 .ranking-subtitle { margin: 20px 0 4px; font-size: 0.95rem; }
 .ranking-excluded-intro { margin: 0 0 8px; }
 .excluded-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; font-size: 0.85rem; }
