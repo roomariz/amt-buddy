@@ -91,10 +91,17 @@ file).
 you work through the chat instead of forms and sliders. It uses the same sign-in
 and the same data, so both pages always agree.
 
-- **Two Recommendation slots** always show your two best-matching applicants, as
-  generic avatars (household shape only). **Add to Shortlist** moves an applicant
-  into the Shortlist beside the chat, and **Skip** brings the next one; either
-  way the next best applicant takes the freed slot.
+- **Two Recommendation slots** show two of your six best-matching applicants,
+  picked at random, as generic avatars (household shape only). **Add to
+  Shortlist** moves an applicant into the Shortlist beside the chat, and **Skip**
+  brings another one from the top six.
+- **👍 / 👎 on the slots and the Shortlist** add or subtract your own bonus
+  points to an applicant's ranking (5 by default; ask the chat to give your
+  impression more or less weight). The Match score stays objective. A 👎 on a slot
+  also replaces the card. Rate only what you could defend (AGG). See
+  [ADR 0006](docs/adr/0006-landlord-bonus-is-additive-outside-the-match-score.md).
+- **The Shortlist** shows each applicant's current rank, and an expander to set
+  the status (to invite, invited, declined) with a note.
 - **The ranking works from the first visit.** Until you tell the chat the asking
   rent, affordability doesn't count; until you give the size and rooms, the
   household-size check is off.
@@ -105,7 +112,7 @@ and the same data, so both pages always agree.
   - The code, not the model, recomputes the weights.
   - No criterion goes above 50 %, and at least two stay above 0.
   - The slots and the Shortlist ranks update, with arrows showing who moved.
-- **Tips below the input** rotate through what you can ask.
+- **Tips below the input** change after each chat turn and show what you can ask.
 
 See [ADR 0005](docs/adr/0005-rank-before-a-listing-and-relative-weight-changes.md).
 
